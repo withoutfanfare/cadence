@@ -81,7 +81,7 @@ class TestFrontDoor(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             home = os.path.join(tmp, "home")
             root = os.path.join(tmp, "cadence-engine")
-            project = os.path.join(tmp, "app")
+            project = os.path.join(root, "app")
             state = os.path.join(tmp, "state")
             os.makedirs(home)
             os.makedirs(os.path.join(root, "bin"))
@@ -96,9 +96,10 @@ class TestFrontDoor(unittest.TestCase):
                 f.write("CADENCE_STATE_DIR=%s\n" % state)
             env = os.environ.copy()
             env["HOME"] = home
+            relative_config_path = os.path.join("app", "cadence", ".env")
 
             result = subprocess.run(
-                ["bash", os.path.join(root, "bin", "cadence"), "--config", config_path, "status"],
+                ["bash", os.path.join(root, "bin", "cadence"), "--config", relative_config_path, "status"],
                 cwd=root,
                 env=env,
                 text=True,
@@ -107,7 +108,7 @@ class TestFrontDoor(unittest.TestCase):
             )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("%s|%s" % (state, config_path), result.stdout)
+        self.assertIn("%s|%s" % (state, os.path.realpath(os.path.join(root, relative_config_path))), result.stdout)
 
     def test_project_cadence_env_is_auto_detected_from_cwd(self):
         with tempfile.TemporaryDirectory() as tmp:

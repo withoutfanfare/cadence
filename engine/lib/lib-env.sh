@@ -8,7 +8,11 @@ CADENCE_HOME="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)"
 export CADENCE_HOME
 
 if [ -n "${CADENCE_CONFIG:-}" ]; then
-  :
+  if [ -f "$CADENCE_CONFIG" ] || [ -L "$CADENCE_CONFIG" ]; then
+    CADENCE_CONFIG="$(cd "$(dirname "$CADENCE_CONFIG")" && pwd)/$(basename "$CADENCE_CONFIG")"
+  elif [ "${CADENCE_CONFIG#/}" = "$CADENCE_CONFIG" ]; then
+    CADENCE_CONFIG="$PWD/$CADENCE_CONFIG"
+  fi
 elif [ -f "$PWD/cadence/.env" ]; then
   CADENCE_CONFIG="$PWD/cadence/.env"
 else
@@ -18,7 +22,7 @@ export CADENCE_CONFIG
 
 if [ -f "$CADENCE_CONFIG" ]; then
   set -a
-  # shellcheck disable=SC1091
+  # shellcheck disable=SC1090
   . "$CADENCE_CONFIG"
   set +a
 fi
