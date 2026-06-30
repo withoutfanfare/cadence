@@ -73,15 +73,42 @@ sys.exit(rc)
 PY
 }
 
+claude_allowed_tools() {
+  local stage="$1"
+  python3 - "$CADENCE_HOME/skills/cadence-loop-$stage/SKILL.md" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+tools = []
+in_tools = False
+for line in text.splitlines():
+    if line == "---" and in_tools:
+        break
+    if line == "allowed-tools:":
+        in_tools = True
+        continue
+    if in_tools:
+        if line.startswith("  - "):
+            tools.append(line.removeprefix("  - ").strip())
+            continue
+        if line and not line.startswith(" "):
+            break
+print(",".join(tools))
+PY
+}
+
 case "$PROVIDER" in
   claude)
-    _run_with_timeout "$TIMEOUT" "$WORKDIR" "$PROMPT_FILE" claude -p --model "$MODEL" --dangerously-skip-permissions
+    ALLOWED_TOOLS="$(claude_allowed_tools "$STAGE")"
+    _run_with_timeout "$TIMEOUT" "$WORKDIR" "$PROMPT_FILE" claude -p --model "$MODEL" --allowedTools "$ALLOWED_TOOLS" --dangerously-skip-permissions
     ;;
   codex)
     _run_with_timeout "$TIMEOUT" "$WORKDIR" "$PROMPT_FILE" codex exec --model "$MODEL" --dangerously-bypass-approvals-and-sandbox -c 'mcp_servers={}' -C "$WORKDIR" --skip-git-repo-check -
     ;;
   kimi)
-    _run_with_timeout "$TIMEOUT" "$WORKDIR" "" kimi -m "$MODEL" -p "Read and follow the brief in this file: $PROMPT_FILE"
+    _run_with_timeout "$TIMEOUT" "$WORKDIR" "" kimi -m "$MODEL" --add-dir "$(dirname "$PROMPT_FILE")" -p "Read and follow the brief in this file: $PROMPT_FILE"
     ;;
   opencode)
     _run_with_timeout "$TIMEOUT" "$WORKDIR" "" opencode run --model "$MODEL" --dir "$WORKDIR" --dangerously-skip-permissions -f "$PROMPT_FILE" "Follow the attached brief exactly."
