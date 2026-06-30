@@ -59,20 +59,31 @@ worktrees:
 Either way the loops drive worktrees through `cadence worktree add|remove|path`, so
 the skills themselves stay tool-agnostic.
 
-## Models and Implementer
+## Orchestrators, Reviewer, and Implementer
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `MODEL_TRIAGE` | `sonnet` | Model used by the triage loop. |
-| `MODEL_SPEC` | `opus` | Model used by the spec loop. |
-| `MODEL_BUILD` | `opus` | Model used by the build loop orchestrator. |
-| `MODEL_REVISE` | `sonnet` | Model used by the revise loop orchestrator. |
+| `ORCHESTRATOR_PROVIDER` | `claude` | Default provider used when a per-stage orchestrator value omits `provider:`. |
+| `ORCHESTRATOR_TRIAGE` | `claude:sonnet` | Provider and model for the triage loop. |
+| `ORCHESTRATOR_SPEC` | `claude:opus` | Provider and model for the spec loop. |
+| `ORCHESTRATOR_BUILD` | `claude:opus` | Provider and model for the build loop orchestrator. |
+| `ORCHESTRATOR_REVISE` | `claude:sonnet` | Provider and model for the revise loop orchestrator. |
+| `ORCHESTRATOR_ADVANCE` | `claude:sonnet` | Provider and model for the advancer orchestrator. |
+| `REVIEW_PROVIDER` | `claude` | Provider used by folded PR/diff reviews. |
+| `REVIEW_MODEL` | `opus` | Model used by folded PR/diff reviews. |
 | `BUILD_IMPLEMENTER` | `claude` | Coding agent used by the build loop: `claude`, `kimi`, `opencode`, or `codex`. |
 
 The build loop orchestrator still reviews the implementer's diff and owns the PR
 workflow. `BUILD_IMPLEMENTER` controls only the coding step.
 
 See [Implementers](IMPLEMENTERS.md) for the dispatch contract.
+
+```dotenv
+ORCHESTRATOR_BUILD=codex:gpt-5.4
+REVIEW_PROVIDER=claude
+REVIEW_MODEL=opus
+BUILD_IMPLEMENTER=kimi
+```
 
 ## Autonomous Mode
 

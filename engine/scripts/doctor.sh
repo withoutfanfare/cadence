@@ -9,6 +9,31 @@ ok=0; bad=0
 pass(){ echo "  ✅ $1"; ok=$((ok+1)); }
 fail(){ echo "  ❌ $1"; bad=$((bad+1)); }
 
+provider_from_pair() {
+  pair="$1"
+  case "$pair" in
+    *:*) printf '%s' "${pair%%:*}" ;;
+    *) printf '%s' "${ORCHESTRATOR_PROVIDER:-claude}" ;;
+  esac
+}
+
+check_provider_cli() {
+  label="$1"
+  provider="$2"
+  case "$provider" in
+    claude|codex|kimi|opencode)
+      if command -v "$provider" >/dev/null; then
+        pass "$label provider '$provider' found"
+      else
+        fail "$label provider '$provider' not on PATH"
+      fi
+      ;;
+    *)
+      fail "$label provider '$provider' invalid (use claude, codex, kimi, or opencode)"
+      ;;
+  esac
+}
+
 labels_only=0
 case "${1:-}" in
   --labels) labels_only=1 ;;
@@ -51,9 +76,14 @@ if [ "$labels_only" = 1 ]; then
 fi
 
 if [ -f "$CADENCE_HOME/.env" ]; then pass ".env present"; else fail ".env missing (copy .env.example)"; fi
-if command -v claude >/dev/null; then pass "claude found"; else fail "claude not on PATH"; fi
 if command -v python3 >/dev/null; then pass "python3 found"; else fail "python3 not on PATH"; fi
 if command -v gh >/dev/null; then pass "gh found"; else echo "  ⚠️  gh not found (build PR back-fill needs it)"; fi
+check_provider_cli "triage orchestrator" "$(provider_from_pair "$ORCHESTRATOR_TRIAGE")"
+check_provider_cli "spec orchestrator" "$(provider_from_pair "$ORCHESTRATOR_SPEC")"
+check_provider_cli "build orchestrator" "$(provider_from_pair "$ORCHESTRATOR_BUILD")"
+check_provider_cli "revise orchestrator" "$(provider_from_pair "$ORCHESTRATOR_REVISE")"
+check_provider_cli "advance orchestrator" "$(provider_from_pair "$ORCHESTRATOR_ADVANCE")"
+check_provider_cli "reviewer" "${REVIEW_PROVIDER:-claude}"
 
 if [ -n "${LINEAR_API_KEY:-}" ]; then
   teams="$(python3 "$CADENCE_HOME/engine/linear/cli.py" teams 2>/dev/null)"

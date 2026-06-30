@@ -25,6 +25,20 @@ tidy or to read what the agents produced.
 
 ---
 
+## 1a. How a run executes
+
+1. **launchd** fires `engine/scripts/run-loop.sh <stage>` on a schedule.
+2. `run-loop.sh` sources `engine/lib/lib-env.sh` (loads `.env`, applies defaults),
+   then enforces **Step 0** *before* any model launch: the PAUSED flag and the
+   **workspace guard** (`cadence linear teams` must show `LINEAR_TEAM_ID`). A paused
+   or wrong-workspace run exits cheaply without paying for a model call.
+3. It renders the matching loop skill into a provider-neutral prompt, then invokes
+   `engine/scripts/run-orchestrator.sh` with the configured `provider:model`.
+4. The matching **skill** in `skills/cadence-loop-<stage>/SKILL.md` is the loop body.
+5. The run appends a human digest + a JSON line to `$CADENCE_STATE_DIR` (default
+   `~/.cadence`): `runs/YYYY-MM-DD.md`, `runs/runs.jsonl`, `runs/activity.log`,
+   `logs/<stage>.log`.
+
 ## 2. The board is the state machine — label vocabulary
 
 An issue's labels are its state. The loops read labels to decide what to act on
@@ -165,8 +179,9 @@ Skills hold no ids, no project names, no repo paths.
 
 **Profile** — the project-specific facts loaded at runtime from `.env` and
 `memory/`. A profile supplies: the team id, project filter, assignee id, repo
-remote, base branch, worktree root, and the Clio namespace. The engine reads these
-from environment variables at runtime.
+remote, base branch, worktree root, orchestrator providers, reviewer provider,
+models, and the Clio namespace. The engine reads these from environment
+variables at runtime.
 
 This separation means the same engine code can run against multiple projects by
 switching `.env` — without touching the skills or scripts.
