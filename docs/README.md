@@ -9,7 +9,9 @@ Cadence.
    fill `.env`, create Linear labels, run `doctor`, smoke-test the setup, and
    schedule the loops.
 2. [Configuration](CONFIGURATION.md) - reference for every `.env` setting.
-3. [Operating Cadence](OPERATING.md) - daily commands, logs, digests, pausing,
+3. [AI Provider Roles](PROVIDERS.md) - how to inspect and switch orchestrators,
+   reviewers, and build implementers without confusing legacy `MODEL_*` aliases.
+4. [Operating Cadence](OPERATING.md) - daily commands, logs, digests, pausing,
    autonomous monitoring, helper commands, and common troubleshooting.
 
 ## Reference
@@ -22,6 +24,8 @@ Cadence.
   batch label changes with scope guard, dry-run, and confirmation.
 - [Implementers](IMPLEMENTERS.md) - how the build loop delegates coding work to
   Claude, Kimi, OpenCode, or Codex.
+- [AI Provider Roles](PROVIDERS.md) - evergreen provider role map and command
+  reference for `cadence providers`.
 
 ## Project Files
 
@@ -38,7 +42,7 @@ The macOS launchd jobs are generated from the `SCHED_*` schedule in `.env` by
 For a first install, read:
 
 ```text
-README.md -> docs/INSTALL.md -> docs/CONFIGURATION.md -> docs/OPERATING.md
+README.md -> docs/INSTALL.md -> docs/CONFIGURATION.md -> docs/PROVIDERS.md -> docs/OPERATING.md
 ```
 
 For maintainers changing the engine, read:

@@ -77,6 +77,8 @@ The build loop orchestrator still reviews the implementer's diff and owns the PR
 workflow. `BUILD_IMPLEMENTER` controls only the coding step.
 
 See [Implementers](IMPLEMENTERS.md) for the dispatch contract.
+See [AI Provider Roles](PROVIDERS.md) for the evergreen provider role map and
+the `cadence providers` command reference.
 
 Legacy fallback aliases from older profiles remain supported for compatibility
 with `.env.example`: `MODEL_TRIAGE`, `MODEL_SPEC`, `MODEL_BUILD`,

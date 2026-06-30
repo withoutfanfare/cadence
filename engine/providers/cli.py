@@ -29,6 +29,44 @@ ORDER = [
     "REVIEW_MODEL",
     "BUILD_IMPLEMENTER",
 ]
+MANUAL = """\
+Cadence Provider Roles
+
+Provider Roles
+  triage/spec/build/revise/advance orchestrator
+    Controlled by ORCHESTRATOR_<STAGE>=provider:model. This is the lead model
+    running each Cadence loop.
+
+  folded reviewer
+    Controlled by REVIEW_PROVIDER and REVIEW_MODEL. This is separate from the
+    loop orchestrator and can deliberately stay on another provider.
+
+  build implementer
+    Controlled by BUILD_IMPLEMENTER. This is the coding agent provider used
+    inside the build worktree.
+
+Rules
+  ORCHESTRATOR_* values use provider:model.
+  REVIEW_PROVIDER/REVIEW_MODEL combine into provider:model for folded review.
+  BUILD_IMPLEMENTER is provider-only, for example codex.
+  MODEL_* values are model names only. Do not put provider:model values there.
+
+Common commands
+  cadence providers roles
+  cadence providers show
+  cadence providers set --build codex:gpt-5.4 --implementer codex
+  cadence providers set --all kimi:k2 --review claude:opus --implementer kimi
+  cadence doctor
+
+Common trap
+  Wrong: MODEL_BUILD=codex:gpt-5.4
+  Right: ORCHESTRATOR_BUILD=codex:gpt-5.4
+
+  Wrong: BUILD_IMPLEMENTER=codex:gpt-5.4
+  Right: BUILD_IMPLEMENTER=codex
+
+Full guide: docs/PROVIDERS.md
+"""
 
 
 def cadence_home() -> pathlib.Path:
@@ -131,6 +169,11 @@ def cmd_show(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_help(_args: argparse.Namespace) -> int:
+    print(MANUAL.rstrip())
+    return 0
+
+
 def cmd_set(args: argparse.Namespace) -> int:
     updates: dict[str, str] = {}
     if args.all:
@@ -175,6 +218,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     show = sub.add_parser("show", help="show raw provider configuration")
     show.set_defaults(func=cmd_show)
+
+    help_parser = sub.add_parser("help", help="show provider role manual")
+    help_parser.set_defaults(func=cmd_help)
+
+    man = sub.add_parser("man", help="show provider role manual")
+    man.set_defaults(func=cmd_help)
 
     set_parser = sub.add_parser("set", help="update provider configuration in .env")
     set_parser.add_argument("--all", help="set every orchestrator to provider:model")

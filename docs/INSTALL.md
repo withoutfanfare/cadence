@@ -30,6 +30,7 @@ The lead loop provider is selected with `cadence providers set`, which updates
 `.env` with `ORCHESTRATOR_<STAGE>=provider:model` values. `provider` must be one
 of `claude`, `codex`, `kimi`, or `opencode`. Use `cadence providers roles` to
 see what each slot does. See
+[AI Provider Roles](PROVIDERS.md) and
 [Provider Switching Examples](CONFIGURATION.md#provider-switching-examples) for
 copyable all-Codex, mixed-provider, Kimi, and OpenCode profiles.
 

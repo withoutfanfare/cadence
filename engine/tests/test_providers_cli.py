@@ -107,6 +107,21 @@ class TestProvidersCli(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("unknown provider", result.stderr)
 
+    def test_help_prints_provider_manual(self):
+        result = self._run("help")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Provider Roles", result.stdout)
+        self.assertIn("MODEL_* values are model names only", result.stdout)
+        self.assertIn("BUILD_IMPLEMENTER is provider-only", result.stdout)
+        self.assertIn("cadence providers set --build codex:gpt-5.4 --implementer codex", result.stdout)
+
+    def test_man_alias_prints_provider_manual(self):
+        result = self._run("man")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Provider Roles", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

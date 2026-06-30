@@ -44,7 +44,7 @@ Usage: cadence <command> [args]
   bakeoff <brief> <filter> [impls]  Compare implementer CLIs in isolated worktrees
   labels init|list|ensure <name>  Initialise, inspect, or create Linear labels
   linear <args>     Linear API adapter (teams, issues-list, issue-get, …)
-  providers roles|show|set  Inspect or update AI provider roles in .env
+  providers roles|show|set|help  Inspect, update, or explain AI provider roles
   prompt render <stage> [args...] --output <file>  Render a provider-neutral loop prompt
   advance <args>    Advancer decision core (decide, criteria, repairs)
   memory <args>     Memory adapter (recall, remember)

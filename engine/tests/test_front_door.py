@@ -29,7 +29,7 @@ class TestFrontDoor(unittest.TestCase):
         self.assertIn("labels init|list|ensure", result.stdout)
         self.assertIn("inspect", result.stdout)
         self.assertIn("provider CLIs", result.stdout)
-        self.assertIn("providers roles|show|set", result.stdout)
+        self.assertIn("providers roles|show|set|help", result.stdout)
         self.assertIn("prompt render", result.stdout)
 
     def test_inspect_runs_read_only_status_commands(self):
