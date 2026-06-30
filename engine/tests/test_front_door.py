@@ -28,6 +28,7 @@ class TestFrontDoor(unittest.TestCase):
         self.assertIn("bakeoff", result.stdout)
         self.assertIn("labels init|list|ensure", result.stdout)
         self.assertIn("inspect", result.stdout)
+        self.assertIn("prompt render", result.stdout)
 
     def test_inspect_runs_read_only_status_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
