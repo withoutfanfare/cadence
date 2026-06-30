@@ -13,17 +13,17 @@ Install or confirm these commands are available:
 git --version
 python3 --version
 bash --version
-claude --help
 ```
 
 Optional, depending on your profile:
 
 ```bash
 gh --version        # useful for GitHub PR operations
-grove --version    # only if WORKTREE_TOOL=grove (Laravel Herd worktrees)
-codex --help       # only if BUILD_IMPLEMENTER=codex
-kimi --help        # only if BUILD_IMPLEMENTER=kimi
-opencode --help    # only if BUILD_IMPLEMENTER=opencode
+grove --version     # only if WORKTREE_TOOL=grove (Laravel Herd worktrees)
+claude --help       # if ORCHESTRATOR_* resolves to claude
+codex --help        # if ORCHESTRATOR_* resolves to codex
+kimi --help         # if ORCHESTRATOR_* resolves to kimi
+opencode --help     # if ORCHESTRATOR_* resolves to opencode
 ```
 
 By default the build loop uses plain `git worktree`, so nothing beyond Git is
@@ -134,7 +134,7 @@ cadence doctor
 The critical checks are:
 
 - `.env` exists.
-- `claude` and `python3` are on `PATH`.
+- The selected orchestrator provider CLI and `python3` are on `PATH`.
 - The Linear API key works.
 - The configured team is visible to that key.
 - The state directory exists.
@@ -307,8 +307,11 @@ cadence linear teams
 
 Copy the exact `id` value for the intended team.
 
-### `claude not on PATH`
+### selected orchestrator provider not on PATH
 
-Install or log in to the Claude CLI, then open a new shell. Scheduled launchd
-jobs inherit a smaller environment than your terminal, so use
-`RUNNER_PATH_PREPEND` in `.env` if project tools need a custom path.
+Install or log in to the CLI named by `ORCHESTRATOR_TRIAGE`,
+`ORCHESTRATOR_SPEC`, `ORCHESTRATOR_BUILD`, `ORCHESTRATOR_REVISE`, and
+`ORCHESTRATOR_ADVANCE`, then open a new shell. Run `cadence doctor` again to
+verify the provider commands are visible. Scheduled launchd jobs inherit a
+smaller environment than your terminal, so use `RUNNER_PATH_PREPEND` in `.env`
+if project tools need a custom path.

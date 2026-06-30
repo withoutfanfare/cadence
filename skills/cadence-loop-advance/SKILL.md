@@ -9,7 +9,6 @@ allowed-tools:
   - Read
   - Grep
   - Glob
-  - Task
 ---
 
 # cadence-loop-advance
@@ -111,9 +110,10 @@ nothing). Still write the dry-run-titled dated run files.
        list, then judge each criterion against the PR diff (and the test files it
        adds/changes). Every criterion must be demonstrably satisfied; if any is not,
        `criteria_met` is false.
-     - `review_clean` = dispatch the **`code-reviewer` agent** (a Task) on the PR
-       diff. Blocking findings (Critical/Important) make `review_clean` false; Minor
-       findings do not.
+     - `review_clean` = write a temporary review brief for the PR diff and run
+       `"$CADENCE_HOME/engine/scripts/run-reviewer.sh" "${REVIEW_PROVIDER:-claude}"
+       "${REVIEW_MODEL:-opus}" "$PROJECT_DIR" "<brief-file>"`. Blocking findings
+       (Critical/Important) make `review_clean` false; Minor findings do not.
      This is the only expensive step and runs ONLY at this gate.
 5. **Repairs + decide.** `repairs=$(cadence advance repairs get <ID>)`. Build the
    state JSON and call:

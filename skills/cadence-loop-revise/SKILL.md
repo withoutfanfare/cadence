@@ -11,7 +11,6 @@ allowed-tools:
   - Write
   - Grep
   - Glob
-  - Task
   - mcp__clio__memory_recall
   - mcp__clio__memory_remember
 ---
@@ -124,10 +123,12 @@ in `docs/ARCHITECTURE.md` §5a, then exit without touching Linear, git, or files
    If a gate cannot pass → "Failure handling".
 6. **Commit → push to the SAME PR.** Conventional commit (no AI mention). Push the
    existing branch — this updates the existing PR. **Do not create a new PR.**
-7. **Re-review.** Dispatch the `code-reviewer` agent (via `Task`) on the new diff;
-   confirm the prior findings are resolved and the tests guard. Post a follow-up PR
-   comment that also lists each Copilot finding with its disposition (fixed /
-   rejected — reason). Never approve/merge.
+7. **Re-review.** Write `$WT/REVIEW.md` with the PR URL, the prior review
+   comments, the human's requested changes, and the new diff. Run:
+   `"$CADENCE_HOME/engine/scripts/run-reviewer.sh" "${REVIEW_PROVIDER:-claude}"
+   "${REVIEW_MODEL:-opus}" "$WT" "$WT/REVIEW.md"`. Confirm prior findings are
+   resolved and the tests guard the change. Post a follow-up PR comment that lists
+   each finding with its disposition. Never approve/merge.
 8. **Linear.**
    `cadence linear issue-update <ID> --remove-label agent:revise --remove-label agent:claimed --add-label agent:revised`.
 9. **Log.** Append the **Revisions pushed** digest to the dated run files (see

@@ -59,20 +59,36 @@ worktrees:
 Either way the loops drive worktrees through `cadence worktree add|remove|path`, so
 the skills themselves stay tool-agnostic.
 
-## Models and Implementer
+## Orchestrators, Reviewer, and Implementer
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `MODEL_TRIAGE` | `sonnet` | Model used by the triage loop. |
-| `MODEL_SPEC` | `opus` | Model used by the spec loop. |
-| `MODEL_BUILD` | `opus` | Model used by the build loop orchestrator. |
-| `MODEL_REVISE` | `sonnet` | Model used by the revise loop orchestrator. |
+| `ORCHESTRATOR_PROVIDER` | `claude` | Default provider used when a per-stage orchestrator value omits `provider:`. |
+| `ORCHESTRATOR_TRIAGE` | `claude:sonnet` | Provider and model for the triage loop. |
+| `ORCHESTRATOR_SPEC` | `claude:opus` | Provider and model for the spec loop. |
+| `ORCHESTRATOR_BUILD` | `claude:opus` | Provider and model for the build loop orchestrator. |
+| `ORCHESTRATOR_REVISE` | `claude:sonnet` | Provider and model for the revise loop orchestrator. |
+| `ORCHESTRATOR_ADVANCE` | `claude:sonnet` | Provider and model for the advancer orchestrator. |
+| `REVIEW_PROVIDER` | `claude` | Provider used by folded PR/diff reviews. |
+| `REVIEW_MODEL` | `opus` | Model used by folded PR/diff reviews. |
 | `BUILD_IMPLEMENTER` | `claude` | Coding agent used by the build loop: `claude`, `kimi`, `opencode`, or `codex`. |
 
 The build loop orchestrator still reviews the implementer's diff and owns the PR
 workflow. `BUILD_IMPLEMENTER` controls only the coding step.
 
 See [Implementers](IMPLEMENTERS.md) for the dispatch contract.
+
+Legacy fallback aliases from older profiles remain supported for compatibility
+with `.env.example`: `MODEL_TRIAGE`, `MODEL_SPEC`, `MODEL_BUILD`,
+`MODEL_REVISE`, and `MODEL_ADVANCE`. Treat them as aliases only; prefer the
+`ORCHESTRATOR_*` variables above.
+
+```dotenv
+ORCHESTRATOR_BUILD=codex:gpt-5.4
+REVIEW_PROVIDER=claude
+REVIEW_MODEL=opus
+BUILD_IMPLEMENTER=kimi
+```
 
 ## Autonomous Mode
 
@@ -83,7 +99,9 @@ See [Implementers](IMPLEMENTERS.md) for the dispatch contract.
 | `AUTO_MAX_REPAIRS` | `3` | Number of build-to-revise repair cycles allowed before the advancer hands the issue back to a human. |
 | `AUTO_COST_CEILING` | unset | Reserved per-run spend ceiling. Each advancer run logs its reported cost; hard enforcement is not yet implemented (the 1-issue/run cap is the real guard). Leave blank. |
 | `CONDUCT_WIP` | `1` | Maximum number of issues the conductor will keep carrying `agent:auto` at once. The conduct pass tags candidates only until this cap is reached. Raise once the setup is trusted. |
-| `MODEL_ADVANCE` | `sonnet` | Model for the advancer ORCHESTRATOR — the routine label/criteria gating is light, so it stays cheap. The independent code review at the PR gate runs as a separate `code-reviewer` subagent on a stronger model. |
+| `ORCHESTRATOR_ADVANCE` | `claude:sonnet` | Provider and model for the advancer. The folded PR/diff review helper is configured separately via `REVIEW_PROVIDER` and `REVIEW_MODEL`. |
+| `REVIEW_PROVIDER` | `claude` | Provider used by folded PR/diff reviews. |
+| `REVIEW_MODEL` | `opus` | Model used by folded PR/diff reviews. |
 
 Autonomous mode is independent of `PAUSED` — if `PAUSED` is set, all loops halt
 regardless of `AUTONOMOUS`. Setting `AUTONOMOUS=1` only enables the advancer;
@@ -181,11 +199,22 @@ BASE_BRANCH=develop
 PROJECT_DIR=/Users/you/Code/app
 WORKTREE_BASE=/Users/you/Code/app-worktrees
 
+ORCHESTRATOR_PROVIDER=claude
+ORCHESTRATOR_TRIAGE=claude:sonnet
+ORCHESTRATOR_SPEC=claude:opus
+ORCHESTRATOR_BUILD=claude:opus
+ORCHESTRATOR_REVISE=claude:sonnet
+ORCHESTRATOR_ADVANCE=claude:sonnet
+REVIEW_PROVIDER=claude
+REVIEW_MODEL=opus
+BUILD_IMPLEMENTER=claude
+
+# Legacy fallback aliases retained for compatibility with .env.example
 MODEL_TRIAGE=sonnet
 MODEL_SPEC=opus
 MODEL_BUILD=opus
 MODEL_REVISE=sonnet
-BUILD_IMPLEMENTER=claude
+MODEL_ADVANCE=sonnet
 
 GATE_LINT=
 GATE_TEST=

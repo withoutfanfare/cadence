@@ -2,12 +2,43 @@
 # cadence doctor — verify a setup without changing anything.
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+_RUNNER_PATH_PREPEND="${RUNNER_PATH_PREPEND:-}"
 # shellcheck disable=SC1091
 source "$DIR/../lib/lib-env.sh"
+if [ -n "$_RUNNER_PATH_PREPEND" ]; then
+  RUNNER_PATH_PREPEND="$_RUNNER_PATH_PREPEND"
+  export RUNNER_PATH_PREPEND
+fi
 
+RUNNER_PATH="$(cadence_runner_path)"
 ok=0; bad=0
 pass(){ echo "  ✅ $1"; ok=$((ok+1)); }
 fail(){ echo "  ❌ $1"; bad=$((bad+1)); }
+
+provider_from_pair() {
+  pair="$1"
+  case "$pair" in
+    *:*) printf '%s' "${pair%%:*}" ;;
+    *) printf '%s' "${ORCHESTRATOR_PROVIDER:-claude}" ;;
+  esac
+}
+
+check_provider_cli() {
+  label="$1"
+  provider="$2"
+  case "$provider" in
+    claude|codex|kimi|opencode)
+      if (PATH="$RUNNER_PATH"; command -v "$provider" >/dev/null); then
+        pass "$label provider '$provider' found"
+      else
+        fail "$label provider '$provider' not on PATH"
+      fi
+      ;;
+    *)
+      fail "$label provider '$provider' invalid (use claude, codex, kimi, or opencode)"
+      ;;
+  esac
+}
 
 labels_only=0
 case "${1:-}" in
@@ -51,9 +82,14 @@ if [ "$labels_only" = 1 ]; then
 fi
 
 if [ -f "$CADENCE_HOME/.env" ]; then pass ".env present"; else fail ".env missing (copy .env.example)"; fi
-if command -v claude >/dev/null; then pass "claude found"; else fail "claude not on PATH"; fi
 if command -v python3 >/dev/null; then pass "python3 found"; else fail "python3 not on PATH"; fi
 if command -v gh >/dev/null; then pass "gh found"; else echo "  ⚠️  gh not found (build PR back-fill needs it)"; fi
+check_provider_cli "triage orchestrator" "$(provider_from_pair "$ORCHESTRATOR_TRIAGE")"
+check_provider_cli "spec orchestrator" "$(provider_from_pair "$ORCHESTRATOR_SPEC")"
+check_provider_cli "build orchestrator" "$(provider_from_pair "$ORCHESTRATOR_BUILD")"
+check_provider_cli "revise orchestrator" "$(provider_from_pair "$ORCHESTRATOR_REVISE")"
+check_provider_cli "advance orchestrator" "$(provider_from_pair "$ORCHESTRATOR_ADVANCE")"
+check_provider_cli "reviewer" "${REVIEW_PROVIDER:-claude}"
 
 if [ -n "${LINEAR_API_KEY:-}" ]; then
   teams="$(python3 "$CADENCE_HOME/engine/linear/cli.py" teams 2>/dev/null)"
@@ -83,12 +119,19 @@ case "${WORKTREE_TOOL:-git}" in
   *)     fail "WORKTREE_TOOL='${WORKTREE_TOOL}' invalid (use git or grove)" ;;
 esac
 
-# Selected implementer must be runnable when it isn't the bundled `claude`.
-if [ "${BUILD_IMPLEMENTER:-claude}" = "claude" ] || command -v "${BUILD_IMPLEMENTER}" >/dev/null; then
-  pass "implementer '${BUILD_IMPLEMENTER:-claude}' available"
-else
-  fail "implementer '${BUILD_IMPLEMENTER}' not on PATH"
-fi
+# Selected implementer must be runnable on the same runner PATH as the loops.
+case "${BUILD_IMPLEMENTER:-claude}" in
+  claude|codex|kimi|opencode)
+    if (PATH="$RUNNER_PATH"; command -v "${BUILD_IMPLEMENTER:-claude}" >/dev/null); then
+      pass "implementer '${BUILD_IMPLEMENTER:-claude}' available"
+    else
+      fail "implementer '${BUILD_IMPLEMENTER:-claude}' not on PATH"
+    fi
+    ;;
+  *)
+    fail "implementer '${BUILD_IMPLEMENTER:-claude}' invalid (use claude, codex, kimi, or opencode)"
+    ;;
+esac
 
 # Autonomous mode (optional; off unless explicitly enabled). Match config()'s
 # case-insensitive truthy set: 1/on/true/yes.

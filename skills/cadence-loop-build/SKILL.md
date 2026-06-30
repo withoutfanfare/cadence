@@ -11,7 +11,6 @@ allowed-tools:
   - Write
   - Grep
   - Glob
-  - Task
   - mcp__clio__memory_recall
   - mcp__clio__memory_remember
 ---
@@ -85,9 +84,9 @@ you. Re-check them before any write or worktree action for defence in depth. If
 either check fails, emit the standard pause JSON and records described in
 `docs/ARCHITECTURE.md` §5a, then exit without touching Linear, git, or files.
 
-## Implementer — who writes the code (`--implementer`, default `claude`)
+## Implementer — who writes the code (`--implementer`, default configured implementer)
 
-You (Opus) orchestrate, gate, review and own all git/Linear/PR actions. The
+You orchestrate, gate, review and own all git/Linear/PR actions. The
 **implementation** itself — writing the test + the code change — is delegated to a
 coding agent via the helper:
 
@@ -98,8 +97,8 @@ The helper is the only thing that knows each vendor's command. Supported:
 implementer edits files in the worktree **only**; it never commits, pushes, opens a
 PR, or touches Linear.
 
-**Review independence:** with `--implementer=kimi` the folded review (step 9, the
-`code-reviewer` agent) is genuinely cross-model. With `--implementer=claude` it is
+**Review independence:** with `--implementer=kimi` the folded review (step 9, via
+`run-reviewer.sh`) is genuinely cross-model. With `--implementer=claude` it is
 fresh-eyes but same-family — still useful, slightly weaker. Either way the review +
 gates + your GATE 3 all stand. **Never trust the implementer's word** — you verify
 the diff, the red→green test, and the scope yourself.
@@ -141,7 +140,7 @@ the diff, the red→green test, and the scope yourself.
      is normal.**
    - **Write `IMPLEMENT.md`** in the worktree root from the spec + acceptance
      criteria. Make it self-contained and prescriptive (a weaker model needs more
-     than an Opus self-brief). Open with a tight **"Project rules — must obey"**
+     than a terse self-brief). Open with a tight **"Project rules — must obey"**
      section listing only the recalled high-importance rules relevant to *this* change
      (never a wall of rules). Then: the problem; the **exact files to change**; the
      approach; the **test to write first** (must fail before the fix, pass after,
@@ -156,7 +155,7 @@ the diff, the red→green test, and the scope yourself.
    - **Run it SYNCHRONOUSLY and wait for it in THIS SAME TURN.** It blocks for up to
      ~20 min while the implementer writes code; that is expected — do not give up on it.
      NEVER launch it in the background (no trailing `&`, no run-in-background) and NEVER
-     end your turn expecting a completion notification: this is a headless `claude -p`
+     end your turn expecting a completion notification: this is a headless provider
      run that is **not** re-invoked on a background signal, so backgrounding it ends the
      run mid-build, orphans the `agent:claimed` label, and wastes the work (the claim
      then sits until the 2-hour reclaim). Same rule as the gates in step 5.
@@ -196,17 +195,19 @@ the diff, the red→green test, and the scope yourself.
    leftover bug-check notes, risks, rollback, and the issue ID for Linear linking.
 8. **Linear.** Status → **In Review**.
    `cadence linear issue-update <ID> --state "In Review" --remove-label agent:build --remove-label agent:claimed --add-label agent:pr-open`.
-9. **Folded review.** Dispatch the `code-reviewer` agent (via `Task`) on the diff
-   across correctness → security → maintainability → performance → **test
-   coverage** (it must confirm the test genuinely guards the change — would fail
-   if the fix were reverted). Post findings as a PR comment (high = blocking, rest
-   = suggestions); never approve/merge. **Capture recurring findings to memory:** if
-   a finding is a *recurring class* of mistake (not a one-off) that future briefs
-   should warn against, store it per `docs/ARCHITECTURE.md` §7a —
-   `kind: constraint`, importance by severity (5 security/money/data-integrity, else
-   4), `upsert: true` with a stable `source_ref`. If `MEMORY_BACKEND=clio`, use
-   `memory_remember`; if `markdown`, use `cadence memory remember`. One-offs stay in
-   the PR comment only.
+9. **Folded review.** Write `$WT/REVIEW.md` containing the PR URL, issue URL,
+   acceptance criteria, `git diff origin/${BASE_BRANCH:-develop}...HEAD`, and the
+   exact request: review correctness, security, maintainability, performance, and
+   test coverage; count only findings that should block or be consciously accepted.
+   Run: `"$CADENCE_HOME/engine/scripts/run-reviewer.sh" "${REVIEW_PROVIDER:-claude}"
+   "${REVIEW_MODEL:-opus}" "$WT" "$WT/REVIEW.md"`. Post the reviewer output as a PR
+   comment (high = blocking, rest = suggestions); never approve/merge. **Capture
+   recurring findings to memory:** if a finding is a *recurring class* of mistake
+   (not a one-off) that future briefs should warn against, store it per
+   `docs/ARCHITECTURE.md` §7a — `kind: constraint`, importance by severity (5
+   security/money/data-integrity, else 4), `upsert: true` with a stable
+   `source_ref`. If `MEMORY_BACKEND=clio`, use `memory_remember`; if `markdown`, use
+   `cadence memory remember`. One-offs stay in the PR comment only.
 10. **Record the run.** Append the human digest and the machine ledger line per the
     dated-file convention in `docs/ARCHITECTURE.md` §7:
     - Append a section to `$CADENCE_STATE_DIR/runs/<YYYY-MM-DD>.md` in `$PROJECT_DIR`,

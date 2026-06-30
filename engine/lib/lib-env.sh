@@ -20,11 +20,27 @@ fi
 : "${MODEL_SPEC:=opus}"
 : "${MODEL_BUILD:=opus}"
 : "${MODEL_REVISE:=sonnet}"
+: "${ORCHESTRATOR_PROVIDER:=claude}"
+: "${ORCHESTRATOR_TRIAGE:=${ORCHESTRATOR_PROVIDER}:${MODEL_TRIAGE}}"
+: "${ORCHESTRATOR_SPEC:=${ORCHESTRATOR_PROVIDER}:${MODEL_SPEC}}"
+: "${ORCHESTRATOR_BUILD:=${ORCHESTRATOR_PROVIDER}:${MODEL_BUILD}}"
+: "${ORCHESTRATOR_REVISE:=${ORCHESTRATOR_PROVIDER}:${MODEL_REVISE}}"
+: "${ORCHESTRATOR_ADVANCE:=${ORCHESTRATOR_PROVIDER}:${MODEL_ADVANCE:-sonnet}}"
+: "${REVIEW_PROVIDER:=claude}"
+: "${REVIEW_MODEL:=opus}"
 : "${BUILD_IMPLEMENTER:=claude}"
 : "${NOTIFY:=on}"
 : "${MEMORY_BACKEND:=markdown}"
 : "${CADENCE_STATE_DIR:=$HOME/.cadence}"
 export BASE_BRANCH WORKTREE_TOOL MODEL_TRIAGE MODEL_SPEC MODEL_BUILD MODEL_REVISE \
-       BUILD_IMPLEMENTER NOTIFY MEMORY_BACKEND CADENCE_STATE_DIR
+       BUILD_IMPLEMENTER NOTIFY MEMORY_BACKEND CADENCE_STATE_DIR \
+       ORCHESTRATOR_PROVIDER ORCHESTRATOR_TRIAGE ORCHESTRATOR_SPEC ORCHESTRATOR_BUILD \
+       ORCHESTRATOR_REVISE ORCHESTRATOR_ADVANCE REVIEW_PROVIDER REVIEW_MODEL
+
+cadence_runner_path() {
+  local _runner_prefix="${RUNNER_PATH_PREPEND:-}"
+  [ -z "$_runner_prefix" ] && [ -d "$HOME/Library/Application Support/Herd/bin" ] && _runner_prefix="$HOME/Library/Application Support/Herd/bin"
+  printf '%s%s\n' "${_runner_prefix:+$_runner_prefix:}" "$HOME/.kimi-code/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+}
 
 mkdir -p "$CADENCE_STATE_DIR/logs" "$CADENCE_STATE_DIR/runs"

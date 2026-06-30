@@ -1,9 +1,9 @@
 # Cadence — Implementers
 
 The build loop delegates the *coding* step to a headless agent (the implementer).
-The orchestrating loop (Claude) still owns everything else: claiming the issue,
-reading the spec, setting up the worktree, running gates, reviewing the diff,
-opening the draft PR, and setting labels.
+The orchestrating loop, selected by `ORCHESTRATOR_<STAGE>`, still owns
+everything else: claiming the issue, reading the spec, setting up the worktree,
+running gates, reviewing the diff, opening the draft PR, and setting labels.
 
 Install and configure Cadence first with [Installation](INSTALL.md) and
 [Configuration](CONFIGURATION.md). This page is the reference for the build
@@ -30,6 +30,8 @@ Exit codes: `0` clean · `124` timeout · `2` unknown error · `3` bad arguments
 
 The active implementer is set via `BUILD_IMPLEMENTER` in `.env`. The build loop
 passes this value to the script at runtime.
+
+For lead loop provider selection, see `ORCHESTRATOR_*` in `CONFIGURATION.md`.
 
 The default implementer timeout is 1200 seconds. Override it with `IMPL_TIMEOUT`
 in the environment if a project routinely needs longer repair turns.
