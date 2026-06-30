@@ -13,7 +13,7 @@ Install or confirm these commands are available:
 git --version
 python3 --version
 bash --version
-claude --help
+cadence help
 ```
 
 Optional, depending on your profile:
@@ -314,8 +314,11 @@ cadence linear teams
 
 Copy the exact `id` value for the intended team.
 
-### `claude not on PATH`
+### selected orchestrator provider not on PATH
 
-Install or log in to the Claude CLI, then open a new shell. Scheduled launchd
-jobs inherit a smaller environment than your terminal, so use
-`RUNNER_PATH_PREPEND` in `.env` if project tools need a custom path.
+Install or log in to the CLI named by `ORCHESTRATOR_TRIAGE`,
+`ORCHESTRATOR_SPEC`, `ORCHESTRATOR_BUILD`, `ORCHESTRATOR_REVISE`, and
+`ORCHESTRATOR_ADVANCE`, then open a new shell. Run `cadence doctor` again to
+verify the provider commands are visible. Scheduled launchd jobs inherit a
+smaller environment than your terminal, so use `RUNNER_PATH_PREPEND` in `.env`
+if project tools need a custom path.

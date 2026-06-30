@@ -64,3 +64,13 @@ OK
 
 - No functional concerns remain from the checks I ran.
 - I added a new `How a run executes` subsection in `docs/ARCHITECTURE.md` because that section was not present in the current file and the requested step-3 wording needed a home.
+
+## Review fix
+
+- Reworked `docs/spikes/2026-06-30-ai-provider-abstraction.md` so it reads as historical spike context plus the accepted provider-neutral path at current HEAD, with remaining caveats framed as follow-up work rather than active blockers.
+- Updated `docs/INSTALL.md` to remove the Claude-only prerequisite and stale `claude not on PATH` troubleshooting entry in favour of provider-neutral orchestration checks.
+- Updated `docs/CONFIGURATION.md` so the Autonomous Mode table uses `ORCHESTRATOR_ADVANCE`, `REVIEW_PROVIDER`, and `REVIEW_MODEL`, and the minimal profile example now shows `ORCHESTRATOR_*` values with `MODEL_*` clearly labelled as legacy fallback aliases.
+- Verification:
+  - `git diff --check`
+  - `rg -n "claude not on PATH|code-reviewer|MODEL_ADVANCE|Claude CLI for orchestration|cannot be swapped|invokes Claude directly" docs/INSTALL.md docs/CONFIGURATION.md docs/spikes/2026-06-30-ai-provider-abstraction.md`
+  - Remaining `code-reviewer` and `MODEL_ADVANCE` hits are historical or legacy-labelled, not current guidance.
