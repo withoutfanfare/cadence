@@ -13,7 +13,6 @@ Install or confirm these commands are available:
 git --version
 python3 --version
 bash --version
-cadence help
 ```
 
 Optional, depending on your profile:
@@ -141,12 +140,6 @@ The critical checks are:
 - The state directory exists.
 
 Warnings about missing launchd plists are expected before you schedule the loops.
-
-### selected orchestrator provider not on PATH
-
-Install or log in to the CLI named by `ORCHESTRATOR_TRIAGE`, `ORCHESTRATOR_SPEC`,
-`ORCHESTRATOR_BUILD`, `ORCHESTRATOR_REVISE`, and `ORCHESTRATOR_ADVANCE`, then open
-a new shell. Run `cadence doctor` again to verify the provider commands are visible.
 
 ## 6. Create the Linear Labels
 
