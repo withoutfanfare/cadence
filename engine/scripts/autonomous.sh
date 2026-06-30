@@ -65,7 +65,8 @@ print_status() {
 
 case "${1:-status}" in
   on)
-    python3 "$SCHED_CLI" check || { echo "fix SCHED_* in .env first (cadence schedule show)" >&2; exit 1; }
+    cadence_require_launchd_root_config || exit 1
+    python3 "$SCHED_CLI" check || { echo "fix SCHED_* in the active config first (cadence schedule show)" >&2; exit 1; }
     set_env_flag on
     AUTONOMOUS=on
     echo "AUTONOMOUS=on written to $CADENCE_CONFIG"

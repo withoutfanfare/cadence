@@ -90,6 +90,34 @@ class TestRender(unittest.TestCase):
 
 
 class TestScheduleApplyScript(unittest.TestCase):
+    def test_apply_rejects_project_local_config_until_launchd_supports_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, "home")
+            app = os.path.join(tmp, "app")
+            config_dir = os.path.join(app, "cadence")
+            os.makedirs(os.path.join(home, "Library", "LaunchAgents"))
+            os.makedirs(config_dir)
+            config = os.path.join(config_dir, ".env")
+            with open(config, "w", encoding="utf-8") as f:
+                f.write("CADENCE_STATE_DIR=%s\n" % os.path.join(tmp, "state"))
+            env = os.environ.copy()
+            env.update({
+                "HOME": home,
+                "CADENCE_CONFIG": config,
+            })
+
+            result = subprocess.run(
+                ["bash", os.path.join(os.path.dirname(__file__), "..", "scripts", "schedule.sh"), "apply"],
+                cwd=app,
+                env=env,
+                text=True,
+                capture_output=True,
+                timeout=10,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("launchd scheduling currently requires", result.stderr)
+
     def test_apply_leaves_existing_plist_intact_when_render_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = os.path.join(tmp, "home")

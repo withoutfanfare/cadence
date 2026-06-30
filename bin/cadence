@@ -16,7 +16,7 @@ if [ "${1:-}" = "--config" ]; then
 fi
 
 # shellcheck disable=SC1091
-source "$BIN/../engine/lib/lib-env.sh"   # sets CADENCE_HOME, CADENCE_STATE_DIR, .env
+source "$BIN/../engine/lib/lib-env.sh"   # sets CADENCE_HOME, CADENCE_CONFIG, CADENCE_STATE_DIR
 
 RUNS="$CADENCE_STATE_DIR/runs"
 LOGDIR="$CADENCE_STATE_DIR/logs"
@@ -34,7 +34,7 @@ cadence — control the Cadence agent loops
 Usage: cadence [--config path] <command> [args]
 
   status            Live/paused state, launchd jobs, last run per stage, activity
-  doctor [--labels] Verify the setup (.env, API key, labels, provider CLIs, schedule)
+  doctor [--labels] Verify the setup (config, API key, labels, provider CLIs, schedule)
   pause | resume    Stop / resume all loops (PAUSED flag)
   run <stage>       Run one loop NOW (triage|spec|build|revise)
   run advance [--dry-run]  Autonomous advancer (opt-in; grants gates on agent:auto)
@@ -44,8 +44,8 @@ Usage: cadence [--config path] <command> [args]
   digest [date]     Full digest for a date (default: today UTC)
   throughput [days] Per-stage rollup of recent runs (default 7 days)
   restart           Reload all launchd jobs after editing plists
-  schedule [show|apply]  Show or apply launchd timings (config-driven via SCHED_* in .env)
-  autonomous on|off|status  Flip autonomous mode: set .env + load/unload advance & conduct jobs
+  schedule [show|apply]  Show or apply launchd timings (config-driven via SCHED_*)
+  autonomous on|off|status  Flip autonomous mode: update config + load/unload advance & conduct jobs
   inspect           Read-only setup/status bundle for support and onboarding
   tend              Run the Clio hygiene pass now
   conduct [--dry-run]  Feed the autonomous queue (deterministic; opt-in via AUTONOMOUS)

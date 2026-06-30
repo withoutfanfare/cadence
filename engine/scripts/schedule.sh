@@ -21,7 +21,8 @@ case "${1:-show}" in
   show|"")
     exec python3 "$CLI" show ;;
   apply)
-    python3 "$CLI" check || { echo "Fix the SCHED_* values in .env, then re-run." >&2; exit 1; }
+    cadence_require_launchd_root_config || exit 1
+    python3 "$CLI" check || { echo "Fix the SCHED_* values in the active config, then re-run." >&2; exit 1; }
     # Core loops are always (re)written; advance/conduct only when already installed
     # (i.e. autonomous is on) — apply never enables autonomous on its own.
     jobs=(triage spec build revise)

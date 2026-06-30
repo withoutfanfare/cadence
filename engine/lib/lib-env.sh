@@ -19,6 +19,7 @@ else
   CADENCE_CONFIG="$CADENCE_HOME/.env"
 fi
 export CADENCE_CONFIG
+_CADENCE_RESOLVED_CONFIG="$CADENCE_CONFIG"
 
 if [ -f "$CADENCE_CONFIG" ]; then
   set -a
@@ -26,6 +27,9 @@ if [ -f "$CADENCE_CONFIG" ]; then
   . "$CADENCE_CONFIG"
   set +a
 fi
+CADENCE_CONFIG="$_CADENCE_RESOLVED_CONFIG"
+export CADENCE_CONFIG
+unset _CADENCE_RESOLVED_CONFIG
 
 : "${BASE_BRANCH:=develop}"
 : "${WORKTREE_TOOL:=git}"
@@ -54,6 +58,16 @@ cadence_runner_path() {
   local _runner_prefix="${RUNNER_PATH_PREPEND:-}"
   [ -z "$_runner_prefix" ] && [ -d "$HOME/Library/Application Support/Herd/bin" ] && _runner_prefix="$HOME/Library/Application Support/Herd/bin"
   printf '%s%s\n' "${_runner_prefix:+$_runner_prefix:}" "$HOME/.kimi-code/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+}
+
+cadence_require_launchd_root_config() {
+  local _root_config="$CADENCE_HOME/.env"
+  if [ "$CADENCE_CONFIG" = "$_root_config" ]; then
+    return 0
+  fi
+  echo "launchd scheduling currently requires $_root_config; active config is $CADENCE_CONFIG" >&2
+  echo "Use the root config fallback for scheduled jobs, or run manual commands with --config." >&2
+  return 1
 }
 
 mkdir -p "$CADENCE_STATE_DIR/logs" "$CADENCE_STATE_DIR/runs"

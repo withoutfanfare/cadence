@@ -62,6 +62,30 @@ exec {real_python} "$@"
         with open(advance_plist, encoding="utf-8") as f:
             self.assertEqual(f.read(), "original advance plist")
 
+    def test_on_rejects_project_local_config_until_launchd_supports_it(self):
+        app = os.path.join(self.tmp.name, "app")
+        config_dir = os.path.join(app, "cadence")
+        config = os.path.join(config_dir, ".env")
+        os.makedirs(config_dir)
+        with open(config, "w", encoding="utf-8") as f:
+            f.write("AUTONOMOUS=0\nCADENCE_STATE_DIR=%s\n" % os.path.join(self.tmp.name, "state"))
+        env = self._env()
+        env["CADENCE_CONFIG"] = config
+
+        result = subprocess.run(
+            ["bash", self.script, "on"],
+            cwd=app,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=10,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("launchd scheduling currently requires", result.stderr)
+        with open(config, encoding="utf-8") as f:
+            self.assertIn("AUTONOMOUS=0\n", f.read())
+
     def test_off_writes_to_cadence_config_when_set(self):
         app = os.path.join(self.tmp.name, "app")
         config_dir = os.path.join(app, "cadence")
