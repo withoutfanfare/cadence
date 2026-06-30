@@ -132,13 +132,18 @@ cadence status
 ```
 
 In a configured project, run Cadence from the application checkout so it picks
-up `cadence/.env`:
+up `cadence/.env` for manual commands:
 
 ```bash
 cd /path/to/app
 cadence doctor
 cadence run triage
 ```
+
+Project-local `cadence/.env` is supported for manual commands now. The generated
+launchd jobs do not yet embed `CADENCE_CONFIG`, `--config`, or a working
+directory, so scheduled project-local runs need a later scheduling update or the
+existing root `.env` compatibility path.
 
 For the first deliberate live triage run, keep the system paused until you are
 ready, then resume, run it, and pause again while you inspect the result:

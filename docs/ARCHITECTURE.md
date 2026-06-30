@@ -45,6 +45,12 @@ Provider roles are deliberately separate: loop orchestrators use
 build coding agent uses `BUILD_IMPLEMENTER`. See [AI Provider Roles](PROVIDERS.md)
 or `cadence providers help` for the evergreen role map and examples.
 
+Manual front-door commands can use project-local config by running from the app
+checkout or passing `cadence --config /path/to/app/cadence/.env ...`. The current
+generated launchd plists do not pass `--config`, set `CADENCE_CONFIG`, or set a
+working directory, so scheduled project-local jobs are a follow-up unless an
+install keeps using the existing `$CADENCE_HOME/.env` compatibility path.
+
 ## 2. The board is the state machine — label vocabulary
 
 An issue's labels are its state. The loops read labels to decide what to act on
@@ -190,7 +196,9 @@ reviewer provider, models, and the Clio namespace. The engine reads these from
 environment variables at runtime.
 
 This separation means the same engine code can run against multiple projects by
-switching the active config path — without touching the skills or scripts.
+switching the active config path for manual commands — without touching the skills
+or scripts. Scheduled multi-profile/project-local jobs need explicit launchd
+support; the current generated jobs do not preserve a manual config selection.
 
 ### Config file conventions
 

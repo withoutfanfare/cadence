@@ -4,12 +4,16 @@ Cadence reads profile-specific values from the active config file. The engine
 files and skills are generic; the config file tells Cadence which Linear project,
 repo, models, memory backend, and verification commands to use.
 
-Cadence resolves config in this order:
+For front-door `cadence` commands, config resolves in this order:
 
-1. `CADENCE_CONFIG`
-2. `cadence --config /path/to/cadence/.env ...`
+1. `cadence --config /path/to/cadence/.env ...` sets `CADENCE_CONFIG` for that
+   invocation and wins over any ambient value.
+2. `CADENCE_CONFIG`
 3. `$PWD/cadence/.env`
 4. `$CADENCE_HOME/.env` for existing installs
+
+Scripts invoked directly skip the front door, so ambient `CADENCE_CONFIG` is
+their explicit override.
 
 New projects should use `<project repo>/cadence/.env` so Cadence does not
 collide with the app's own `.env`.
@@ -214,6 +218,12 @@ every 3 hours. Override any of these per loop with a `SCHED_<STAGE>` value, then
 `cadence schedule apply` (regenerates the launchd plists and reloads them).
 `cadence schedule` with no argument prints the live schedule.
 
+Project-local `cadence/.env` is supported for manual commands. The generated
+launchd plists currently do not set `CADENCE_CONFIG`, pass `--config`, or set a
+working directory, so scheduled jobs do not safely inherit a project-local config
+yet. For scheduled runs in this slice, use the existing `$CADENCE_HOME/.env`
+compatibility path or add explicit launchd config support first.
+
 | Variable | Default | Job |
 | --- | --- | --- |
 | `SCHED_TRIAGE` | `:00` | triage loop |
@@ -268,7 +278,10 @@ turn, then escalates to `agent:needs-attention` if it still fails.
 | `NOTIFY` | `on` | macOS notifications for runs that did work, paused, or **failed**. Failures (non-zero exit or reported errors) use a distinct title and "Basso" sound and are always also recorded in the dated digest and activity feed. `off` silences the notifications only; the digest/feed records are kept. |
 | `RUNNER_PATH_PREPEND` | unset | Optional directory prepended to `PATH` for loop runners. |
 
-Use `RUNNER_PATH_PREPEND` when launchd cannot find project-specific tooling:
+Use `RUNNER_PATH_PREPEND` when launchd cannot find project-specific tooling. For
+scheduled jobs, put it in the config file the launchd job actually loads; current
+generated jobs use the root compatibility config unless explicit launchd config
+support is added.
 
 ```dotenv
 RUNNER_PATH_PREPEND="$HOME/Library/Application Support/Herd/bin"

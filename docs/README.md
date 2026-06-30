@@ -7,7 +7,7 @@ Cadence.
 
 1. [Installation](INSTALL.md) - clone the repo, install the `cadence` command,
    fill `cadence/.env`, create Linear labels, run `doctor`, smoke-test the setup,
-   and schedule the loops.
+   and understand the current scheduling caveat.
 2. [Configuration](CONFIGURATION.md) - reference for every config setting.
 3. [AI Provider Roles](PROVIDERS.md) - how to inspect and switch orchestrators,
    reviewers, and build implementers without confusing legacy `MODEL_*` aliases.
@@ -34,9 +34,10 @@ Cadence.
   `<project repo>/cadence/.env` and fill in your local profile.
 - [`../CHANGELOG.md`](../CHANGELOG.md) - notable changes.
 
-The macOS launchd jobs are generated from the `SCHED_*` schedule in the active
-config file by `cadence schedule apply` — see
-[Configuration](CONFIGURATION.md#schedule).
+Project-local `cadence/.env` works for manual commands. The current generated
+macOS launchd jobs do not carry that config path into scheduled runs; use the
+existing root `.env` compatibility path for scheduling or wait for explicit
+launchd config support. See [Configuration](CONFIGURATION.md#schedule).
 
 ## Recommended Reading Order
 
