@@ -27,9 +27,9 @@ opencode --help     # if ORCHESTRATOR_* resolves to opencode
 ```
 
 The lead loop provider is selected with `cadence providers set`, which updates
-`.env` with `ORCHESTRATOR_<STAGE>=provider:model` values. `provider` must be one
-of `claude`, `codex`, `kimi`, or `opencode`. Use `cadence providers roles` to
-see what each slot does. See
+the active config file with `ORCHESTRATOR_<STAGE>=provider:model` values.
+`provider` must be one of `claude`, `codex`, `kimi`, or `opencode`. Use
+`cadence providers roles` to see what each slot does. See
 [AI Provider Roles](PROVIDERS.md) and
 [Provider Switching Examples](CONFIGURATION.md#provider-switching-examples) for
 copyable all-Codex, mixed-provider, Kimi, and OpenCode profiles.
@@ -79,12 +79,17 @@ Check the command resolves:
 cadence help
 ```
 
-## 4. Create `.env`
+## 4. Create the project config
 
 ```bash
-cp .env.example .env
-$EDITOR .env
+mkdir -p /path/to/app/cadence
+cp .env.example /path/to/app/cadence/.env
+$EDITOR /path/to/app/cadence/.env
 ```
+
+Cadence will find this file when you run commands from `/path/to/app`. Existing
+root `.env` installs still work, but new project profiles should use
+`cadence/.env`.
 
 At minimum, fill:
 
@@ -145,7 +150,7 @@ cadence doctor
 
 The critical checks are:
 
-- `.env` exists.
+- The active config file exists, and `cadence doctor` reports which file it is using.
 - The selected orchestrator provider CLI and `python3` are on `PATH`.
 - The Linear API key works.
 - The configured team is visible to that key.
@@ -240,7 +245,8 @@ cadence digest
 
 ## 10. Schedule Loops on macOS
 
-Cadence generates and loads the launchd jobs for you from the schedule in `.env`:
+Cadence generates and loads the launchd jobs for you from the schedule in the
+active config file:
 
 ```bash
 mkdir -p "$HOME/Library/LaunchAgents"
@@ -249,7 +255,7 @@ cadence schedule apply
 
 This writes one job per gated loop (triage, spec, build, revise) and loads it. The
 default cadence is hourly, staggered 15 minutes apart. Change it any time by setting
-`SCHED_<STAGE>` in `.env` and re-running `cadence schedule apply` — see
+`SCHED_<STAGE>` in the active config file and re-running `cadence schedule apply` — see
 [Configuration](CONFIGURATION.md#schedule) for the format. (The advance and conduct
 jobs are added later by `cadence autonomous on`; see
 [Operating](OPERATING.md#autonomous-mode-opt-in).)
@@ -304,10 +310,10 @@ Then recreate the symlink from the Cadence repo:
 ln -sf "$PWD/bin/cadence" "$HOME/.local/bin/cadence"
 ```
 
-### `LINEAR_API_KEY missing from .env`
+### `LINEAR_API_KEY` missing from the active config
 
-Edit `.env` and set `LINEAR_API_KEY`. The key should be a personal Linear API
-key, not a GitHub token and not a Linear webhook secret.
+Edit the active config file and set `LINEAR_API_KEY`. The key should be a
+personal Linear API key, not a GitHub token and not a Linear webhook secret.
 
 ### `team ... not in workspace`
 
@@ -325,8 +331,8 @@ Install or log in to the CLI named by `ORCHESTRATOR_TRIAGE`,
 `ORCHESTRATOR_SPEC`, `ORCHESTRATOR_BUILD`, `ORCHESTRATOR_REVISE`, and
 `ORCHESTRATOR_ADVANCE`, then open a new shell. Run `cadence doctor` again to
 verify the provider commands are visible. Scheduled launchd jobs inherit a
-smaller environment than your terminal, so use `RUNNER_PATH_PREPEND` in `.env`
-if project tools need a custom path.
+smaller environment than your terminal, so use `RUNNER_PATH_PREPEND` in the
+active config file if project tools need a custom path.
 
 For example, to make Codex lead the build loop only:
 

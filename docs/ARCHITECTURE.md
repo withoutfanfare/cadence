@@ -28,10 +28,11 @@ tidy or to read what the agents produced.
 ## 1a. How a run executes
 
 1. **launchd** fires `engine/scripts/run-loop.sh <stage>` on a schedule.
-2. `run-loop.sh` sources `engine/lib/lib-env.sh` (loads `.env`, applies defaults),
-   then enforces **Step 0** *before* any model launch: the PAUSED flag and the
-   **workspace guard** (`cadence linear teams` must show `LINEAR_TEAM_ID`). A paused
-   or wrong-workspace run exits cheaply without paying for a model call.
+2. `run-loop.sh` sources `engine/lib/lib-env.sh` (resolves the active config file,
+   applies defaults), then enforces **Step 0** *before* any model launch: the
+   PAUSED flag and the **workspace guard** (`cadence linear teams` must show
+   `LINEAR_TEAM_ID`). A paused or wrong-workspace run exits cheaply without
+   paying for a model call.
 3. It renders the matching loop skill into a provider-neutral prompt, then invokes
    `engine/scripts/run-orchestrator.sh` with the configured `provider:model`.
 4. The matching **skill** in `skills/cadence-loop-<stage>/SKILL.md` is the loop body.
@@ -164,7 +165,7 @@ run log, prints `{"stage":…,"paused":true,"reason":…}`, and exits.
 2. **Workspace guard.** The loop calls `cadence linear teams` and proceeds only
    if the configured team id is present in the response. If the API key cannot
    see that team, the loop pauses with `reason: wrong-workspace`. It resumes
-   automatically once `.env` and the Linear API key point at the intended
+   automatically once the active config file and Linear API key point at the intended
    workspace again.
 
 This guard exists because the Linear API key is the runtime authority boundary.
@@ -182,21 +183,22 @@ not a pause: there is no safety fault, just no autonomous work to advance.
 **Engine** — the generic control-flow code, scripts, and skills in this repo.
 Skills hold no ids, no project names, no repo paths.
 
-**Profile** — the project-specific facts loaded at runtime from `.env` and
-`memory/`. A profile supplies: the team id, project filter, assignee id, repo
-remote, base branch, worktree root, orchestrator providers, reviewer provider,
-models, and the Clio namespace. The engine reads these from environment
-variables at runtime.
+**Profile** — the project-specific facts loaded at runtime from the active
+config file and `memory/`. A profile supplies: the team id, project filter,
+assignee id, repo remote, base branch, worktree root, orchestrator providers,
+reviewer provider, models, and the Clio namespace. The engine reads these from
+environment variables at runtime.
 
 This separation means the same engine code can run against multiple projects by
-switching `.env` — without touching the skills or scripts.
+switching the active config path — without touching the skills or scripts.
 
-### `.env` conventions
+### Config file conventions
 
 See [Configuration](CONFIGURATION.md) for the full profile reference.
 
 - **Quote any value containing spaces.** The bash loader (`engine/lib/lib-env.sh`)
-  *sources* `.env`, so a multi-word value must be quoted or sourcing breaks, e.g.
+  *sources* the active config file, so a multi-word value must be quoted or
+  sourcing breaks, e.g.
   `GATE_TEST="composer test:filter"` (not `GATE_TEST=composer test:filter`).
 - **`RUNNER_PATH_PREPEND`** (optional) — a directory prepended to the runner's `PATH`
   for project tooling, e.g. a specific PHP so bare `php`/`composer` resolve correctly:
@@ -291,8 +293,8 @@ hours** is a crashed run and may be reclaimed; a **fresh** claim is respected.
 
 ## 9. Gate semantics — `GATE_LINT`, `GATE_TEST`, `GATE_ANALYSE`
 
-These three environment variables (set in `.env`) control the build loop's
-verification step after the implementer writes code.
+These three environment variables (set in the active config file) control the
+build loop's verification step after the implementer writes code.
 
 - A **non-empty value** is the shell command to run (e.g. `composer test -- --no-coverage`).
 - A **blank value** means skip that gate entirely.

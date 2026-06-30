@@ -1,16 +1,32 @@
 # Configuring Cadence
 
-Cadence reads profile-specific values from `.env` in the repo root. The engine
-files and skills are generic; the `.env` file tells Cadence which Linear project,
+Cadence reads profile-specific values from the active config file. The engine
+files and skills are generic; the config file tells Cadence which Linear project,
 repo, models, memory backend, and verification commands to use.
+
+Cadence resolves config in this order:
+
+1. `CADENCE_CONFIG`
+2. `cadence --config /path/to/cadence/.env ...`
+3. `$PWD/cadence/.env`
+4. `$CADENCE_HOME/.env` for existing installs
+
+New projects should use `<project repo>/cadence/.env` so Cadence does not
+collide with the app's own `.env`.
+
+Existing root `.env` installs still work, but new project profiles should use
+`cadence/.env`.
 
 Copy the example first:
 
 ```bash
-cp .env.example .env
+mkdir -p /path/to/app/cadence
+cp .env.example /path/to/app/cadence/.env
+$EDITOR /path/to/app/cadence/.env
 ```
 
-Because the shell scripts source `.env`, quote values that contain spaces:
+Because the shell scripts source the active config file, quote values that
+contain spaces:
 
 ```dotenv
 LINEAR_TEAM_NAME="Modern Print Works"
@@ -110,8 +126,8 @@ cadence doctor
 ```
 
 `roles` explains what each provider slot does. `show` prints the effective raw
-settings. `set` edits only the provider-related keys in `.env` and preserves
-unrelated profile values and comments.
+settings. `set` edits only the provider-related keys in the active config file
+and preserves unrelated profile values and comments.
 
 To make Codex the lead orchestrator for every loop:
 
@@ -140,7 +156,7 @@ cadence providers set --build opencode:zai-coding-plan/glm-5.2 --revise opencode
 ```
 
 For a one-off manual run, override values in the command environment without
-editing `.env`:
+editing the active config file:
 
 ```bash
 ORCHESTRATOR_BUILD=codex:gpt-5.4
@@ -154,7 +170,8 @@ After changing providers, run:
 cadence doctor
 ```
 
-If you prefer to edit `.env` by hand, use the equivalent keys directly:
+If you prefer to edit the active config file by hand, use the equivalent keys
+directly:
 
 ```dotenv
 ORCHESTRATOR_BUILD=codex:gpt-5.4

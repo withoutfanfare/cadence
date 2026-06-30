@@ -86,8 +86,8 @@ There are no package dependencies to install for the engine itself; the Python
 adapters use the standard library.
 
 Lead loop providers are configured per stage with `cadence providers set`, which
-updates `.env` for you. Use `cadence providers roles` to see what each slot
-does, and see
+updates the active config file for you. Use `cadence providers roles` to see
+what each slot does, and see
 [AI Provider Roles](docs/PROVIDERS.md) or
 [configuration provider examples](docs/CONFIGURATION.md#provider-switching-examples)
 for all-Codex, mixed-provider, Kimi, and OpenCode examples.
@@ -104,10 +104,16 @@ ln -s "$PWD/bin/cadence" "$HOME/.local/bin/cadence"
 # Make sure this is in your shell startup file if it is not already.
 export PATH="$HOME/.local/bin:$PATH"
 
-cp .env.example .env
-$EDITOR .env
+mkdir -p /path/to/app/cadence
+cp .env.example /path/to/app/cadence/.env
+$EDITOR /path/to/app/cadence/.env
+
+cd /path/to/app
 cadence doctor
 ```
+
+Existing root `.env` installs still work, but new project profiles should use
+`cadence/.env`.
 
 After `cadence doctor` passes, create the required Linear labels in one step:
 
@@ -125,8 +131,17 @@ cadence pause
 cadence status
 ```
 
-When you are ready for one deliberate live triage run, resume, run it, then pause
-again while you inspect the result:
+In a configured project, run Cadence from the application checkout so it picks
+up `cadence/.env`:
+
+```bash
+cd /path/to/app
+cadence doctor
+cadence run triage
+```
+
+For the first deliberate live triage run, keep the system paused until you are
+ready, then resume, run it, and pause again while you inspect the result:
 
 ```bash
 cadence resume
@@ -147,7 +162,7 @@ loops, read [docs/INSTALL.md](docs/INSTALL.md).
 Start with [docs/README.md](docs/README.md), or jump directly to:
 
 - [Installation](docs/INSTALL.md) - step-by-step setup for a new machine.
-- [Configuration](docs/CONFIGURATION.md) - every `.env` value explained.
+- [Configuration](docs/CONFIGURATION.md) - every config value explained.
 - [Operating Cadence](docs/OPERATING.md) - day-to-day commands and recovery.
 - [Architecture](docs/ARCHITECTURE.md) - gates, labels, state, and invariants.
 - [Agent Labels](docs/LABELS.md) - the full Linear label vocabulary.
@@ -157,7 +172,7 @@ Start with [docs/README.md](docs/README.md), or jump directly to:
 
 Cadence is designed around three constraints:
 
-- Project scope comes from `.env`; the engine contains no project IDs.
+- Project scope comes from the active config file; the engine contains no project IDs.
 - Every loop checks the pause flag before doing work.
 - Agents never set downstream gate labels or merge PRs.
 
