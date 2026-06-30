@@ -11,7 +11,7 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
-STAGES = ["triage", "spec", "build", "revise"]
+STAGES = ["triage", "spec", "build", "revise", "advance", "conduct"]
 
 # stage -> list of (ledger_field, display label). build's PRs are special-cased.
 PRODUCED = {
@@ -19,6 +19,9 @@ PRODUCED = {
     "spec":   [("specced", "specced"), ("superseded", "superseded")],
     "build":  [("built", "built")],
     "revise": [("revised", "revised")],
+    "advance": [("advanced", "advanced"), ("accepted", "accepted"),
+                ("repaired", "repaired"), ("escalated", "escalated")],
+    "conduct": [("tagged", "tagged"), ("blocked", "blocked")],
 }
 
 
@@ -34,6 +37,16 @@ def _ts_of(rec):
         return datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
         return None
+
+
+def _count_field(rec, field):
+    if field == "blocked":
+        value = rec.get("skipped_blocked")
+    else:
+        value = rec.get(field)
+    if isinstance(value, list):
+        return len(value)
+    return int(value or 0)
 
 
 def aggregate(records, since=None):
@@ -62,7 +75,7 @@ def aggregate(records, since=None):
         if rec.get("paused"):
             st["paused"] += 1
         for field, _ in PRODUCED[s]:
-            st[field] += int(rec.get(field) or 0)
+            st[field] += _count_field(rec, field)
         if s == "build":
             st["prs"] += len(rec.get("pr_numbers") or [])
     return {"stages": stages, "undated": undated}

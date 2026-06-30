@@ -25,7 +25,7 @@ paths come from the engine's `.env`; you never embed them. Reach Linear **only**
 through `cadence linear …` (it injects the team/project/assignee filters from
 `.env`). The project scope is mandatory on every query — `cadence linear` enforces
 it. Investigate the codebase **read-only** in `$PROJECT_DIR` (the main worktree,
-remote `$REPO_SLUG`) and read against `origin/develop`.
+remote `$REPO_SLUG`) and read against the origin tracking branch for `$BASE_BRANCH`.
 
 ## Scope — never operate outside this
 
@@ -73,24 +73,10 @@ remote `$REPO_SLUG`) and read against `origin/develop`.
 
 ## Step 0 — pause checks (before any read, write, or claim)
 
-Run BOTH checks before anything else, every run. If either trips, **pause**: write
-nothing to Linear, claim nothing, notify, log, and exit with the pause JSON. Only
-when both pass do you continue to the procedure.
-
-1. **Manual pause.** If `$CADENCE_STATE_DIR/runs/PAUSED` exists, pause with reason
-   `manual`.
-2. **Workspace guard.** Run `cadence linear teams`. If the output contains no entry
-   whose `id` equals `LINEAR_TEAM_ID` (from `.env`), the key is wrong/expired or
-   points at another workspace — **pause** with reason `wrong-workspace`, recording
-   the team names you did see.
-
-On a pause, do all three, then exit — touch nothing else:
-- **Notify** (macOS): `osascript -e 'display notification "<reason>: <detail>" with title "spec loop paused" sound name "Funk"'`
-- **Log**: append one line to `$CADENCE_STATE_DIR/runs/<date>.md` —
-  `⏸ spec paused — <reason> (<detail>) · <UTC timestamp>` (dates via `date -u +%F`
-  / `date -u +%FT%TZ`, never invented).
-- **Exit JSON** to stdout and `$CADENCE_STATE_DIR/runs/runs.jsonl`:
-  `{"stage":"spec","paused":true,"reason":"manual|wrong-workspace","detail":"<PAUSED present | teams seen>"}`
+The runner enforces the manual pause flag and workspace guard before launching
+you. Re-check them before any write or claim for defence in depth. If either
+check fails, emit the standard pause JSON and records described in
+`docs/ARCHITECTURE.md` §5a, then exit without touching Linear.
 
 ## Procedure (per gated issue)
 
@@ -102,7 +88,7 @@ On a pause, do all three, then exit — touch nothing else:
 2. **Claim.** `cadence linear issue-update <ID> --add-label agent:claimed` (it
    stacks on `agent:spec`). In `--dry-run`, skip the write.
 3. **Investigate.** Use `linear-investigator` (and direct codebase reads in
-   `$PROJECT_DIR`, read against `origin/develop`) to ground the spec in the real
+   `$PROJECT_DIR`, read against the origin tracking branch for `$BASE_BRANCH`) to ground the spec in the real
    code — affected models, traits, Filament panels, call sites, prior related
    issues/PRs. Do not guess; read the code.
 4. **Validate duplicate candidates.** Before writing, resolve any cluster this
@@ -134,9 +120,9 @@ On a pause, do all three, then exit — touch nothing else:
    this order:
    - **Problem** — what's wrong / what's wanted, in one or two lines.
    - **Findings** — what the codebase shows (cite files + lines), read against
-     `origin/develop`.
+     the origin tracking branch for `$BASE_BRANCH`.
    - **Key uncertainty** — anything that must be resolved first in build (e.g.
-     "may not reproduce on develop"); say so explicitly.
+     "may not reproduce on the configured base branch"); say so explicitly.
    - **Recommended approach** — the minimal, lowest-risk change.
    - **Affected code** — files/models/traits; note Filament-panel impact.
    - **Migration & tenant-isolation impact** — migrations? per-tenant effects?

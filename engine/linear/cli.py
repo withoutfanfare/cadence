@@ -59,14 +59,17 @@ def cmd_teams(args, env, post=graphql):
 
 
 _ISSUE_FIELDS = """
-  id identifier title url description priority
+  id identifier title url description priority createdAt
   state { name type } assignee { name id }
   labels { nodes { name } } cycle { number }
 """
 
 _ISSUES_Q = """
-query($filter: IssueFilter) {
-  issues(filter: $filter, first: 100) { nodes { %s } }
+query($filter: IssueFilter, $first: Int!, $after: String) {
+  issues(filter: $filter, first: $first, after: $after) {
+    nodes { %s }
+    pageInfo { hasNextPage endCursor }
+  }
 }""" % _ISSUE_FIELDS
 
 
@@ -81,6 +84,8 @@ def _shape_issue(n):
         out["description"] = n.get("description")
     if n.get("priority") is not None:
         out["priority"] = n.get("priority")
+    if n.get("createdAt"):
+        out["createdAt"] = n.get("createdAt")
     if n.get("state"):
         out["state"] = n["state"].get("name")
         out["state_type"] = n["state"].get("type")
@@ -105,6 +110,29 @@ def _scoped_filter(env):
     }
 
 
+def _issue_nodes(f, env, post=graphql, limit=None):
+    remaining = int(limit) if limit else None
+    after = None
+    nodes = []
+    while True:
+        first = min(100, remaining) if remaining is not None else 100
+        data = post(_ISSUES_Q, {"filter": f, "first": first, "after": after}, env)
+        page = data["issues"]
+        batch = page.get("nodes", [])
+        nodes.extend(batch)
+        if remaining is not None:
+            remaining -= len(batch)
+            if remaining <= 0:
+                break
+        info = page.get("pageInfo") or {}
+        if not info.get("hasNextPage"):
+            break
+        after = info.get("endCursor")
+        if not after:
+            break
+    return nodes
+
+
 def cmd_issues_list(args, env, post=graphql):
     f = _scoped_filter(env)
     if getattr(args, "label", None):
@@ -116,8 +144,8 @@ def cmd_issues_list(args, env, post=graphql):
             _require_env(env, "LINEAR_ASSIGNEE_ID")
         uid = env.get("LINEAR_ASSIGNEE_ID") if args.assignee == "me" else args.assignee
         f["assignee"] = {"id": {"eq": uid}}
-    data = post(_ISSUES_Q, {"filter": f}, env)
-    return [_shape_issue(n) for n in data["issues"]["nodes"]]
+    nodes = _issue_nodes(f, env, post=post, limit=getattr(args, "limit", None))
+    return [_shape_issue(n) for n in nodes]
 
 
 _ISSUE_GET_Q = """
@@ -183,6 +211,11 @@ def cmd_label_ensure(args, env, post=graphql):
     return {"name": args.name, "id": res["issueLabel"]["id"], "created": True}
 
 
+def cmd_labels_list(args, env, post=graphql):
+    _require_env(env, "LINEAR_TEAM_ID")
+    return post(_LABELS_Q, {"teamId": env.get("LINEAR_TEAM_ID")}, env)["issueLabels"]["nodes"]
+
+
 # The full agent:* state-machine vocabulary — single source of truth, mirrors
 # docs/LABELS.md. `labels-init` creates any that are missing on the team.
 AGENT_LABELS = [
@@ -219,7 +252,7 @@ def _resolve_label_ids(names, env, post):
     missing = [x for x in names if x not in by_name]
     if missing:
         raise LinearError(
-            f"unknown label(s): {', '.join(missing)} — run `cadence linear labels-init`")
+            f"unknown label(s): {', '.join(missing)} — run `cadence labels init`")
     return [by_name[x] for x in names]
 
 
@@ -314,7 +347,7 @@ def cmd_bulk_label(args, env, post=graphql):
         f["labels"] = {"name": {"eq": args.where_label}}
         if env.get("LINEAR_ASSIGNEE_ID"):
             f["assignee"] = {"id": {"eq": env.get("LINEAR_ASSIGNEE_ID")}}
-        nodes = post(_ISSUES_Q, {"filter": f}, env)["issues"]["nodes"]
+        nodes = _issue_nodes(f, env, post=post)
         targets = [n["identifier"] for n in nodes]
     else:
         targets = list(args.issues or [])
@@ -435,6 +468,7 @@ def _build_parser():
     sub.add_parser("teams")
     il = sub.add_parser("issues-list"); il.add_argument("--label")
     il.add_argument("--state"); il.add_argument("--assignee")
+    il.add_argument("--limit", type=int)
     g = sub.add_parser("issue-get"); g.add_argument("id")
     u = sub.add_parser("issue-update"); u.add_argument("id")
     u.add_argument("--priority", type=int); u.add_argument("--state")
@@ -453,6 +487,7 @@ def _build_parser():
     r = sub.add_parser("issue-relate"); r.add_argument("a"); r.add_argument("b")
     r.add_argument("--type", choices=["duplicate", "related", "blocks"], default="related")
     le = sub.add_parser("label-ensure"); le.add_argument("name")
+    sub.add_parser("labels-list")
     sub.add_parser("labels-init")
     d = sub.add_parser("doc-upsert"); d.add_argument("--issue", required=True)
     d.add_argument("--title", required=True); d.add_argument("--body", required=True)
@@ -466,7 +501,7 @@ _DISPATCH = {
     "issue-update": cmd_issue_update, "bulk-label": cmd_bulk_label,
     "issue-comment": cmd_issue_comment,
     "issue-relate": cmd_issue_relate, "label-ensure": cmd_label_ensure,
-    "labels-init": cmd_labels_init,
+    "labels-list": cmd_labels_list, "labels-init": cmd_labels_init,
     "doc-upsert": cmd_doc_upsert, "cycles-list": cmd_cycles_list,
 }
 

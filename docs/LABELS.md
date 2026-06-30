@@ -3,7 +3,7 @@
 The `agent:*` labels are the state machine. Loops read labels to decide what to
 act on and write labels to record what they did.
 
-Create the whole set during installation with `cadence linear labels-init`; see
+Create the whole set during installation with `cadence labels init`; see
 [Installation](INSTALL.md#6-create-the-linear-labels).
 
 ---

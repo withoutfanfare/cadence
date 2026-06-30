@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import sys
+from datetime import datetime, timezone
 
 _ENGINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -134,12 +135,50 @@ def conduct(env, dry_run=False):
             "free": free, "tagged": tagged, "skipped_blocked": skipped_blocked}
 
 
+def _summary_line(summary):
+    tagged = len(summary.get("tagged") or [])
+    blocked = len(summary.get("skipped_blocked") or [])
+    if summary.get("paused"):
+        return "PAUSED — %s" % summary.get("reason", "?")
+    parts = []
+    if tagged:
+        parts.append("%d tagged" % tagged)
+    if blocked:
+        parts.append("%d blocked" % blocked)
+    if summary.get("free") == 0 and summary.get("note"):
+        parts.append(summary["note"])
+    return ", ".join(parts) if parts else "nothing to do"
+
+
+def append_ledger(summary, env, ts=None):
+    state_dir = env.get("CADENCE_STATE_DIR") or os.path.expanduser("~/.cadence")
+    runs_dir = os.path.join(state_dir, "runs")
+    os.makedirs(runs_dir, exist_ok=True)
+    ts = ts or datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    record = dict(summary)
+    record["ts"] = ts
+    with open(os.path.join(runs_dir, "runs.jsonl"), "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, separators=(",", ":")) + "\n")
+    with open(os.path.join(runs_dir, "activity.log"), "a", encoding="utf-8") as f:
+        f.write("[%s] conduct — %s\n" % (ts, _summary_line(summary)))
+    logs_dir = os.path.join(state_dir, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    with open(os.path.join(logs_dir, "conduct.log"), "a", encoding="utf-8") as f:
+        f.write("[%s] conduct — %s\n" % (ts, _summary_line(summary)))
+    day = ts[:10]
+    mode = "dry-run" if summary.get("dry_run") else "live"
+    with open(os.path.join(runs_dir, day + ".md"), "a", encoding="utf-8") as f:
+        f.write("\n## conduct · %s · %s\n\n%s\n" % (mode, ts, _summary_line(summary)))
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     ap = argparse.ArgumentParser(prog="cadence conduct")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
-    summary = conduct(_cadence_env.load_env(), dry_run=args.dry_run)
+    env = _cadence_env.load_env()
+    summary = conduct(env, dry_run=args.dry_run)
+    append_ledger(summary, env)
     print(json.dumps(summary, separators=(",", ":")))
 
 

@@ -11,7 +11,6 @@ allowed-tools:
   - Write
   - Grep
   - Glob
-  - Task
   - mcp__clio__memory_recall
   - mcp__clio__memory_remember
 ---
@@ -38,7 +37,7 @@ or grove when `WORKTREE_TOOL=grove`). `gh` present (and `grove` only when
 1. **The configured Linear project only** — team `LINEAR_TEAM_ID` and project
    `LINEAR_PROJECT_ID` from `.env`.
 2. **Assigned to the configured assignee (`LINEAR_ASSIGNEE_ID`) only.**
-3. **PRs only ever against `develop`.** You push to the existing branch/PR only.
+3. **PRs only ever against `$BASE_BRANCH`.** You push to the existing branch/PR only.
 
 Act **only** on issues carrying `agent:revise` **and** having an open PR. Skip any
 carrying `agent:hold`, `agent:superseded`, `agent:needs-human`, or a fresh
@@ -68,24 +67,10 @@ carrying `agent:hold`, `agent:superseded`, `agent:needs-human`, or a fresh
 
 ## Step 0 — pause checks (before any read, write, claim, or push)
 
-Run BOTH checks before anything else, every run. If either trips, **pause**: write
-nothing to Linear, push nothing, claim nothing, notify, log, and exit with the
-pause JSON. Only when both pass do you continue to the procedure.
-
-1. **Manual pause.** If `$CADENCE_STATE_DIR/runs/PAUSED` exists, pause with reason
-   `manual`.
-2. **Workspace guard.** Run `cadence linear teams`. If the output contains no entry
-   whose `id` equals `LINEAR_TEAM_ID` (from `.env`), the key is wrong/expired or
-   points at another workspace — **pause** with reason `wrong-workspace`, recording
-   the team names you did see.
-
-On a pause, do all three, then exit — touch nothing else:
-- **Notify** (macOS): `osascript -e 'display notification "<reason>: <detail>" with title "revise loop paused" sound name "Funk"'`
-- **Log**: append one line to `$CADENCE_STATE_DIR/runs/<date>.md` —
-  `⏸ revise paused — <reason> (<detail>) · <UTC timestamp>` (dates via `date -u +%F`
-  / `date -u +%FT%TZ`, never invented).
-- **Exit JSON** to stdout and `$CADENCE_STATE_DIR/runs/runs.jsonl`:
-  `{"stage":"revise","paused":true,"reason":"manual|wrong-workspace","detail":"<PAUSED present | teams seen>"}`
+The runner enforces the manual pause flag and workspace guard before launching
+you. Re-check them before any write, push, or worktree action for defence in
+depth. If either check fails, emit the standard pause JSON and records described
+in `docs/ARCHITECTURE.md` §5a, then exit without touching Linear, git, or files.
 
 ## Procedure (per gated issue)
 
@@ -111,8 +96,8 @@ On a pause, do all three, then exit — touch nothing else:
      ```
    Understand exactly what to fix.
 3. **Worktree.** Create or re-use the worktree for the **same branch** with
-   `WT="$(cadence worktree add <branch> develop)"; cd "$WT"`, then rebase on
-   `origin/develop`. The helper is idempotent — an existing worktree for the branch is
+   `base="${BASE_BRANCH:-develop}"; WT="$(cadence worktree add <branch> "$base")"; cd "$WT"`,
+   then rebase on the origin tracking branch for `$BASE_BRANCH`. The helper is idempotent — an existing worktree for the branch is
    re-used. `<branch>` is the PR's existing head ref (already short — the build loop
    names it after the Linear identifier, e.g. `stu-1799`); use it verbatim
    (`gh pr view <n> --json headRefName`), do **not** reconstruct it from the longer
@@ -138,10 +123,12 @@ On a pause, do all three, then exit — touch nothing else:
    If a gate cannot pass → "Failure handling".
 6. **Commit → push to the SAME PR.** Conventional commit (no AI mention). Push the
    existing branch — this updates the existing PR. **Do not create a new PR.**
-7. **Re-review.** Dispatch the `code-reviewer` agent (via `Task`) on the new diff;
-   confirm the prior findings are resolved and the tests guard. Post a follow-up PR
-   comment that also lists each Copilot finding with its disposition (fixed /
-   rejected — reason). Never approve/merge.
+7. **Re-review.** Write `$WT/REVIEW.md` with the PR URL, the prior review
+   comments, the human's requested changes, and the new diff. Run:
+   `"$CADENCE_HOME/engine/scripts/run-reviewer.sh" "${REVIEW_PROVIDER:-claude}"
+   "${REVIEW_MODEL:-opus}" "$WT" "$WT/REVIEW.md"`. Confirm prior findings are
+   resolved and the tests guard the change. Post a follow-up PR comment that lists
+   each finding with its disposition. Never approve/merge.
 8. **Linear.**
    `cadence linear issue-update <ID> --remove-label agent:revise --remove-label agent:claimed --add-label agent:revised`.
 9. **Log.** Append the **Revisions pushed** digest to the dated run files (see

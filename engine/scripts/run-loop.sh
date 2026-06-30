@@ -68,6 +68,28 @@ PY
   exit 0
 }
 
+idle_before_launch() {
+  reason="$1"
+  detail="$2"
+  TS="$(date -u +%FT%TZ)"
+  payload="$(STAGE="$STAGE" REASON="$reason" DETAIL="$detail" python3 - <<'PY'
+import json, os
+print(json.dumps({
+    "stage": os.environ["STAGE"],
+    "dry_run": False,
+    "idle": True,
+    "reason": os.environ["REASON"],
+    "detail": os.environ["DETAIL"],
+}, separators=(",", ":")))
+PY
+)"
+  echo "[$TS] cadence $STAGE idle — $reason ($detail)" >> "$LOGDIR/$STAGE.log"
+  echo "[$TS] $STAGE — idle ($reason: $detail)" >> "$RUNS/activity.log"
+  echo "$payload" >> "$RUNS/runs.jsonl"
+  echo "$payload"
+  exit 0
+}
+
 # Pause and workspace checks are enforced here, not just in the prompt: an
 # unsafe system must not pay for a model invocation or run tools before the agent
 # honours the flag.
@@ -105,23 +127,41 @@ if [ "$STAGE" = "advance" ]; then
     *) pause_before_launch "autonomous-off" "AUTONOMOUS not enabled" ;;
   esac
   _n="$(python3 "$CADENCE_HOME/engine/linear/cli.py" issues-list --label agent:auto --assignee me 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)"
-  [ "$_n" = "0" ] && pause_before_launch "no-auto-work" "no agent:auto issues in scope"
+  [ "$_n" = "0" ] && idle_before_launch "no-auto-work" "no agent:auto issues in scope"
 fi
 
 cd "$WORKTREE" || { echo "project dir missing: $WORKTREE" >&2; exit 1; }
 
+provider_from_pair() {
+  pair="$1"
+  case "$pair" in
+    *:*) printf '%s\n' "${pair%%:*}" ;;
+    *) printf '%s\n' "${ORCHESTRATOR_PROVIDER:-claude}" ;;
+  esac
+}
+
+model_from_pair() {
+  pair="$1"
+  case "$pair" in
+    *:*) printf '%s\n' "${pair#*:}" ;;
+    *) printf '%s\n' "$pair" ;;
+  esac
+}
+
 case "$STAGE" in
   triage)
     MODE=enrich; [ "$(date +%H)" = "07" ] && MODE=full
-    CMD="/cadence-loop-triage --mode=$MODE --since=last-run --live"; MODEL="$MODEL_TRIAGE" ;;
-  spec)   CMD="/cadence-loop-spec";   MODEL="$MODEL_SPEC" ;;
-  build)  CMD="/cadence-loop-build --implementer=$BUILD_IMPLEMENTER"; MODEL="$MODEL_BUILD" ;;
-  revise) CMD="/cadence-loop-revise"; MODEL="$MODEL_REVISE" ;;
+    CMD_ARGS=("--mode=$MODE" "--since=last-run" "--live"); PAIR="$ORCHESTRATOR_TRIAGE" ;;
+  spec)   CMD_ARGS=(); PAIR="$ORCHESTRATOR_SPEC" ;;
+  build)  CMD_ARGS=("--implementer=$BUILD_IMPLEMENTER"); PAIR="$ORCHESTRATOR_BUILD" ;;
+  revise) CMD_ARGS=(); PAIR="$ORCHESTRATOR_REVISE" ;;
   advance)
-    DRY=""; [ "${2:-}" = "--dry-run" ] && DRY=" --dry-run"
-    CMD="/cadence-loop-advance${DRY}"; MODEL="${MODEL_ADVANCE:-sonnet}" ;;
+    CMD_ARGS=(); [ "${2:-}" = "--dry-run" ] && CMD_ARGS=("--dry-run")
+    PAIR="$ORCHESTRATOR_ADVANCE" ;;
   *) echo "unknown stage: $STAGE" >&2; exit 2 ;;
 esac
+PROVIDER="$(provider_from_pair "$PAIR")"
+MODEL="$(model_from_pair "$PAIR")"
 
 # Housekeeping: before a build/revise launch, remove worktrees whose branch is fully
 # merged into origin/<base> (their PR landed) so they don't pile up. Conservative —
@@ -139,7 +179,10 @@ if [ "$STAGE" = "build" ] || [ "$STAGE" = "revise" ]; then
       [ "$_br" = "$_base" ] && continue
       _tip="$(git -C "$_wt" rev-parse HEAD 2>/dev/null)" || continue
       [ "$_tip" = "$_basetip" ] && continue                                            # fresh/unbuilt — leave
-      git -C "$_wt" diff --quiet 2>/dev/null && git -C "$_wt" diff --cached --quiet 2>/dev/null || continue  # dirty — leave
+      if ! git -C "$_wt" diff --quiet 2>/dev/null \
+         || ! git -C "$_wt" diff --cached --quiet 2>/dev/null; then
+        continue  # dirty — leave
+      fi
       git -C "$PROJECT_DIR" merge-base --is-ancestor "$_tip" "origin/$_base" 2>/dev/null || continue          # unmerged — leave
       # Remove via the engine's tool-aware verb (grove rm under WORKTREE_TOOL=grove —
       # which also unregisters the Herd site + deletes the branch; plain git otherwise).
@@ -151,13 +194,18 @@ if [ "$STAGE" = "build" ] || [ "$STAGE" = "revise" ]; then
 fi
 
 LOG="$LOGDIR/$STAGE.log"
-# Unattended: bypass interactive permission prompts. Safety comes from the loops'
-# own guardrails (workspace guard, scope filters, draft-only PRs, human gates) — not
-# from the permission layer. Runs as you, on your repo.
-echo "[$(date -u +%FT%TZ)] starting cadence $STAGE ($MODEL): $CMD" >> "$LOG"
-claude -p "$CMD" --model "$MODEL" --dangerously-skip-permissions >> "$LOG" 2>&1
+PROMPT_FILE="$RUNS/prompt-$STAGE-$(date -u +%Y%m%dT%H%M%SZ)-$$.md"
+python3 "$CADENCE_HOME/engine/prompts/render.py" "$STAGE" "${CMD_ARGS[@]}" --output "$PROMPT_FILE" >> "$LOG" 2>&1
 RC=$?
+if [ "$RC" -ne 0 ]; then
+  echo "[$(date -u +%FT%TZ)] failed to render cadence $STAGE prompt (exit $RC)" >> "$LOG"
+else
+  echo "[$(date -u +%FT%TZ)] starting cadence $STAGE ($PROVIDER:$MODEL): ${CMD_ARGS[*]:-(none)}" >> "$LOG"
+  "$DIR/run-orchestrator.sh" "$PROVIDER" "$MODEL" "$WORKTREE" "$PROMPT_FILE" "$STAGE" >> "$LOG" 2>&1
+  RC=$?
+fi
 echo "[$(date -u +%FT%TZ)] finished cadence $STAGE (exit $RC)" >> "$LOG"
+rm -f "$PROMPT_FILE"
 
 # --- Informative + surfaceable: one-line summary → activity feed → push on activity ---
 # Parse this run's JSON summary (triage uses "stage", others use "loop"), build a plain

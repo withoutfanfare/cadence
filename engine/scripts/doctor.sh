@@ -2,18 +2,94 @@
 # cadence doctor — verify a setup without changing anything.
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+_RUNNER_PATH_PREPEND="${RUNNER_PATH_PREPEND:-}"
 # shellcheck disable=SC1091
 source "$DIR/../lib/lib-env.sh"
+if [ -n "$_RUNNER_PATH_PREPEND" ]; then
+  RUNNER_PATH_PREPEND="$_RUNNER_PATH_PREPEND"
+  export RUNNER_PATH_PREPEND
+fi
 
+RUNNER_PATH="$(cadence_runner_path)"
 ok=0; bad=0
 pass(){ echo "  ✅ $1"; ok=$((ok+1)); }
 fail(){ echo "  ❌ $1"; bad=$((bad+1)); }
 
+provider_from_pair() {
+  pair="$1"
+  case "$pair" in
+    *:*) printf '%s' "${pair%%:*}" ;;
+    *) printf '%s' "${ORCHESTRATOR_PROVIDER:-claude}" ;;
+  esac
+}
+
+check_provider_cli() {
+  label="$1"
+  provider="$2"
+  case "$provider" in
+    claude|codex|kimi|opencode)
+      if (PATH="$RUNNER_PATH"; command -v "$provider" >/dev/null); then
+        pass "$label provider '$provider' found"
+      else
+        fail "$label provider '$provider' not on PATH"
+      fi
+      ;;
+    *)
+      fail "$label provider '$provider' invalid (use claude, codex, kimi, or opencode)"
+      ;;
+  esac
+}
+
+labels_only=0
+case "${1:-}" in
+  --labels) labels_only=1 ;;
+  "") ;;
+  *) echo "usage: cadence doctor [--labels]" >&2; exit 2 ;;
+esac
+
+check_labels() {
+  labels_json="$(python3 "$CADENCE_HOME/engine/linear/cli.py" labels-list 2>/dev/null)" || {
+    fail "could not list Linear labels"
+    return
+  }
+  missing="$(LABELS_JSON="$labels_json" python3 - <<'PY'
+import importlib.util
+import json
+import os
+import pathlib
+
+path = pathlib.Path(os.environ["CADENCE_HOME"]) / "engine" / "linear" / "cli.py"
+spec = importlib.util.spec_from_file_location("linear_cli_labels", path)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+present = {x.get("name") for x in json.loads(os.environ["LABELS_JSON"] or "[]")}
+print("\n".join(label for label in mod.AGENT_LABELS if label not in present))
+PY
+)"
+  if [ -z "$missing" ]; then
+    pass "Linear agent label vocabulary present"
+  else
+    fail "missing Linear label(s): $(printf '%s' "$missing" | paste -sd ',' - | sed 's/,/, /g')"
+  fi
+}
+
 echo "── cadence doctor ────────────────────────────────"
+if [ "$labels_only" = 1 ]; then
+  check_labels
+  echo
+  [ "$bad" -eq 0 ] && echo "doctor: all label checks passed ($ok ok)" || echo "doctor: $bad problem(s), $ok ok"
+  exit "$bad"
+fi
+
 if [ -f "$CADENCE_HOME/.env" ]; then pass ".env present"; else fail ".env missing (copy .env.example)"; fi
-if command -v claude >/dev/null; then pass "claude found"; else fail "claude not on PATH"; fi
 if command -v python3 >/dev/null; then pass "python3 found"; else fail "python3 not on PATH"; fi
 if command -v gh >/dev/null; then pass "gh found"; else echo "  ⚠️  gh not found (build PR back-fill needs it)"; fi
+check_provider_cli "triage orchestrator" "$(provider_from_pair "$ORCHESTRATOR_TRIAGE")"
+check_provider_cli "spec orchestrator" "$(provider_from_pair "$ORCHESTRATOR_SPEC")"
+check_provider_cli "build orchestrator" "$(provider_from_pair "$ORCHESTRATOR_BUILD")"
+check_provider_cli "revise orchestrator" "$(provider_from_pair "$ORCHESTRATOR_REVISE")"
+check_provider_cli "advance orchestrator" "$(provider_from_pair "$ORCHESTRATOR_ADVANCE")"
+check_provider_cli "reviewer" "${REVIEW_PROVIDER:-claude}"
 
 if [ -n "${LINEAR_API_KEY:-}" ]; then
   teams="$(python3 "$CADENCE_HOME/engine/linear/cli.py" teams 2>/dev/null)"
@@ -43,12 +119,19 @@ case "${WORKTREE_TOOL:-git}" in
   *)     fail "WORKTREE_TOOL='${WORKTREE_TOOL}' invalid (use git or grove)" ;;
 esac
 
-# Selected implementer must be runnable when it isn't the bundled `claude`.
-if [ "${BUILD_IMPLEMENTER:-claude}" = "claude" ] || command -v "${BUILD_IMPLEMENTER}" >/dev/null; then
-  pass "implementer '${BUILD_IMPLEMENTER:-claude}' available"
-else
-  fail "implementer '${BUILD_IMPLEMENTER}' not on PATH"
-fi
+# Selected implementer must be runnable on the same runner PATH as the loops.
+case "${BUILD_IMPLEMENTER:-claude}" in
+  claude|codex|kimi|opencode)
+    if (PATH="$RUNNER_PATH"; command -v "${BUILD_IMPLEMENTER:-claude}" >/dev/null); then
+      pass "implementer '${BUILD_IMPLEMENTER:-claude}' available"
+    else
+      fail "implementer '${BUILD_IMPLEMENTER:-claude}' not on PATH"
+    fi
+    ;;
+  *)
+    fail "implementer '${BUILD_IMPLEMENTER:-claude}' invalid (use claude, codex, kimi, or opencode)"
+    ;;
+esac
 
 # Autonomous mode (optional; off unless explicitly enabled). Match config()'s
 # case-insensitive truthy set: 1/on/true/yes.
@@ -72,6 +155,8 @@ if [ "$_auto" = "1" ] || [ "$_auto" = "on" ] || [ "$_auto" = "true" ] || [ "$_au
   [ -f "$HOME/Library/LaunchAgents/com.cadence.loop-advance.plist" ] && pass "schedule advance present" || echo "  ⚠️  autonomous on but no advance plist (run: cadence autonomous on)"
   [ -f "$HOME/Library/LaunchAgents/com.cadence.conduct.plist" ] && pass "schedule conduct present" || echo "  ⚠️  autonomous on but no conduct plist (run: cadence autonomous on)"
 fi
+
+check_labels
 
 echo
 [ "$bad" -eq 0 ] && echo "doctor: all critical checks passed ($ok ok)" || echo "doctor: $bad problem(s), $ok ok"

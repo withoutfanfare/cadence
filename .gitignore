@@ -20,3 +20,7 @@ code-review/
 # Agent config — keep private
 CLAUDE.md
 .claude/
+
+AGENTS.md
+
+docs/superpowers/plans/

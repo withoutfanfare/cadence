@@ -25,6 +25,20 @@ tidy or to read what the agents produced.
 
 ---
 
+## 1a. How a run executes
+
+1. **launchd** fires `engine/scripts/run-loop.sh <stage>` on a schedule.
+2. `run-loop.sh` sources `engine/lib/lib-env.sh` (loads `.env`, applies defaults),
+   then enforces **Step 0** *before* any model launch: the PAUSED flag and the
+   **workspace guard** (`cadence linear teams` must show `LINEAR_TEAM_ID`). A paused
+   or wrong-workspace run exits cheaply without paying for a model call.
+3. It renders the matching loop skill into a provider-neutral prompt, then invokes
+   `engine/scripts/run-orchestrator.sh` with the configured `provider:model`.
+4. The matching **skill** in `skills/cadence-loop-<stage>/SKILL.md` is the loop body.
+5. The run appends a human digest + a JSON line to `$CADENCE_STATE_DIR` (default
+   `~/.cadence`): `runs/YYYY-MM-DD.md`, `runs/runs.jsonl`, `runs/activity.log`,
+   `logs/<stage>.log`.
+
 ## 2. The board is the state machine — label vocabulary
 
 An issue's labels are its state. The loops read labels to decide what to act on
@@ -125,8 +139,8 @@ and write labels to record what they did. Full label vocabulary:
 5. **Never overwrite a human's field.** Fill blanks only.
 6. **Read-only on the codebase except build/revise.** Triage and spec investigate
    read-only. Only build and revise edit files inside their own worktree.
-7. **Report and meter.** Every run writes a dated digest file (§7) and prints a
-   JSON summary to stdout.
+7. **Report and meter.** Every run records a machine summary and a human-facing
+   activity trail (§7). Model-backed loops also print a JSON summary to stdout.
 
 ---
 
@@ -152,6 +166,10 @@ This guard exists because the Linear API key is the runtime authority boundary.
 The workspace it can currently reach is treated as the authoritative signal for
 whether it is safe to run.
 
+The `advance` runner also exits before invoking the model when autonomous mode is
+on but no in-scope issue carries `agent:auto`. That is recorded as an idle run,
+not a pause: there is no safety fault, just no autonomous work to advance.
+
 ---
 
 ## 6. Engine vs profile
@@ -161,8 +179,9 @@ Skills hold no ids, no project names, no repo paths.
 
 **Profile** — the project-specific facts loaded at runtime from `.env` and
 `memory/`. A profile supplies: the team id, project filter, assignee id, repo
-remote, base branch, worktree root, and the Clio namespace. The engine reads these
-from environment variables at runtime.
+remote, base branch, worktree root, orchestrator providers, reviewer provider,
+models, and the Clio namespace. The engine reads these from environment
+variables at runtime.
 
 This separation means the same engine code can run against multiple projects by
 switching `.env` — without touching the skills or scripts.
@@ -195,7 +214,8 @@ $CADENCE_STATE_DIR/
     PAUSED         touch to pause all loops; delete to resume
 ```
 
-**Human digest** (`runs/YYYY-MM-DD.md`): append one section per run, headed:
+**Human digest** (`runs/YYYY-MM-DD.md`): append one section per model-backed run,
+headed:
 
 ```text
 ## <stage> · <mode> · <live|dry-run> · <UTC timestamp>
@@ -207,6 +227,11 @@ Followed by the counts line and the per-issue list. Each entry:
 
 **Machine ledger** (`runs/runs.jsonl`): append the same JSON object printed to
 stdout — one line per run, one object per line. No pretty-printing.
+
+The deterministic conductor is not model-backed, but it still appends a compact
+summary to `runs/runs.jsonl`, `runs/activity.log`, `runs/YYYY-MM-DD.md`, and
+`logs/conduct.log`, so autonomous queue decisions show up in the normal operator
+commands.
 
 Get the date/timestamp from the shell (`date -u +%FT%TZ`), never invent one.
 

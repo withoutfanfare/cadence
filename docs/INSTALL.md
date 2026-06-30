@@ -13,17 +13,17 @@ Install or confirm these commands are available:
 git --version
 python3 --version
 bash --version
-claude --help
 ```
 
 Optional, depending on your profile:
 
 ```bash
 gh --version        # useful for GitHub PR operations
-grove --version    # only if WORKTREE_TOOL=grove (Laravel Herd worktrees)
-codex --help       # only if BUILD_IMPLEMENTER=codex
-kimi --help        # only if BUILD_IMPLEMENTER=kimi
-opencode --help    # only if BUILD_IMPLEMENTER=opencode
+grove --version     # only if WORKTREE_TOOL=grove (Laravel Herd worktrees)
+claude --help       # if ORCHESTRATOR_* resolves to claude
+codex --help        # if ORCHESTRATOR_* resolves to codex
+kimi --help         # if ORCHESTRATOR_* resolves to kimi
+opencode --help     # if ORCHESTRATOR_* resolves to opencode
 ```
 
 By default the build loop uses plain `git worktree`, so nothing beyond Git is
@@ -39,11 +39,9 @@ You also need:
 ## 2. Clone Cadence
 
 ```bash
-git clone https://github.com/YOUR-ORG/cadence.git
+git clone https://github.com/withoutfanfare/cadence.git
 cd cadence
 ```
-
-Replace `YOUR-ORG` with the real GitHub owner once the public repository exists.
 
 ## 3. Put `cadence` on PATH
 
@@ -136,7 +134,7 @@ cadence doctor
 The critical checks are:
 
 - `.env` exists.
-- `claude` and `python3` are on `PATH`.
+- The selected orchestrator provider CLI and `python3` are on `PATH`.
 - The Linear API key works.
 - The configured team is visible to that key.
 - The state directory exists.
@@ -149,12 +147,18 @@ Cadence uses Linear labels as its state machine. Create the whole set once per
 team:
 
 ```bash
-cadence linear labels-init
+cadence labels init
 ```
 
 The command is idempotent — existing labels are reused, and it prints which
 labels it created versus which were already present. To add a single label by
-hand, use `cadence linear label-ensure "<name>"`.
+hand, use `cadence labels ensure "<name>"`.
+
+Check the full vocabulary is present:
+
+```bash
+cadence doctor --labels
+```
 
 ## 7. Pause Before the First Run
 
@@ -195,7 +199,34 @@ and are ready for the loop to write.
 Pausing again immediately after the manual run gives you time to inspect the
 Linear changes, logs, and digest before any scheduled loop can continue.
 
-## 9. Schedule Loops on macOS
+## 9. First 10-minute smoke test
+
+After `cadence doctor` passes and the labels exist, this read-only sequence gives
+you a quick picture of the setup:
+
+```bash
+cadence help
+cadence doctor --labels
+cadence queue -v
+cadence schedule
+cadence inspect
+```
+
+`cadence inspect` bundles `doctor`, `status`, `autonomous status`, `schedule`,
+`queue -v`, and the recent feed. It is intended for support and onboarding.
+
+The next commands are live, so keep them separate and deliberate:
+
+```bash
+cadence resume
+cadence run triage
+cadence pause
+cadence logs triage
+cadence feed 20
+cadence digest
+```
+
+## 10. Schedule Loops on macOS
 
 Cadence generates and loads the launchd jobs for you from the schedule in `.env`:
 
@@ -231,7 +262,7 @@ When ready:
 cadence resume
 ```
 
-## 10. Update Cadence Later
+## 11. Update Cadence Later
 
 ```bash
 cd /path/to/cadence
@@ -276,8 +307,11 @@ cadence linear teams
 
 Copy the exact `id` value for the intended team.
 
-### `claude not on PATH`
+### selected orchestrator provider not on PATH
 
-Install or log in to the Claude CLI, then open a new shell. Scheduled launchd
-jobs inherit a smaller environment than your terminal, so use
-`RUNNER_PATH_PREPEND` in `.env` if project tools need a custom path.
+Install or log in to the CLI named by `ORCHESTRATOR_TRIAGE`,
+`ORCHESTRATOR_SPEC`, `ORCHESTRATOR_BUILD`, `ORCHESTRATOR_REVISE`, and
+`ORCHESTRATOR_ADVANCE`, then open a new shell. Run `cadence doctor` again to
+verify the provider commands are visible. Scheduled launchd jobs inherit a
+smaller environment than your terminal, so use `RUNNER_PATH_PREPEND` in `.env`
+if project tools need a custom path.

@@ -78,8 +78,8 @@ You need:
 
 - `bash`, `git`, and `python3`.
 - A Linear personal API key.
-- The Claude CLI for orchestration (`claude` on `PATH`).
-- Optional implementer CLIs if you choose them: `kimi`, `opencode`, or `codex`.
+- One orchestrator CLI on `PATH`: `claude`, `codex`, `kimi`, or `opencode`.
+- Optional implementer CLIs if you choose them: `claude`, `kimi`, `opencode`, or `codex`.
 - `gh` if you want the build loop to open or back-fill GitHub PR information.
 
 There are no package dependencies to install for the engine itself; the Python
@@ -105,7 +105,7 @@ cadence doctor
 After `cadence doctor` passes, create the required Linear labels in one step:
 
 ```bash
-cadence linear labels-init
+cadence labels init
 ```
 
 This creates the full `agent:*` label set on the team (and `Stale`). It is

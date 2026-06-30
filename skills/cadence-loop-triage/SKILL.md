@@ -62,20 +62,24 @@ Default to safe. If the invocation passes `--dry-run`, or passes neither flag,
 do all the analysis but **write nothing** to Linear — output the digest to
 STDOUT titled "INTENDED CHANGES (dry run — nothing written)".
 
-Only when the invocation passes `--live` may you write to Linear, and then only
-issue **metadata** — priority, cycle, type label, the `Stale` label, an
-acceptance-criteria stub in the issue's own description, and the duplicate-candidate
-proposal (a `relatedTo` link + the `agent:dupe-candidate` flag, step 4). Never via
-comments or documents (those tools are withheld). Never a field a human has already
-set — you fill blanks only. In `--dry-run`, write none of these — list the intended
-candidate clusters in the digest instead.
+Only when the invocation passes `--live` may you write to Linear. Normal live
+writes are issue **metadata** only: priority, cycle, type label, the `Stale`
+label, an acceptance-criteria stub in the issue's own description, terminal
+markers, and the duplicate-candidate proposal (a `relatedTo` link +
+`agent:dupe-candidate`, step 4). Full-mode PR back-fill may create a new Linear
+issue for a merged PR with no existing link. Failure comments are allowed only
+when a per-issue failure needs a durable note. Never write documents. Never
+overwrite a field a human has already set — you fill blanks only. In `--dry-run`,
+write none of these — list the intended changes in the digest instead.
 
 ## Hard limits — never cross these
 
-- Write Linear metadata only: priority, cycle, type label, the `Stale` label,
-  acceptance-criteria stubs, the `agent:triaged` / `agent:needs-human` terminal markers
-  (see "Terminal per issue"), comments, back-fill issues, and — for duplicate
-  detection — the `relatedTo` link and the `agent:dupe-candidate` flag (see step 4).
+- Normal writes are Linear metadata only: priority, cycle, type label, the
+  `Stale` label, acceptance-criteria stubs, the `agent:triaged` /
+  `agent:needs-human` terminal markers (see "Terminal per issue"), and — for
+  duplicate detection — the `relatedTo` link and the `agent:dupe-candidate` flag
+  (see step 4). Full-mode PR back-fill issue creation and failure-only comments
+  are the only exceptions.
 - Duplicate detection is **propose only**. Never set `duplicateOf`, never set
   `agent:superseded`, never `blockedBy`/`blocks`, never hold. You only *suggest*
   a cluster with `relatedTo` + `agent:dupe-candidate`; the spec loop validates it
@@ -119,24 +123,10 @@ for. In `--dry-run`, write neither; name the intended marker in the digest inste
 
 ## Step 0 — pause checks (before any read, write, or claim)
 
-Run BOTH checks before anything else, every run. If either trips, **pause**: write
-nothing to Linear, claim nothing, notify, log, and exit with the pause JSON. Only
-when both pass do you continue to the procedure.
-
-1. **Manual pause.** If `$CADENCE_STATE_DIR/runs/PAUSED` exists, pause with reason
-   `manual`.
-2. **Workspace guard.** Run `cadence linear teams`. If the output contains no entry
-   whose `id` equals `LINEAR_TEAM_ID` (from `.env`), the key is wrong/expired or
-   points at another workspace — **pause** with reason `wrong-workspace`, recording
-   the team names you did see.
-
-On a pause, do all three, then exit — touch nothing else:
-- **Notify** (macOS): `osascript -e 'display notification "<reason>: <detail>" with title "triage loop paused" sound name "Funk"'`
-- **Log**: append one line to `$CADENCE_STATE_DIR/runs/<date>.md` —
-  `⏸ triage paused — <reason> (<detail>) · <UTC timestamp>` (dates via `date -u +%F`
-  / `date -u +%FT%TZ`, never invented).
-- **Exit JSON** to stdout and `$CADENCE_STATE_DIR/runs/runs.jsonl`:
-  `{"stage":"triage","paused":true,"reason":"manual|wrong-workspace","detail":"<PAUSED present | teams seen>"}`
+The runner enforces the manual pause flag and workspace guard before launching
+you. Re-check them before any write or claim for defence in depth. If either
+check fails, emit the standard pause JSON and records described in
+`docs/ARCHITECTURE.md` §5a, then exit without touching Linear.
 
 ## Procedure
 
@@ -206,7 +196,7 @@ On a pause, do all three, then exit — touch nothing else:
    recent linked activity with the `Stale` label and a one-line reason. Do not
    close them.
 
-6. PR back-fill (full mode only): `gh pr list --state merged --base develop`
+6. PR back-fill (full mode only): `base="${BASE_BRANCH:-develop}"; gh pr list --state merged --base "$base"`
    since `--since`. For each merged PR with no linked Linear issue, create one
    with `linear-issue-creator`: title from the PR, body linking the PR and
    summarising it, type label from the PR prefix (feat/fix/refactor/chore), state

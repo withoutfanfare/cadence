@@ -9,7 +9,6 @@ allowed-tools:
   - Read
   - Grep
   - Glob
-  - Task
 ---
 
 # cadence-loop-advance
@@ -71,26 +70,11 @@ already-built decision core through `cadence advance …` (`decide`, `criteria`,
 
 ## Step 0 — pause checks (before any read, write, or claim)
 
-Run all three checks before anything else, every run. If any trips, **pause**:
-write nothing to Linear, claim nothing, notify, log, and exit with the pause JSON.
-Only when all pass do you continue.
-
-1. **Manual pause.** If `$CADENCE_STATE_DIR/runs/PAUSED` exists, pause with reason
-   `manual`.
-2. **Autonomous off.** If `AUTONOMOUS` (from `.env`) is not one of `1`/`on`/`true`/
-   `yes`, pause with reason `autonomous-off`. (The runner enforces this too; repeat
-   it here as defence in depth.)
-3. **Workspace guard.** Run `cadence linear teams`. If no entry's `id` equals
-   `LINEAR_TEAM_ID`, pause with reason `wrong-workspace`, recording the team names
-   you saw.
-
-On a pause, do all three, then exit — touch nothing else:
-- **Notify** (macOS): `osascript -e 'display notification "<reason>: <detail>" with title "advance loop paused" sound name "Funk"'`
-- **Log**: append one line to `$CADENCE_STATE_DIR/runs/<date>.md` —
-  `⏸ advance paused — <reason> (<detail>) · <UTC timestamp>` (dates via `date -u +%F`
-  / `date -u +%FT%TZ`, never invented).
-- **Exit JSON** to stdout and `$CADENCE_STATE_DIR/runs/runs.jsonl`:
-  `{"loop":"advance","paused":true,"reason":"manual|autonomous-off|wrong-workspace","detail":"<…>"}`
+The runner enforces the manual pause flag, autonomous-mode flag, workspace guard,
+and no-work idle shortcut before launching you. Re-check the pause/autonomous/
+workspace conditions before any write or claim for defence in depth. If a safety
+check fails, emit the standard pause JSON and records described in
+`docs/ARCHITECTURE.md` §5a, then exit without touching Linear.
 
 ## Procedure (per agent:auto issue)
 
@@ -126,9 +110,10 @@ nothing). Still write the dry-run-titled dated run files.
        list, then judge each criterion against the PR diff (and the test files it
        adds/changes). Every criterion must be demonstrably satisfied; if any is not,
        `criteria_met` is false.
-     - `review_clean` = dispatch the **`code-reviewer` agent** (a Task) on the PR
-       diff. Blocking findings (Critical/Important) make `review_clean` false; Minor
-       findings do not.
+     - `review_clean` = write a temporary review brief for the PR diff and run
+       `"$CADENCE_HOME/engine/scripts/run-reviewer.sh" "${REVIEW_PROVIDER:-claude}"
+       "${REVIEW_MODEL:-opus}" "$PROJECT_DIR" "<brief-file>"`. Blocking findings
+       (Critical/Important) make `review_clean` false; Minor findings do not.
      This is the only expensive step and runs ONLY at this gate.
 5. **Repairs + decide.** `repairs=$(cadence advance repairs get <ID>)`. Build the
    state JSON and call:

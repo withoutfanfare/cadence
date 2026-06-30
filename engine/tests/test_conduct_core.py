@@ -1,5 +1,7 @@
 import importlib.util
+import json
 import os
+import tempfile
 import unittest
 
 _spec = importlib.util.spec_from_file_location(
@@ -79,6 +81,37 @@ class TestIsBlocked(unittest.TestCase):
 
     def test_no_relations_not_blocked(self):
         self.assertFalse(cli.is_blocked({}))
+
+
+class TestLedger(unittest.TestCase):
+    def test_append_ledger_records_activity_and_machine_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            summary = {"loop": "conduct", "dry_run": True,
+                       "tagged": ["STU-1"], "skipped_blocked": ["STU-2"]}
+
+            cli.append_ledger(summary, env, ts="2026-06-30T10:00:00Z")
+
+            with open(os.path.join(tmp, "runs", "runs.jsonl"), encoding="utf-8") as f:
+                ledger = json.loads(f.read())
+            self.assertEqual(ledger["loop"], "conduct")
+            self.assertEqual(ledger["ts"], "2026-06-30T10:00:00Z")
+            self.assertEqual(ledger["tagged"], ["STU-1"])
+
+            with open(os.path.join(tmp, "runs", "activity.log"), encoding="utf-8") as f:
+                activity = f.read()
+            self.assertIn("conduct", activity)
+            self.assertIn("1 tagged", activity)
+            self.assertIn("1 blocked", activity)
+
+            with open(os.path.join(tmp, "logs", "conduct.log"), encoding="utf-8") as f:
+                log = f.read()
+            self.assertIn("conduct — 1 tagged, 1 blocked", log)
+
+            with open(os.path.join(tmp, "runs", "2026-06-30.md"), encoding="utf-8") as f:
+                digest = f.read()
+            self.assertIn("## conduct · dry-run · 2026-06-30T10:00:00Z", digest)
+            self.assertIn("1 tagged, 1 blocked", digest)
 
 
 if __name__ == "__main__":

@@ -29,7 +29,13 @@ case "${1:-show}" in
     [ -f "$(plist_path conduct)" ] && jobs+=(conduct)
     for j in "${jobs[@]}"; do
       f="$(plist_path "$j")"
-      python3 "$CLI" render "$j" > "$f" || { echo "render $j failed — left $f untouched-or-partial" >&2; exit 1; }
+      tmp="$(mktemp "$f.tmp.XXXXXX")" || { echo "could not create temp plist for $j" >&2; exit 1; }
+      if ! python3 "$CLI" render "$j" > "$tmp" || [ ! -s "$tmp" ]; then
+        rm -f "$tmp"
+        echo "render $j failed — left $f untouched" >&2
+        exit 1
+      fi
+      mv "$tmp" "$f"
       launchctl bootout "$GUI" "$f" 2>/dev/null || true
       launchctl bootstrap "$GUI" "$f" && echo "  applied $j" || echo "  FAILED to load $j" >&2
     done

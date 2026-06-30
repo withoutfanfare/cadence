@@ -51,6 +51,35 @@ class TestReadVerbs(unittest.TestCase):
         self.assertEqual(
             cap["variables"]["filter"]["assignee"]["id"]["eq"], "user-1")
 
+    def test_issues_list_paginates_and_preserves_created_at(self):
+        calls = []
+        def post(query, variables, env):
+            calls.append(variables)
+            node = {
+                "id": "i%s" % len(calls),
+                "identifier": "STU-%s" % len(calls),
+                "title": "T%s" % len(calls),
+                "url": "u",
+                "createdAt": "2026-06-0%sT00:00:00Z" % len(calls),
+                "description": "d",
+                "priority": 2,
+                "state": {"name": "Todo", "type": "started"},
+                "assignee": {"name": "D", "id": "user-1"},
+                "labels": {"nodes": []},
+                "cycle": None,
+            }
+            return {"issues": {"nodes": [node], "pageInfo": {
+                "hasNextPage": len(calls) == 1,
+                "endCursor": "cursor-1" if len(calls) == 1 else None,
+            }}}
+        args = types.SimpleNamespace(label=None, state=None, assignee="me", limit=None)
+        out = cli.cmd_issues_list(args, ENV, post=post)
+
+        self.assertEqual([i["identifier"] for i in out], ["STU-1", "STU-2"])
+        self.assertEqual(out[0]["createdAt"], "2026-06-01T00:00:00Z")
+        self.assertIsNone(calls[0].get("after"))
+        self.assertEqual(calls[1].get("after"), "cursor-1")
+
     def test_issue_get_returns_full_shape(self):
         def post(query, variables, env):
             if "team { id } project" in query:
@@ -95,6 +124,14 @@ class TestWriteVerbs(unittest.TestCase):
         args = types.SimpleNamespace(name="agent:build")
         out = cli.cmd_label_ensure(args, ENV, post=fake_post(cap))
         self.assertEqual(out, {"name": "agent:build", "id": "l1", "created": False})
+
+    def test_labels_list_returns_names_and_ids(self):
+        cap = {"response": {"issueLabels": {"nodes": [
+            {"id": "l1", "name": "agent:build"},
+            {"id": "l2", "name": "agent:spec"}]}}}
+        out = cli.cmd_labels_list(types.SimpleNamespace(), ENV, post=fake_post(cap))
+        self.assertEqual(out, [{"id": "l1", "name": "agent:build"},
+                               {"id": "l2", "name": "agent:spec"}])
 
     def test_labels_init_creates_only_missing(self):
         def post(query, variables, env):
