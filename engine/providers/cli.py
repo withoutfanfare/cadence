@@ -74,6 +74,12 @@ def cadence_home() -> pathlib.Path:
 
 
 def env_path() -> pathlib.Path:
+    explicit = os.environ.get("CADENCE_CONFIG")
+    if explicit:
+        return pathlib.Path(explicit)
+    project = pathlib.Path.cwd() / "cadence" / ".env"
+    if project.exists():
+        return project
     return cadence_home() / ".env"
 
 

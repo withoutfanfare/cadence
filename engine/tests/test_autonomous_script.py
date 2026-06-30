@@ -62,6 +62,29 @@ exec {real_python} "$@"
         with open(advance_plist, encoding="utf-8") as f:
             self.assertEqual(f.read(), "original advance plist")
 
+    def test_off_writes_to_cadence_config_when_set(self):
+        app = os.path.join(self.tmp.name, "app")
+        config_dir = os.path.join(app, "cadence")
+        config = os.path.join(config_dir, ".env")
+        os.makedirs(config_dir)
+        with open(config, "w", encoding="utf-8") as f:
+            f.write("AUTONOMOUS=on\nCADENCE_STATE_DIR=%s\n" % os.path.join(self.tmp.name, "state"))
+        env = self._env()
+        env["CADENCE_CONFIG"] = config
+
+        result = subprocess.run(
+            ["bash", self.script, "off"],
+            cwd=app,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=10,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with open(config, encoding="utf-8") as f:
+            self.assertIn("AUTONOMOUS=0\n", f.read())
+
     def _env(self):
         env = os.environ.copy()
         env.update({

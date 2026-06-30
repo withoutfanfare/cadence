@@ -16,7 +16,7 @@ CONDUCT_PLIST="$PLISTDIR/com.cadence.conduct.plist"
 
 # Upsert AUTONOMOUS=<value> in .env (in place, preserving the rest of the file).
 set_env_flag() {
-  AENV="$CADENCE_HOME/.env" AVAL="$1" python3 - <<'PY'
+  AENV="$CADENCE_CONFIG" AVAL="$1" python3 - <<'PY'
 import os, re
 path, val = os.environ["AENV"], os.environ["AVAL"]
 try:
@@ -68,7 +68,7 @@ case "${1:-status}" in
     python3 "$SCHED_CLI" check || { echo "fix SCHED_* in .env first (cadence schedule show)" >&2; exit 1; }
     set_env_flag on
     AUTONOMOUS=on
-    echo "AUTONOMOUS=on written to .env"
+    echo "AUTONOMOUS=on written to $CADENCE_CONFIG"
     render_job advance "$ADVANCE_PLIST"; load "$ADVANCE_PLIST"
     render_job conduct "$CONDUCT_PLIST"; load "$CONDUCT_PLIST"
     echo
@@ -80,7 +80,7 @@ case "${1:-status}" in
   off)
     set_env_flag 0
     AUTONOMOUS=0
-    echo "AUTONOMOUS=0 written to .env"
+    echo "AUTONOMOUS=0 written to $CADENCE_CONFIG"
     unload "$ADVANCE_PLIST"
     unload "$CONDUCT_PLIST"
     echo
