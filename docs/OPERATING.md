@@ -283,6 +283,12 @@ cadence schedule apply
 them. For example, `SCHED_BUILD=:05` moves the build loop to `:05` each hour;
 `SCHED_TRIAGE=4h@0` runs triage every four hours (00:00, 04:00, …).
 
+Project-local `cadence/.env` works for manual commands, but the generated
+launchd jobs do not currently set `CADENCE_CONFIG`, pass `--config`, or set a
+working directory, so scheduled runs do not safely inherit a project-local
+config yet. Use the existing `$CADENCE_HOME/.env` compatibility path for
+scheduled runs, or add explicit launchd config support first.
+
 `cadence restart` is the lighter sibling: it reloads the existing plist files
 without regenerating them — use it after the Cadence repo moves, or after editing a
 plist by hand.
