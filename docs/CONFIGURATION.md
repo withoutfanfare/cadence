@@ -83,11 +83,84 @@ with `.env.example`: `MODEL_TRIAGE`, `MODEL_SPEC`, `MODEL_BUILD`,
 `MODEL_REVISE`, and `MODEL_ADVANCE`. Treat them as aliases only; prefer the
 `ORCHESTRATOR_*` variables above.
 
+### Provider Switching Examples
+
+Every orchestrator setting uses `provider:model` format. Supported provider
+names are `claude`, `codex`, `kimi`, and `opencode`. The model part is passed
+through to that provider's CLI, so use a model alias that provider accepts.
+
+To make Codex the lead orchestrator for every loop:
+
 ```dotenv
+ORCHESTRATOR_PROVIDER=codex
+ORCHESTRATOR_TRIAGE=codex:gpt-5.4
+ORCHESTRATOR_SPEC=codex:gpt-5.4
 ORCHESTRATOR_BUILD=codex:gpt-5.4
+ORCHESTRATOR_REVISE=codex:gpt-5.4
+ORCHESTRATOR_ADVANCE=codex:gpt-5.4
+
+REVIEW_PROVIDER=codex
+REVIEW_MODEL=gpt-5.4
+BUILD_IMPLEMENTER=codex
+```
+
+To keep Claude on planning stages but use Codex as the build orchestrator and
+Kimi as the coding implementer:
+
+```dotenv
+ORCHESTRATOR_TRIAGE=claude:sonnet
+ORCHESTRATOR_SPEC=claude:opus
+ORCHESTRATOR_BUILD=codex:gpt-5.4
+ORCHESTRATOR_REVISE=claude:sonnet
+ORCHESTRATOR_ADVANCE=claude:sonnet
+
 REVIEW_PROVIDER=claude
 REVIEW_MODEL=opus
 BUILD_IMPLEMENTER=kimi
+```
+
+To try Kimi as the lead loop provider while keeping Claude as the folded PR
+reviewer:
+
+```dotenv
+ORCHESTRATOR_TRIAGE=kimi:k2
+ORCHESTRATOR_SPEC=kimi:k2
+ORCHESTRATOR_BUILD=kimi:k2
+ORCHESTRATOR_REVISE=kimi:k2
+ORCHESTRATOR_ADVANCE=kimi:k2
+
+REVIEW_PROVIDER=claude
+REVIEW_MODEL=opus
+BUILD_IMPLEMENTER=kimi
+```
+
+To use OpenCode for build/revise only:
+
+```dotenv
+ORCHESTRATOR_TRIAGE=claude:sonnet
+ORCHESTRATOR_SPEC=claude:opus
+ORCHESTRATOR_BUILD=opencode:zai-coding-plan/glm-5.2
+ORCHESTRATOR_REVISE=opencode:zai-coding-plan/glm-5.2
+ORCHESTRATOR_ADVANCE=claude:sonnet
+
+REVIEW_PROVIDER=opencode
+REVIEW_MODEL=zai-coding-plan/glm-5.2
+BUILD_IMPLEMENTER=opencode
+```
+
+For a one-off manual run, override values in the command environment without
+editing `.env`:
+
+```bash
+ORCHESTRATOR_BUILD=codex:gpt-5.4
+BUILD_IMPLEMENTER=codex
+cadence run build
+```
+
+After changing providers, run:
+
+```bash
+cadence doctor
 ```
 
 ## Autonomous Mode
