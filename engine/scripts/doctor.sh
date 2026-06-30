@@ -148,16 +148,14 @@ fi
 
 if [ -d "$CADENCE_STATE_DIR" ]; then pass "state dir $CADENCE_STATE_DIR"; else fail "state dir missing"; fi
 
-for s in triage spec build revise; do
-  p="$HOME/Library/LaunchAgents/com.cadence.loop-$s.plist"
-  [ -f "$p" ] && pass "schedule loop-$s present" || echo "  ⚠️  no plist for loop-$s (schedule this loop when ready)"
-done
-
-# Autonomous jobs exist only after 'cadence autonomous on'. Warn if the mode is on
-# but the jobs were never scheduled (the flag alone schedules nothing).
-if [ "$_auto" = "1" ] || [ "$_auto" = "on" ] || [ "$_auto" = "true" ] || [ "$_auto" = "yes" ]; then
-  [ -f "$HOME/Library/LaunchAgents/com.cadence.loop-advance.plist" ] && pass "schedule advance present" || echo "  ⚠️  autonomous on but no advance plist (run: cadence autonomous on)"
-  [ -f "$HOME/Library/LaunchAgents/com.cadence.conduct.plist" ] && pass "schedule conduct present" || echo "  ⚠️  autonomous on but no conduct plist (run: cadence autonomous on)"
+_scheduled="$(printf '%s' "${CADENCE_SCHEDULED:-0}" | tr '[:upper:]' '[:lower:]')"
+_scheduler_plist="$HOME/Library/LaunchAgents/com.cadence.scheduler.plist"
+if [ -f "$_scheduler_plist" ]; then
+  pass "scheduler plist present"
+elif [ "$_scheduled" = "1" ] || [ "$_scheduled" = "on" ] || [ "$_scheduled" = "true" ] || [ "$_scheduled" = "yes" ]; then
+  echo "  ⚠️  CADENCE_SCHEDULED is on but no scheduler plist (run: cadence schedule apply)"
+else
+  echo "  schedule: off for this project"
 fi
 
 check_labels

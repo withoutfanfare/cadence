@@ -10,10 +10,10 @@ echo "── Cadence loops${LINEAR_TEAM_NAME:+ · $LINEAR_TEAM_NAME} ───�
 if [ -f "$RUNS/PAUSED" ]; then
   echo "  ⏸  PAUSED  (cadence resume to continue)"
 else
-  echo "  ▶  live · stages staggered (~one every 15 min; see launchd jobs below)"
+  echo "  ▶  live · scheduler checks enabled projects"
 fi
 echo; echo "launchd jobs (last exit code):"
-launchctl list 2>/dev/null | awk '/cadence\.(loop|conduct)/{printf "  %-32s %s\n",$3,$2}' || echo "  (none loaded)"
+launchctl list 2>/dev/null | awk '/cadence\.(scheduler|loop|conduct)/{printf "  %-32s %s\n",$3,$2}' || echo "  (none loaded)"
 echo; echo "Last run per stage:"
 for s in triage spec build revise advance conduct; do
   st=$(grep "starting .* $s " "$LOGD/$s.log" 2>/dev/null | tail -1 | grep -oE '^\[[^]]+\]')

@@ -44,8 +44,8 @@ Usage: cadence [--config path] <command> [args]
   digest [date]     Full digest for a date (default: today UTC)
   throughput [days] Per-stage rollup of recent runs (default 7 days)
   restart           Reload all launchd jobs after editing plists
-  schedule [show|apply]  Show or apply launchd timings (config-driven via SCHED_* in the active config)
-  autonomous on|off|status  Flip autonomous mode: update active config + load/unload advance & conduct jobs
+  schedule [show|status|tick|apply]  Manage the single launchd scheduler
+  autonomous on|off|status  Flip autonomous mode in the active config
   inspect           Read-only setup/status bundle for support and onboarding
   tend              Run the Clio hygiene pass now
   conduct [--dry-run]  Feed the autonomous queue (deterministic; opt-in via AUTONOMOUS)

@@ -27,16 +27,23 @@ tidy or to read what the agents produced.
 
 ## 1a. How a run executes
 
-1. **launchd** fires `engine/scripts/run-loop.sh <stage>` on a schedule.
-2. `run-loop.sh` sources `engine/lib/lib-env.sh` (resolves the active config file,
+1. **launchd** fires one job, `com.cadence.scheduler`, which runs
+   `cadence schedule tick`.
+2. The scheduler reads the explicit projects file, skips any project without
+   `CADENCE_SCHEDULED=1`, and launches at most `CADENCE_SCHEDULER_MAX_RUNS`
+   due stages per tick.
+3. Due stages run through `cadence --config <project>/cadence/.env run <stage>`
+   (or `cadence --config ... conduct`), so the same run path handles manual and
+   scheduled work.
+4. `run-loop.sh` sources `engine/lib/lib-env.sh` (resolves the active config file,
    applies defaults), then enforces **Step 0** *before* any model launch: the
    PAUSED flag and the **workspace guard** (`cadence linear teams` must show
    `LINEAR_TEAM_ID`). A paused or wrong-workspace run exits cheaply without
    paying for a model call.
-3. It renders the matching loop skill into a provider-neutral prompt, then invokes
+5. It renders the matching loop skill into a provider-neutral prompt, then invokes
    `engine/scripts/run-orchestrator.sh` with the configured `provider:model`.
-4. The matching **skill** in `skills/cadence-loop-<stage>/SKILL.md` is the loop body.
-5. The run appends a human digest + a JSON line to `$CADENCE_STATE_DIR` (default
+6. The matching **skill** in `skills/cadence-loop-<stage>/SKILL.md` is the loop body.
+7. The run appends a human digest + a JSON line to `$CADENCE_STATE_DIR` (default
    `~/.cadence`): `runs/YYYY-MM-DD.md`, `runs/runs.jsonl`, `runs/activity.log`,
    `logs/<stage>.log`.
 
@@ -46,10 +53,9 @@ build coding agent uses `BUILD_IMPLEMENTER`. See [AI Provider Roles](PROVIDERS.m
 or `cadence providers help` for the evergreen role map and examples.
 
 Manual front-door commands can use project-local config by running from the app
-checkout or passing `cadence --config /path/to/app/cadence/.env ...`. The current
-generated launchd plists do not pass `--config`, set `CADENCE_CONFIG`, or set a
-working directory, so scheduled project-local jobs are a follow-up unless an
-install keeps using the existing `$CADENCE_HOME/.env` compatibility path.
+checkout or passing `cadence --config /path/to/app/cadence/.env ...`. Scheduled
+runs use the same config path through the single scheduler, not one launchd plist
+per project or stage.
 
 ## 2. The board is the state machine — label vocabulary
 
@@ -197,8 +203,9 @@ environment variables at runtime.
 
 This separation means the same engine code can run against multiple projects by
 switching the active config path for manual commands — without touching the skills
-or scripts. Scheduled multi-profile/project-local jobs need explicit launchd
-support; the current generated jobs do not preserve a manual config selection.
+or scripts. Scheduled multi-project work is centralised in `cadence schedule tick`,
+which reads project folders from `CADENCE_PROJECTS_FILE` and refuses to run a
+project unless its own config opts in with `CADENCE_SCHEDULED=1`.
 
 ### Config file conventions
 

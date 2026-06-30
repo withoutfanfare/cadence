@@ -34,10 +34,10 @@ Cadence.
   `<project repo>/cadence/.env` and fill in your local profile.
 - [`../CHANGELOG.md`](../CHANGELOG.md) - notable changes.
 
-Project-local `cadence/.env` works for manual commands. The current generated
-macOS launchd jobs do not carry that config path into scheduled runs; use the
-existing root `.env` compatibility path for scheduling or wait for explicit
-launchd config support. See [Configuration](CONFIGURATION.md#schedule).
+Project-local `cadence/.env` works for manual and scheduled commands. The macOS
+launchd integration is one global scheduler job that reads registered project
+folders and runs due stages with each project's config. See
+[Configuration](CONFIGURATION.md#schedule).
 
 ## Recommended Reading Order
 

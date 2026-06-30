@@ -57,9 +57,9 @@ Cadence can also run *without* a human granting each gate. Tag issues `agent:aut
 (or let the conductor pick them) and turn it on:
 
 ```bash
-cadence autonomous on      # set AUTONOMOUS + schedule the advancer (hourly) and conductor (3-hourly)
-cadence autonomous status  # show the flag and whether both jobs are loaded
-cadence autonomous off     # reverse both — sets AUTONOMOUS=0 and unloads the jobs
+cadence autonomous on      # set AUTONOMOUS in the active config
+cadence autonomous status  # show the flag and scheduler state
+cadence autonomous off     # set AUTONOMOUS=0 and remove legacy autonomous jobs
 ```
 
 The advancer grants gates on your behalf and the conductor decides what to work on
@@ -140,10 +140,10 @@ cadence doctor
 cadence run triage
 ```
 
-Project-local `cadence/.env` is supported for manual commands now. The generated
-launchd jobs do not yet embed `CADENCE_CONFIG`, `--config`, or a working
-directory, so scheduled project-local runs need a later scheduling update or the
-existing root `.env` compatibility path.
+Project-local `cadence/.env` works for manual and scheduled runs. Scheduling uses
+one global launchd job, `com.cadence.scheduler`; it reads a projects file and
+then runs due stages with each project's own config. Projects are skipped unless
+their config contains `CADENCE_SCHEDULED=1`.
 
 For the first deliberate live triage run, keep the system paused until you are
 ready, then resume, run it, and pause again while you inspect the result:

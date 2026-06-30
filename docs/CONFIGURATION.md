@@ -213,16 +213,27 @@ it does not override the pause flag or any other gate.
 
 ## Schedule
 
-By default every loop runs hourly, staggered 15 minutes apart, with the conductor
-every 3 hours. Override any of these per loop with a `SCHED_<STAGE>` value, then run
-`cadence schedule apply` (regenerates the launchd plists and reloads them).
-`cadence schedule` with no argument prints the live schedule.
+Cadence uses one launchd job, `com.cadence.scheduler`. That job runs
+`cadence schedule tick`; the tick reads an explicit projects file and then runs
+due stages with `cadence --config <project>/cadence/.env ...`.
 
-Project-local `cadence/.env` is supported for manual commands. The generated
-launchd plists currently do not set `CADENCE_CONFIG`, pass `--config`, or set a
-working directory, so scheduled jobs do not safely inherit a project-local config
-yet. For scheduled runs in this slice, use the existing `$CADENCE_HOME/.env`
-compatibility path or add explicit launchd config support first.
+Scheduling is opt-in per project. Add the project folder to
+`CADENCE_PROJECTS_FILE`, then set `CADENCE_SCHEDULED=1` in that project's
+`cadence/.env`. The global tick runs at most `CADENCE_SCHEDULER_MAX_RUNS`
+stages per wake, default `1`, so adding projects does not create an unbounded
+fan-out.
+
+`cadence schedule` with no argument prints the stage cadence for the active
+config. `cadence schedule status` prints the projects file and whether each
+registered project has scheduling enabled.
+
+| Variable | Default | Scope | Description |
+| --- | --- | --- | --- |
+| `CADENCE_PROJECTS_FILE` | `$CADENCE_STATE_DIR/projects.txt` | scheduler | Newline-separated project folders or explicit `cadence/.env` paths. |
+| `CADENCE_SCHEDULER_INTERVAL` | `300` | scheduler | Launchd wake interval in seconds. |
+| `CADENCE_SCHEDULER_MAX_RUNS` | `1` | scheduler | Maximum scheduled stage runs per tick across all projects. |
+| `CADENCE_SCHEDULER_WINDOW_MINUTES` | `5` | scheduler | Due window used to tolerate launchd jitter without catching up old missed runs. |
+| `CADENCE_SCHEDULED` | unset/off | project | Set to `1`, `on`, `true`, or `yes` to let the scheduler run this project. |
 
 | Variable | Default | Job |
 | --- | --- | --- |
@@ -231,7 +242,7 @@ compatibility path or add explicit launchd config support first.
 | `SCHED_BUILD` | `:30` | build loop |
 | `SCHED_REVISE` | `:45` | revise loop |
 | `SCHED_ADVANCE` | `:55` | autonomous advancer |
-| `SCHED_CONDUCT` | `3h` | conductor |
+| `SCHED_CONDUCT` | `3h@50` | conductor |
 
 Value format — every cadence is clock-aligned to midnight, so firing times are
 predictable; stagger loops by giving them distinct minutes:
@@ -239,16 +250,12 @@ predictable; stagger loops by giving them distinct minutes:
 - `:MM` — hourly, at minute MM (e.g. `:15` runs every hour at `:15`).
 - `Nh` — every N hours, at minute 0 (e.g. `4h` → 00:00, 04:00, 08:00, …).
 - `Nh@MM` — every N hours, at minute MM (e.g. `4h@30` → 00:30, 04:30, …).
+- `off` — do not schedule this stage for this project.
 
-N is 1–24. `cadence schedule apply` validates every value first and refuses to write
-a broken
-plist. The defaults reproduce the historical schedule, so leaving `SCHED_*` unset
-changes nothing. The advancer still grants only one stage per pass, so an
-autonomous issue advances at most one stage per `SCHED_ADVANCE` interval.
-
-`cadence schedule apply` always (re)writes the four gated loops; it touches the
-advance and conduct jobs only when autonomous mode has already installed them, so
-it never enables autonomous on its own.
+N is 1–24. `cadence schedule apply` validates the active config before writing
+the scheduler plist; project configs are checked when the scheduler reads them.
+The scheduler records a small marker in each project's state dir so a jittery
+launchd wake cannot run the same stage twice in one due window.
 
 ## Verification Gates
 

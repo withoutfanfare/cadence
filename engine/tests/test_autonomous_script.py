@@ -2,7 +2,6 @@ import os
 import shutil
 import stat
 import subprocess
-import sys
 import tempfile
 import unittest
 
@@ -32,21 +31,8 @@ class TestAutonomousScript(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_on_leaves_existing_plist_intact_when_render_fails(self):
+    def test_on_writes_flag_without_loading_stage_plists(self):
         advance_plist = os.path.join(self.launch_agents, "com.cadence.loop-advance.plist")
-        with open(advance_plist, "w", encoding="utf-8") as f:
-            f.write("original advance plist")
-        real_python = sys.executable
-        self._write_exe("python3", f"""#!/bin/sh
-if [ "$2" = "check" ]; then
-  exit 0
-fi
-if [ "$2" = "render" ]; then
-  printf '<partial plist'
-  exit 1
-fi
-exec {real_python} "$@"
-""")
         self._write_exe("launchctl", "#!/bin/sh\nexit 0\n")
 
         result = subprocess.run(
@@ -58,11 +44,12 @@ exec {real_python} "$@"
             timeout=10,
         )
 
-        self.assertNotEqual(result.returncode, 0)
-        with open(advance_plist, encoding="utf-8") as f:
-            self.assertEqual(f.read(), "original advance plist")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(os.path.exists(advance_plist))
+        with open(os.path.join(self.root, ".env"), encoding="utf-8") as f:
+            self.assertIn("AUTONOMOUS=on\n", f.read())
 
-    def test_on_rejects_project_local_config_until_launchd_supports_it(self):
+    def test_on_writes_to_project_local_config(self):
         app = os.path.join(self.tmp.name, "app")
         config_dir = os.path.join(app, "cadence")
         config = os.path.join(config_dir, ".env")
@@ -81,12 +68,9 @@ exec {real_python} "$@"
             timeout=10,
         )
 
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("launchd scheduling currently requires", result.stderr)
-        self.assertIn("active config is", result.stderr)
-        self.assertIn("project-local cadence/.env", result.stderr)
+        self.assertEqual(result.returncode, 0, result.stderr)
         with open(config, encoding="utf-8") as f:
-            self.assertIn("AUTONOMOUS=0\n", f.read())
+            self.assertIn("AUTONOMOUS=on\n", f.read())
 
     def test_off_writes_to_cadence_config_when_set(self):
         app = os.path.join(self.tmp.name, "app")

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Cadence agent loop runner — invoked by launchd (com.cadence.loop-<stage>).
+# Cadence agent loop runner — invoked by the scheduler or manually.
 # Usage: run-loop.sh <triage|spec|build|revise>
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"

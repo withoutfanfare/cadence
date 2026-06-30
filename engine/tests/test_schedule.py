@@ -1,10 +1,13 @@
 import importlib.util
+import contextlib
+import io
 import os
 import stat
 import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 
 _spec = importlib.util.spec_from_file_location(
     "schedule_cli", os.path.join(os.path.dirname(__file__), "..", "schedule", "cli.py"))
@@ -47,6 +50,7 @@ class TestRender(unittest.TestCase):
         self.assertEqual(cli.describe(":00"), "hourly at :00")
         self.assertEqual(cli.describe("4h@30"), "every 4h at :30")
         self.assertEqual(cli.describe("3h"), "every 3h at :00")
+        self.assertEqual(cli.describe("off"), "off")
 
     def test_hours_for(self):
         self.assertEqual(cli._hours_for(4), [0, 4, 8, 12, 16, 20])
@@ -84,9 +88,75 @@ class TestRender(unittest.TestCase):
         self.assertIn("/home/bin/cadence", out)
         self.assertIn("<string>conduct</string>", out)
 
+    def test_render_scheduler_plist_calls_schedule_tick(self):
+        out = cli.render_scheduler_plist("/home", "/state", 300)
+        self.assertIn("<string>com.cadence.scheduler</string>", out)
+        self.assertIn("/home/bin/cadence", out)
+        self.assertIn("<string>schedule</string>", out)
+        self.assertIn("<string>tick</string>", out)
+        self.assertIn("<key>StartInterval</key><integer>300</integer>", out)
+        self.assertIn("/state/logs/scheduler.launchd.log", out)
+
     def test_spec_for_env_override_and_default(self):
         self.assertEqual(cli.spec_for("build", {"SCHED_BUILD": "4h@30"}), "4h@30")
         self.assertEqual(cli.spec_for("build", {}), ":30")
+
+
+class TestSchedulerTick(unittest.TestCase):
+    def test_tick_runs_due_enabled_project_once_and_marks_slot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "app")
+            config_dir = os.path.join(project, "cadence")
+            state = os.path.join(tmp, "state")
+            registry = os.path.join(tmp, "projects.txt")
+            os.makedirs(config_dir)
+            with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n" % state)
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(project + "\n")
+            calls = []
+
+            def fake_run(cmd, cwd=None, env=None):
+                calls.append((cmd, cwd, env))
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {
+                "CADENCE_HOME": "/cadence",
+                "CADENCE_PROJECTS_FILE": registry,
+                "CADENCE_SCHEDULER_MAX_RUNS": "1",
+            }
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(cli.tick(env, now=now, run=fake_run), 0)
+                self.assertEqual(cli.tick(env, now=now, run=fake_run), 0)
+
+        self.assertEqual(len(calls), 1)
+        cmd, cwd, run_env = calls[0]
+        self.assertEqual(cmd, ["/cadence/bin/cadence", "--config",
+                               os.path.join(config_dir, ".env"), "run", "triage"])
+        self.assertEqual(cwd, project)
+        self.assertEqual(run_env["CADENCE_CONFIG"], os.path.join(config_dir, ".env"))
+
+    def test_tick_skips_projects_not_opted_into_scheduling(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "app")
+            config_dir = os.path.join(project, "cadence")
+            registry = os.path.join(tmp, "projects.txt")
+            os.makedirs(config_dir)
+            with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                f.write("CADENCE_SCHEDULED=0\n")
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(project + "\n")
+
+            def fake_run(*_args, **_kwargs):
+                raise AssertionError("disabled project should not run")
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(cli.tick(env, now=now, run=fake_run), 0)
 
 
 class TestScheduleApplyScript(unittest.TestCase):
@@ -120,22 +190,22 @@ class TestScheduleApplyScript(unittest.TestCase):
         self.assertIn("active config is", result.stderr)
         self.assertIn("project-local cadence/.env", result.stderr)
 
-    def test_apply_leaves_existing_plist_intact_when_render_fails(self):
+    def test_apply_leaves_existing_scheduler_plist_intact_when_render_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = os.path.join(tmp, "home")
             bin_dir = os.path.join(tmp, "bin")
             launch_agents = os.path.join(home, "Library", "LaunchAgents")
             os.makedirs(launch_agents)
             os.makedirs(bin_dir)
-            plist = os.path.join(launch_agents, "com.cadence.loop-triage.plist")
+            plist = os.path.join(launch_agents, "com.cadence.scheduler.plist")
             with open(plist, "w", encoding="utf-8") as f:
-                f.write("original plist")
+                f.write("original scheduler plist")
 
             self._write_exe(os.path.join(bin_dir, "python3"), f"""#!/bin/sh
 if [ "$2" = "check" ]; then
   exit 0
 fi
-if [ "$2" = "render" ]; then
+if [ "$2" = "render-scheduler" ]; then
   printf '<partial plist'
   exit 1
 fi
@@ -160,7 +230,7 @@ exec {sys.executable} "$@"
 
             self.assertNotEqual(result.returncode, 0)
             with open(plist, encoding="utf-8") as f:
-                self.assertEqual(f.read(), "original plist")
+                self.assertEqual(f.read(), "original scheduler plist")
 
     def _write_exe(self, path, body):
         with open(path, "w", encoding="utf-8") as f:
