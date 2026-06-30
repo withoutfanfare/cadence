@@ -85,6 +85,11 @@ You need:
 There are no package dependencies to install for the engine itself; the Python
 adapters use the standard library.
 
+Lead loop providers are configured per stage in `.env` with
+`ORCHESTRATOR_<STAGE>=provider:model`. See
+[configuration provider examples](docs/CONFIGURATION.md#provider-switching-examples)
+for all-Codex, mixed-provider, Kimi, and OpenCode examples.
+
 ## Quick Install
 
 ```bash

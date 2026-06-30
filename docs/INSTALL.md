@@ -26,6 +26,12 @@ kimi --help         # if ORCHESTRATOR_* resolves to kimi
 opencode --help     # if ORCHESTRATOR_* resolves to opencode
 ```
 
+The lead loop provider is selected in `.env` with
+`ORCHESTRATOR_<STAGE>=provider:model`, where `provider` is one of `claude`,
+`codex`, `kimi`, or `opencode`. See
+[Provider Switching Examples](CONFIGURATION.md#provider-switching-examples) for
+copyable all-Codex, mixed-provider, Kimi, and OpenCode profiles.
+
 By default the build loop uses plain `git worktree`, so nothing beyond Git is
 needed. Set `WORKTREE_TOOL=grove` only if you use grove for Laravel Herd sites.
 
@@ -315,3 +321,16 @@ Install or log in to the CLI named by `ORCHESTRATOR_TRIAGE`,
 verify the provider commands are visible. Scheduled launchd jobs inherit a
 smaller environment than your terminal, so use `RUNNER_PATH_PREPEND` in `.env`
 if project tools need a custom path.
+
+For example, to make Codex lead the build loop only:
+
+```dotenv
+ORCHESTRATOR_BUILD=codex:gpt-5.4
+BUILD_IMPLEMENTER=codex
+```
+
+Then run:
+
+```bash
+cadence doctor
+```
