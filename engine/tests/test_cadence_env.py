@@ -43,6 +43,26 @@ class TestLoadEnv(unittest.TestCase):
         finally:
             del os.environ["A"]
 
+    def test_cadence_config_env_var_wins(self):
+        home = self._home_with("A=home\n")
+        config_dir = tempfile.mkdtemp()
+        config_path = os.path.join(config_dir, "custom.env")
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write("A=config\n")
+        os.environ["CADENCE_CONFIG"] = config_path
+        try:
+            self.assertEqual(load_env(home)["A"], "config")
+        finally:
+            del os.environ["CADENCE_CONFIG"]
+
+    def test_project_cadence_env_beats_home_env(self):
+        home = self._home_with("A=home\n")
+        project = tempfile.mkdtemp()
+        os.makedirs(os.path.join(project, "cadence"))
+        with open(os.path.join(project, "cadence", ".env"), "w", encoding="utf-8") as f:
+            f.write("A=project\n")
+        self.assertEqual(load_env(home, cwd=project)["A"], "project")
+
     def test_missing_env_file_is_empty_plus_environ(self):
         env = load_env(tempfile.mkdtemp())
         self.assertIsInstance(env, dict)

@@ -77,6 +77,70 @@ class TestFrontDoor(unittest.TestCase):
         self.assertIn("autonomous-ok", result.stdout)
         self.assertIn("schedule-ok", result.stdout)
 
+    def test_config_option_selects_project_config_before_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, "home")
+            root = os.path.join(tmp, "cadence-engine")
+            project = os.path.join(tmp, "app")
+            state = os.path.join(tmp, "state")
+            os.makedirs(home)
+            os.makedirs(os.path.join(root, "bin"))
+            os.makedirs(os.path.join(root, "engine", "lib"))
+            os.makedirs(os.path.join(root, "engine", "scripts"))
+            os.makedirs(os.path.join(project, "cadence"))
+            shutil.copy(os.path.join(ROOT, "bin", "cadence"), os.path.join(root, "bin", "cadence"))
+            shutil.copytree(os.path.join(ROOT, "engine", "lib"), os.path.join(root, "engine", "lib"), dirs_exist_ok=True)
+            self._write_exe(os.path.join(root, "engine", "scripts", "status.sh"), "#!/bin/sh\necho \"$CADENCE_STATE_DIR|$CADENCE_CONFIG\"\n")
+            config_path = os.path.join(project, "cadence", ".env")
+            with open(config_path, "w", encoding="utf-8") as f:
+                f.write("CADENCE_STATE_DIR=%s\n" % state)
+            env = os.environ.copy()
+            env["HOME"] = home
+
+            result = subprocess.run(
+                ["bash", os.path.join(root, "bin", "cadence"), "--config", config_path, "status"],
+                cwd=root,
+                env=env,
+                text=True,
+                capture_output=True,
+                timeout=10,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("%s|%s" % (state, config_path), result.stdout)
+
+    def test_project_cadence_env_is_auto_detected_from_cwd(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, "home")
+            root = os.path.join(tmp, "cadence-engine")
+            project = os.path.join(tmp, "app")
+            state = os.path.join(tmp, "state")
+            os.makedirs(home)
+            os.makedirs(os.path.join(root, "bin"))
+            os.makedirs(os.path.join(root, "engine", "lib"))
+            os.makedirs(os.path.join(root, "engine", "scripts"))
+            os.makedirs(os.path.join(project, "cadence"))
+            shutil.copy(os.path.join(ROOT, "bin", "cadence"), os.path.join(root, "bin", "cadence"))
+            shutil.copytree(os.path.join(ROOT, "engine", "lib"), os.path.join(root, "engine", "lib"), dirs_exist_ok=True)
+            self._write_exe(os.path.join(root, "engine", "scripts", "status.sh"), "#!/bin/sh\necho \"$CADENCE_STATE_DIR|$CADENCE_CONFIG\"\n")
+            config_path = os.path.join(project, "cadence", ".env")
+            with open(config_path, "w", encoding="utf-8") as f:
+                f.write("CADENCE_STATE_DIR=%s\n" % state)
+            env = os.environ.copy()
+            env["HOME"] = home
+
+            result = subprocess.run(
+                ["bash", os.path.join(root, "bin", "cadence"), "status"],
+                cwd=project,
+                env=env,
+                text=True,
+                capture_output=True,
+                timeout=10,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("%s|%s" % (state, os.path.realpath(config_path)), result.stdout)
+
     def _write_exe(self, path, body):
         with open(path, "w", encoding="utf-8") as f:
             f.write(body)
