@@ -1,5 +1,13 @@
 # Cadence
 
+Most automation does too little — pinging you with reminders — or too much,
+quietly merging code you never read. Cadence sits in between. It runs a small
+team of AI agents that pick up your Linear issues, triage them, write the spec,
+build the change in an isolated branch, and open a draft pull request — then
+stop and hand the decision back to you. Every gate between stages is yours to
+grant. The agents do the legwork around the clock; you stay the one who says
+"ship it".
+
 Cadence is a human-gated agent loop for Linear projects. It moves issues through
 four stages:
 
