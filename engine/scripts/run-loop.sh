@@ -68,6 +68,28 @@ PY
   exit 0
 }
 
+idle_before_launch() {
+  reason="$1"
+  detail="$2"
+  TS="$(date -u +%FT%TZ)"
+  payload="$(STAGE="$STAGE" REASON="$reason" DETAIL="$detail" python3 - <<'PY'
+import json, os
+print(json.dumps({
+    "stage": os.environ["STAGE"],
+    "dry_run": False,
+    "idle": True,
+    "reason": os.environ["REASON"],
+    "detail": os.environ["DETAIL"],
+}, separators=(",", ":")))
+PY
+)"
+  echo "[$TS] cadence $STAGE idle — $reason ($detail)" >> "$LOGDIR/$STAGE.log"
+  echo "[$TS] $STAGE — idle ($reason: $detail)" >> "$RUNS/activity.log"
+  echo "$payload" >> "$RUNS/runs.jsonl"
+  echo "$payload"
+  exit 0
+}
+
 # Pause and workspace checks are enforced here, not just in the prompt: an
 # unsafe system must not pay for a model invocation or run tools before the agent
 # honours the flag.
@@ -105,7 +127,7 @@ if [ "$STAGE" = "advance" ]; then
     *) pause_before_launch "autonomous-off" "AUTONOMOUS not enabled" ;;
   esac
   _n="$(python3 "$CADENCE_HOME/engine/linear/cli.py" issues-list --label agent:auto --assignee me 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)"
-  [ "$_n" = "0" ] && pause_before_launch "no-auto-work" "no agent:auto issues in scope"
+  [ "$_n" = "0" ] && idle_before_launch "no-auto-work" "no agent:auto issues in scope"
 fi
 
 cd "$WORKTREE" || { echo "project dir missing: $WORKTREE" >&2; exit 1; }
@@ -139,7 +161,10 @@ if [ "$STAGE" = "build" ] || [ "$STAGE" = "revise" ]; then
       [ "$_br" = "$_base" ] && continue
       _tip="$(git -C "$_wt" rev-parse HEAD 2>/dev/null)" || continue
       [ "$_tip" = "$_basetip" ] && continue                                            # fresh/unbuilt — leave
-      git -C "$_wt" diff --quiet 2>/dev/null && git -C "$_wt" diff --cached --quiet 2>/dev/null || continue  # dirty — leave
+      if ! git -C "$_wt" diff --quiet 2>/dev/null \
+         || ! git -C "$_wt" diff --cached --quiet 2>/dev/null; then
+        continue  # dirty — leave
+      fi
       git -C "$PROJECT_DIR" merge-base --is-ancestor "$_tip" "origin/$_base" 2>/dev/null || continue          # unmerged — leave
       # Remove via the engine's tool-aware verb (grove rm under WORKTREE_TOOL=grove —
       # which also unregisters the Herd site + deletes the branch; plain git otherwise).

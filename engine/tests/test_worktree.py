@@ -49,6 +49,10 @@ class TestWorktreeGit(unittest.TestCase):
             ["git", "-C", self.proj, "show-ref", "--verify", "--quiet",
              f"refs/heads/{name}"]).returncode == 0
 
+    def _set_worktree_tool(self, tool):
+        with open(os.path.join(self.tmp, ".env"), "a", encoding="utf-8") as f:
+            f.write(f"WORKTREE_TOOL={tool}\n")
+
     def test_add_creates_worktree_and_branch(self):
         rc, path, err = self._wt("add", "stu-1", "develop")
         self.assertEqual(rc, 0, err)
@@ -68,6 +72,25 @@ class TestWorktreeGit(unittest.TestCase):
         self.assertEqual(path, os.path.join(self.wtbase, "stu-1"))
         self.assertFalse(os.path.exists(path), "path verb must not create anything")
         self.assertFalse(self._branch_exists("stu-1"))
+
+    def test_path_rejects_unknown_worktree_tool(self):
+        self._set_worktree_tool("unknown")
+
+        rc, path, err = self._wt("path", "stu-1")
+
+        self.assertEqual(rc, 2)
+        self.assertEqual(path, "")
+        self.assertIn("unknown WORKTREE_TOOL", err)
+
+    def test_add_rejects_existing_non_worktree_directory(self):
+        stale = os.path.join(self.wtbase, "stu-1")
+        os.makedirs(stale)
+
+        rc, path, err = self._wt("add", "stu-1", "develop")
+
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(path, "")
+        self.assertIn("not a git worktree", err)
 
     def test_remove_clears_worktree_and_branch(self):
         _, path, _ = self._wt("add", "stu-1", "develop")

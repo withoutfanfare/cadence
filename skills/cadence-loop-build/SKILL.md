@@ -1,6 +1,6 @@
 ---
 name: cadence-loop-build
-description: Build loop for the configured Linear project — implements a human-gated, spec'd issue in an isolated worktree off develop, runs the gates, opens a DRAFT PR against develop, and folds in a code review. Never merges, never marks a PR ready, never moves an issue past In Review. Runs unattended on a schedule. Triggers include "run the build loop", "cadence-loop-build", or a scheduled routine invoking it.
+description: Build loop for the configured Linear project — implements a human-gated, spec'd issue in an isolated worktree off the configured base branch, runs the gates, opens a DRAFT PR against that base branch, and folds in a code review. Never merges, never marks a PR ready, never moves an issue past In Review. Runs unattended on a schedule. Triggers include "run the build loop", "cadence-loop-build", or a scheduled routine invoking it.
 version: 1.2.0
 model: opus
 argument-hint: "[--limit=N] [--dry-run] [--implementer=claude|kimi|opencode|codex]"
@@ -20,7 +20,7 @@ allowed-tools:
 
 You are the **build loop**. You take an issue the human has
 authorised (`agent:build`, with an approved spec) and implement it in an isolated
-worktree, open a **draft** PR against `develop`, and fold in a code review — then
+worktree, open a **draft** PR against `$BASE_BRANCH`, and fold in a code review — then
 hand it back for the human's GATE 3 decision. You run unattended, on a schedule.
 Read `docs/ARCHITECTURE.md` for the full model; this skill implements the Build +
 Review stages.
@@ -39,8 +39,8 @@ present (and `grove`/`herd` only when `WORKTREE_TOOL=grove`).
 1. **The configured Linear project only** — team `LINEAR_TEAM_ID` and project
    `LINEAR_PROJECT_ID` from `.env`.
 2. **Assigned to the configured assignee (`LINEAR_ASSIGNEE_ID`) only.**
-3. **PRs only ever against `develop`** — worktree off `develop`, rebase on
-   `origin/develop`, PR `--base develop`. Never main.
+3. **PRs only ever against `$BASE_BRANCH`** — worktree off `$BASE_BRANCH`, rebase
+   on its origin tracking branch, PR `--base "$BASE_BRANCH"`. Never main.
 
 Act **only** on issues carrying `agent:build`. Skip any carrying `agent:hold`,
 `agent:superseded`, `agent:needs-human`, or a fresh `agent:claimed` (reclaim a claim
@@ -60,10 +60,10 @@ agents would write the same fix.
   merge — a draft can't be merged). Leave it — never revert it to draft, never raise
   it as an "external automation" alarm.
 - Never set `agent:revise` or any later gate — that is the human's GATE 3.
-- Push only to the issue's own branch. Never push to `develop`/`main`.
+- Push only to the issue's own branch. Never push to `$BASE_BRANCH`/`main`.
 - No "Claude"/"AI" mention in any commit, branch, or PR text (project rule).
 - Skip an issue only if an **open PR** already exists for it (or its branch has
-  commits ahead of `develop`). Do **not** skip on bare-branch existence —
+  commits ahead of `$BASE_BRANCH`). Do **not** skip on bare-branch existence —
   `cadence worktree add` creates a tracking branch, so a branch alone is not a signal
   of in-progress work.
 
@@ -80,24 +80,10 @@ agents would write the same fix.
 
 ## Step 0 — pause checks (before any read, write, claim, or worktree)
 
-Run BOTH checks before anything else, every run. If either trips, **pause**: write
-nothing to Linear, create no worktree, claim nothing, notify, log, and exit with
-the pause JSON. Only when both pass do you continue to the procedure.
-
-1. **Manual pause.** If `$CADENCE_STATE_DIR/runs/PAUSED` exists, pause with reason
-   `manual`.
-2. **Workspace guard.** Run `cadence linear teams`. If the output contains no entry
-   whose `id` equals `LINEAR_TEAM_ID` (from `.env`), the key is wrong/expired or
-   points at another workspace — **pause** with reason `wrong-workspace`, recording
-   the team names you did see.
-
-On a pause, do all three, then exit — touch nothing else:
-- **Notify** (macOS): `osascript -e 'display notification "<reason>: <detail>" with title "build loop paused" sound name "Funk"'`
-- **Log**: append one line to `$CADENCE_STATE_DIR/runs/<date>.md` —
-  `⏸ build paused — <reason> (<detail>) · <UTC timestamp>` (dates via `date -u +%F`
-  / `date -u +%FT%TZ`, never invented).
-- **Exit JSON** to stdout and `$CADENCE_STATE_DIR/runs/runs.jsonl`:
-  `{"stage":"build","paused":true,"reason":"manual|wrong-workspace","detail":"<PAUSED present | teams seen>"}`
+The runner enforces the manual pause flag and workspace guard before launching
+you. Re-check them before any write or worktree action for defence in depth. If
+either check fails, emit the standard pause JSON and records described in
+`docs/ARCHITECTURE.md` §5a, then exit without touching Linear, git, or files.
 
 ## Implementer — who writes the code (`--implementer`, default `claude`)
 
@@ -129,14 +115,14 @@ the diff, the red→green test, and the scope yourself.
    implement to *those*. If no spec document is linked (the issue was gated
    `agent:build` without a spec stage), implement to the issue's description +
    acceptance-criteria stub instead, and note in the PR that no spec doc was present.
-3. **Worktree off develop.** Create it through the engine helper, which abstracts the
+3. **Worktree off `$BASE_BRANCH`.** Create it through the engine helper, which abstracts the
    worktree tool (plain `git worktree` by default; grove when `WORKTREE_TOOL=grove`):
-   `WT="$(cadence worktree add <branch> develop)"; cd "$WT"` — the helper prints the
+   `base="${BASE_BRANCH:-develop}"; WT="$(cadence worktree add <branch> "$base")"; cd "$WT"` — the helper prints the
    worktree path on stdout. `<branch>` is the issue's Linear **identifier** lowercased
    (e.g. `stu-1799`) — **not** the full `gitBranchName`. The PR still auto-links:
    Linear matches the issue ID anywhere in the branch, and step 7 also puts the ID in
-   the PR body. Confirm the worktree is based on `origin/develop` (rebase if develop
-   has moved).
+   the PR body. Confirm the worktree is based on the origin tracking branch for
+   `$BASE_BRANCH` (rebase if the base has moved).
    **Only when `WORKTREE_TOOL=grove`:** the helper also provisions a Laravel Herd site,
    and the Herd URL must stay ≤ 60 chars or SSL breaks. If the repo's `.groveconfig`
    sets a `GROVE_URL_SUBDOMAIN` prefix the URL gains that prefix; grove caps only
@@ -203,7 +189,8 @@ the diff, the red→green test, and the scope yourself.
    at setup, so before committing run `git restore --worktree --staged CLAUDE.md
    AGENTS.md` (and any other unrelated grove-imported file) so those never ride into
    the PR. (The default `git` tool imports nothing, so this restore is a no-op there.)
-   Conventional commit (no AI mention). Push the branch. `gh pr create --draft --base develop`
+   Conventional commit (no AI mention). Push the branch.
+   `base="${BASE_BRANCH:-develop}"; gh pr create --draft --base "$base"`
    with a full in-house description:
    problem, approach, the reproduce-or-not finding, test evidence (gate results),
    leftover bug-check notes, risks, rollback, and the issue ID for Linear linking.

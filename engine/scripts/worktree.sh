@@ -23,13 +23,22 @@ WT="$WORKTREE_BASE/$branch"
 SITE="$(basename "$PROJECT_DIR")"
 tool="${WORKTREE_TOOL:-git}"
 
+case "$tool" in
+  git|grove) ;;
+  *) echo "worktree: unknown WORKTREE_TOOL '$tool' (use git or grove)" >&2; exit 2 ;;
+esac
+
+assert_worktree_dir() {
+  git -C "$WT" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || { echo "worktree: existing directory is not a git worktree: $WT" >&2; exit 1; }
+}
+
 case "$verb" in
   path) echo "$WT" ;;
 
   add)
     # Idempotent: an existing worktree dir is re-used (revise re-runs the same branch).
-    # ponytail: "dir exists ⇒ reuse"; a stale non-worktree dir would surface on the add below.
-    if [ -d "$WT" ]; then echo "$WT"; exit 0; fi
+    if [ -d "$WT" ]; then assert_worktree_dir; echo "$WT"; exit 0; fi
     case "$tool" in
       grove)
         grove add "$SITE" "$branch" "$base" -f 1>&2 \
@@ -56,7 +65,6 @@ case "$verb" in
             || { echo "worktree: 'git worktree add' (new branch off $start) failed" >&2; exit 1; }
         fi
         ;;
-      *) echo "worktree: unknown WORKTREE_TOOL '$tool' (use git or grove)" >&2; exit 2 ;;
     esac
     [ -d "$WT" ] || { echo "worktree: expected $WT after add" >&2; exit 1; }
     echo "$WT"
@@ -72,7 +80,6 @@ case "$verb" in
         git -C "$PROJECT_DIR" branch -D "$branch"            >/dev/null 2>&1 || true
         git -C "$PROJECT_DIR" worktree prune                 >/dev/null 2>&1 || true
         ;;
-      *) echo "worktree: unknown WORKTREE_TOOL '$tool' (use git or grove)" >&2; exit 2 ;;
     esac
     ;;
 

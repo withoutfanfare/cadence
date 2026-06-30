@@ -152,6 +152,10 @@ This guard exists because the Linear API key is the runtime authority boundary.
 The workspace it can currently reach is treated as the authoritative signal for
 whether it is safe to run.
 
+The `advance` runner also exits before invoking the model when autonomous mode is
+on but no in-scope issue carries `agent:auto`. That is recorded as an idle run,
+not a pause: there is no safety fault, just no autonomous work to advance.
+
 ---
 
 ## 6. Engine vs profile

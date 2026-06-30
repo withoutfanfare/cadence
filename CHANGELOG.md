@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Basso" sound) and is recorded in the dated digest as well as the activity feed.
 - `cadence restart` now reloads every installed `com.cadence.*.plist` (advance and
   conduct included), not just the four gated loops.
+- Loop skill prompts now use the configured `BASE_BRANCH` for worktrees,
+  investigation, PR creation, and PR back-fill instead of hardcoding `develop`.
+- Loop skill prompts keep Step 0 as a short defence-in-depth check and defer the
+  detailed pause-recording mechanics to `docs/ARCHITECTURE.md`.
 
 ### Added (engine extraction)
 
@@ -70,6 +74,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Linear issue listing now paginates beyond the first 100 issues and includes
+  `createdAt`, so queue/conductor ordering can honour the promised oldest-first
+  tie-breaker.
+- An `advance` run with autonomous mode enabled but no `agent:auto` issues now
+  records a quiet idle result instead of a pause.
+- `cadence schedule apply` now renders launchd plists to a temporary file and
+  moves them into place only after a successful non-empty render.
+- The triage loop prompt now separates normal metadata writes, full-mode PR
+  back-fill issue creation, and failure-only comments.
+- `cadence worktree add` now refuses to reuse a stale plain directory that is not
+  a git worktree, and all worktree verbs consistently reject unknown
+  `WORKTREE_TOOL` values.
 - Runner pre-launch safety now records manual and wrong-workspace pauses in the
   stage log, activity feed, dated digest, and `runs.jsonl` before invoking Claude.
 - Linear adapter issue/document operations now fail closed when required scope

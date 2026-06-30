@@ -39,7 +39,7 @@ class TestRunLoopPreLaunchGuards(unittest.TestCase):
         os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR)
         return path
 
-    def _env(self):
+    def _env(self, **overrides):
         env = os.environ.copy()
         env.update({
             "CADENCE_STATE_DIR": self.state,
@@ -51,13 +51,14 @@ class TestRunLoopPreLaunchGuards(unittest.TestCase):
             "LINEAR_API_KEY": "token",
             "NOTIFY": "off",
         })
+        env.update(overrides)
         return env
 
-    def _run(self):
+    def _run(self, stage="triage", **env_overrides):
         return subprocess.run(
-            ["bash", self.script, "triage"],
+            ["bash", self.script, stage],
             cwd=self.root,
-            env=self._env(),
+            env=self._env(**env_overrides),
             text=True,
             capture_output=True,
             timeout=10,
@@ -117,6 +118,31 @@ exec {real_python} "$@"
             feed = f.read()
         self.assertIn("FAILED — exit 7", feed)
         self.assertIn("FAILED", self._read_today_digest())
+
+    def test_advance_no_auto_work_records_idle_without_pause_digest(self):
+        real_python = sys.executable
+        linear_cli = os.path.join(self.root, "engine", "linear", "cli.py")
+        self._write_exe("python3", f"""#!/bin/sh
+if [ "$1" = "{linear_cli}" ] && [ "$2" = "teams" ]; then
+  printf '[{{"id":"team-1","name":"Team"}}]\\n'
+  exit 0
+fi
+if [ "$1" = "{linear_cli}" ] && [ "$2" = "issues-list" ]; then
+  printf '[]\\n'
+  exit 0
+fi
+exec {real_python} "$@"
+""")
+
+        result = self._run("advance", AUTONOMOUS="on")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["stage"], "advance")
+        self.assertTrue(payload["idle"])
+        self.assertFalse(payload.get("paused", False))
+        self.assertFalse([x for x in os.listdir(os.path.join(self.state, "runs"))
+                          if x.endswith(".md")])
 
     def _read_today_digest(self):
         files = [x for x in os.listdir(os.path.join(self.state, "runs"))

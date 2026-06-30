@@ -1,5 +1,9 @@
 import importlib.util
 import os
+import stat
+import subprocess
+import sys
+import tempfile
 import unittest
 
 _spec = importlib.util.spec_from_file_location(
@@ -83,6 +87,55 @@ class TestRender(unittest.TestCase):
     def test_spec_for_env_override_and_default(self):
         self.assertEqual(cli.spec_for("build", {"SCHED_BUILD": "4h@30"}), "4h@30")
         self.assertEqual(cli.spec_for("build", {}), ":30")
+
+
+class TestScheduleApplyScript(unittest.TestCase):
+    def test_apply_leaves_existing_plist_intact_when_render_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, "home")
+            bin_dir = os.path.join(tmp, "bin")
+            launch_agents = os.path.join(home, "Library", "LaunchAgents")
+            os.makedirs(launch_agents)
+            os.makedirs(bin_dir)
+            plist = os.path.join(launch_agents, "com.cadence.loop-triage.plist")
+            with open(plist, "w", encoding="utf-8") as f:
+                f.write("original plist")
+
+            self._write_exe(os.path.join(bin_dir, "python3"), f"""#!/bin/sh
+if [ "$2" = "check" ]; then
+  exit 0
+fi
+if [ "$2" = "render" ]; then
+  printf '<partial plist'
+  exit 1
+fi
+exec {sys.executable} "$@"
+""")
+            self._write_exe(os.path.join(bin_dir, "launchctl"), "#!/bin/sh\nexit 0\n")
+            env = os.environ.copy()
+            env.update({
+                "HOME": home,
+                "PATH": bin_dir + os.pathsep + env.get("PATH", ""),
+                "CADENCE_STATE_DIR": os.path.join(tmp, "state"),
+            })
+
+            result = subprocess.run(
+                ["bash", os.path.join(os.path.dirname(__file__), "..", "scripts", "schedule.sh"), "apply"],
+                cwd=os.path.join(os.path.dirname(__file__), "..", ".."),
+                env=env,
+                text=True,
+                capture_output=True,
+                timeout=10,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            with open(plist, encoding="utf-8") as f:
+                self.assertEqual(f.read(), "original plist")
+
+    def _write_exe(self, path, body):
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(body)
+        os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR)
 
 
 if __name__ == "__main__":
