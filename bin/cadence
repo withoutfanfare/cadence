@@ -44,6 +44,7 @@ Usage: cadence <command> [args]
   bakeoff <brief> <filter> [impls]  Compare implementer CLIs in isolated worktrees
   labels init|list|ensure <name>  Initialise, inspect, or create Linear labels
   linear <args>     Linear API adapter (teams, issues-list, issue-get, …)
+  providers roles|show|set  Inspect or update AI provider roles in .env
   prompt render <stage> [args...] --output <file>  Render a provider-neutral loop prompt
   advance <args>    Advancer decision core (decide, criteria, repairs)
   memory <args>     Memory adapter (recall, remember)
@@ -121,6 +122,7 @@ case "$cmd" in
              *) echo "usage: cadence prompt render <stage> [args...] --output <file>" >&2; exit 2 ;;
            esac ;;
   linear)  exec python3 "$CADENCE_HOME/engine/linear/cli.py" "$@" ;;
+  providers) exec python3 "$CADENCE_HOME/engine/providers/cli.py" "$@" ;;
   advance) exec python3 "$CADENCE_HOME/engine/advance/cli.py" "$@" ;;
   memory)  exec python3 "$CADENCE_HOME/engine/memory/cli.py" "$@" ;;
   worktree) exec bash "$CADENCE_HOME/engine/scripts/worktree.sh" "$@" ;;

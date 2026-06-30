@@ -26,9 +26,10 @@ kimi --help         # if ORCHESTRATOR_* resolves to kimi
 opencode --help     # if ORCHESTRATOR_* resolves to opencode
 ```
 
-The lead loop provider is selected in `.env` with
-`ORCHESTRATOR_<STAGE>=provider:model`, where `provider` is one of `claude`,
-`codex`, `kimi`, or `opencode`. See
+The lead loop provider is selected with `cadence providers set`, which updates
+`.env` with `ORCHESTRATOR_<STAGE>=provider:model` values. `provider` must be one
+of `claude`, `codex`, `kimi`, or `opencode`. Use `cadence providers roles` to
+see what each slot does. See
 [Provider Switching Examples](CONFIGURATION.md#provider-switching-examples) for
 copyable all-Codex, mixed-provider, Kimi, and OpenCode profiles.
 
@@ -324,9 +325,8 @@ if project tools need a custom path.
 
 For example, to make Codex lead the build loop only:
 
-```dotenv
-ORCHESTRATOR_BUILD=codex:gpt-5.4
-BUILD_IMPLEMENTER=codex
+```bash
+cadence providers set --build codex:gpt-5.4 --implementer codex
 ```
 
 Then run:
