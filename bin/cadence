@@ -7,6 +7,14 @@ set -u
 SELF="${BASH_SOURCE[0]:-$0}"
 while [ -L "$SELF" ]; do _l="$(readlink "$SELF")"; case "$_l" in /*) SELF="$_l" ;; *) SELF="$(dirname "$SELF")/$_l" ;; esac; done
 BIN="$(cd "$(dirname "$SELF")" && pwd)"
+
+if [ "${1:-}" = "--config" ]; then
+  [ -n "${2:-}" ] || { echo "--config needs a path" >&2; exit 2; }
+  CADENCE_CONFIG="$2"
+  export CADENCE_CONFIG
+  shift 2
+fi
+
 # shellcheck disable=SC1091
 source "$BIN/../engine/lib/lib-env.sh"   # sets CADENCE_HOME, CADENCE_STATE_DIR, .env
 
@@ -23,7 +31,7 @@ usage() {
   cat <<EOF
 cadence — control the Cadence agent loops
 
-Usage: cadence <command> [args]
+Usage: cadence [--config path] <command> [args]
 
   status            Live/paused state, launchd jobs, last run per stage, activity
   doctor [--labels] Verify the setup (.env, API key, labels, provider CLIs, schedule)
