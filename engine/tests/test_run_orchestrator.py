@@ -43,13 +43,36 @@ class TestRunOrchestrator(unittest.TestCase):
         )
 
     def test_claude_invocation_uses_prompt_and_model(self):
-        self._write_exe("claude", "#!/bin/sh\nstdin=$(cat)\nprintf 'claude:%s:%s\\n' \"$4\" \"$stdin\"")
+        self._write_exe("claude", "#!/bin/sh\nstdin=$(cat)\nprintf 'claude:%s:%s\\n' \"$3\" \"$stdin\"")
 
         result = self._run("claude", "sonnet")
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("run-orchestrator: claude triage", result.stderr)
         self.assertIn("claude:sonnet:hello provider", result.stdout)
+
+    def test_kimi_invocation_uses_short_file_instruction(self):
+        self._write_exe("kimi", "#!/bin/sh\nprintf 'kimi:%s:%s\\n' \"$2\" \"$4\"")
+
+        result = self._run("kimi", "k2")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("kimi:k2:Read and follow the brief in this file:", result.stdout)
+        self.assertIn(str(self.prompt), result.stdout)
+
+    def test_opencode_invocation_attaches_prompt_file(self):
+        self._write_exe(
+            "opencode",
+            "#!/bin/sh\nprintf 'opencode:%s:%s:%s:%s\\n' \"$3\" \"$7\" \"$8\" \"$9\"",
+        )
+
+        result = self._run("opencode", "provider/model")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            f"opencode:provider/model:-f:{self.prompt}:Follow the attached brief exactly.",
+            result.stdout,
+        )
 
     def test_codex_invocation_sets_workdir_and_model(self):
         self._write_exe("codex", "#!/bin/sh\nstdin=$(cat)\nprintf 'codex:%s:%s:%s\\n' \"$(pwd)\" \"$3\" \"$stdin\"")

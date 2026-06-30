@@ -75,16 +75,16 @@ PY
 
 case "$PROVIDER" in
   claude)
-    _run_with_timeout "$TIMEOUT" "$WORKDIR" "$PROMPT_FILE" claude -p "Follow the stdin brief exactly." --model "$MODEL" --dangerously-skip-permissions
+    _run_with_timeout "$TIMEOUT" "$WORKDIR" "$PROMPT_FILE" claude -p --model "$MODEL" --dangerously-skip-permissions
     ;;
   codex)
     _run_with_timeout "$TIMEOUT" "$WORKDIR" "$PROMPT_FILE" codex exec --model "$MODEL" --dangerously-bypass-approvals-and-sandbox -c 'mcp_servers={}' -C "$WORKDIR" --skip-git-repo-check -
     ;;
   kimi)
-    _run_with_timeout "$TIMEOUT" "$WORKDIR" "$PROMPT_FILE" kimi -m "$MODEL" -p "Follow the stdin brief exactly."
+    _run_with_timeout "$TIMEOUT" "$WORKDIR" "" kimi -m "$MODEL" -p "Read and follow the brief in this file: $PROMPT_FILE"
     ;;
   opencode)
-    _run_with_timeout "$TIMEOUT" "$WORKDIR" "" opencode run --model "$MODEL" --dir "$WORKDIR" --dangerously-skip-permissions -f "$PROMPT_FILE" --prompt "Follow the attached brief exactly."
+    _run_with_timeout "$TIMEOUT" "$WORKDIR" "" opencode run --model "$MODEL" --dir "$WORKDIR" --dangerously-skip-permissions -f "$PROMPT_FILE" "Follow the attached brief exactly."
     ;;
   *)
     echo "run-orchestrator: unknown provider: $PROVIDER" >&2

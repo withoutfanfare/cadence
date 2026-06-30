@@ -31,7 +31,7 @@ class TestRunReviewer(unittest.TestCase):
     def test_reviewer_uses_orchestrator_contract(self):
         self._write_exe(
             "claude",
-            "#!/bin/sh\nprintf 'reviewer-proxy:%s:%s:%s\\n' \"$1\" \"$2\" \"$4\"",
+            "#!/bin/sh\nstdin=$(cat)\nprintf 'reviewer-proxy:%s:%s:%s\\n' \"$1\" \"$3\" \"$stdin\"",
         )
         env = os.environ.copy()
         env["RUNNER_PATH_PREPEND"] = str(self.bin)
@@ -50,7 +50,7 @@ class TestRunReviewer(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("run-orchestrator: claude review model=opus", result.stderr)
         self.assertIn("timeout=5s", result.stderr)
-        self.assertIn("reviewer-proxy:-p:Follow the stdin brief exactly.:opus", result.stdout)
+        self.assertIn("reviewer-proxy:-p:opus:review this diff", result.stdout)
 
 
 if __name__ == "__main__":
