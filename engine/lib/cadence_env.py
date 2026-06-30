@@ -16,10 +16,20 @@ def _parse_value(val):
     return val.split()[0]
 
 
-def load_env(home=None):
+def resolve_env_path(home=None, cwd=None):
     home = home or os.environ.get("CADENCE_HOME") or os.getcwd()
+    explicit = os.environ.get("CADENCE_CONFIG")
+    if explicit:
+        return explicit
+    project_env = os.path.join(cwd or os.getcwd(), "cadence", ".env")
+    if os.path.exists(project_env):
+        return project_env
+    return os.path.join(home, ".env")
+
+
+def load_env(home=None, cwd=None):
     env = {}
-    path = os.path.join(home, ".env")
+    path = resolve_env_path(home=home, cwd=cwd)
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
             for line in f:
@@ -30,4 +40,5 @@ def load_env(home=None):
                 env[key.strip()] = _parse_value(val)
     # Real environment wins over the file (lets callers/tests inject).
     env.update(os.environ)
+    env["CADENCE_CONFIG"] = path
     return env
