@@ -39,6 +39,11 @@ tidy or to read what the agents produced.
    `~/.cadence`): `runs/YYYY-MM-DD.md`, `runs/runs.jsonl`, `runs/activity.log`,
    `logs/<stage>.log`.
 
+Provider roles are deliberately separate: loop orchestrators use
+`ORCHESTRATOR_*`, folded review uses `REVIEW_PROVIDER`/`REVIEW_MODEL`, and the
+build coding agent uses `BUILD_IMPLEMENTER`. See [AI Provider Roles](PROVIDERS.md)
+or `cadence providers help` for the evergreen role map and examples.
+
 ## 2. The board is the state machine — label vocabulary
 
 An issue's labels are its state. The loops read labels to decide what to act on
