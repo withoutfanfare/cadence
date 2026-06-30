@@ -132,18 +132,36 @@ fi
 
 cd "$WORKTREE" || { echo "project dir missing: $WORKTREE" >&2; exit 1; }
 
+provider_from_pair() {
+  pair="$1"
+  case "$pair" in
+    *:*) printf '%s\n' "${pair%%:*}" ;;
+    *) printf '%s\n' "${ORCHESTRATOR_PROVIDER:-claude}" ;;
+  esac
+}
+
+model_from_pair() {
+  pair="$1"
+  case "$pair" in
+    *:*) printf '%s\n' "${pair#*:}" ;;
+    *) printf '%s\n' "$pair" ;;
+  esac
+}
+
 case "$STAGE" in
   triage)
     MODE=enrich; [ "$(date +%H)" = "07" ] && MODE=full
-    CMD="/cadence-loop-triage --mode=$MODE --since=last-run --live"; MODEL="$MODEL_TRIAGE" ;;
-  spec)   CMD="/cadence-loop-spec";   MODEL="$MODEL_SPEC" ;;
-  build)  CMD="/cadence-loop-build --implementer=$BUILD_IMPLEMENTER"; MODEL="$MODEL_BUILD" ;;
-  revise) CMD="/cadence-loop-revise"; MODEL="$MODEL_REVISE" ;;
+    CMD_ARGS=("--mode=$MODE" "--since=last-run" "--live"); PAIR="$ORCHESTRATOR_TRIAGE" ;;
+  spec)   CMD_ARGS=(); PAIR="$ORCHESTRATOR_SPEC" ;;
+  build)  CMD_ARGS=("--implementer=$BUILD_IMPLEMENTER"); PAIR="$ORCHESTRATOR_BUILD" ;;
+  revise) CMD_ARGS=(); PAIR="$ORCHESTRATOR_REVISE" ;;
   advance)
-    DRY=""; [ "${2:-}" = "--dry-run" ] && DRY=" --dry-run"
-    CMD="/cadence-loop-advance${DRY}"; MODEL="${MODEL_ADVANCE:-sonnet}" ;;
+    CMD_ARGS=(); [ "${2:-}" = "--dry-run" ] && CMD_ARGS=("--dry-run")
+    PAIR="$ORCHESTRATOR_ADVANCE" ;;
   *) echo "unknown stage: $STAGE" >&2; exit 2 ;;
 esac
+PROVIDER="$(provider_from_pair "$PAIR")"
+MODEL="$(model_from_pair "$PAIR")"
 
 # Housekeeping: before a build/revise launch, remove worktrees whose branch is fully
 # merged into origin/<base> (their PR landed) so they don't pile up. Conservative —
@@ -176,13 +194,18 @@ if [ "$STAGE" = "build" ] || [ "$STAGE" = "revise" ]; then
 fi
 
 LOG="$LOGDIR/$STAGE.log"
-# Unattended: bypass interactive permission prompts. Safety comes from the loops'
-# own guardrails (workspace guard, scope filters, draft-only PRs, human gates) — not
-# from the permission layer. Runs as you, on your repo.
-echo "[$(date -u +%FT%TZ)] starting cadence $STAGE ($MODEL): $CMD" >> "$LOG"
-claude -p "$CMD" --model "$MODEL" --dangerously-skip-permissions >> "$LOG" 2>&1
+PROMPT_FILE="$RUNS/prompt-$STAGE-$(date -u +%Y%m%dT%H%M%SZ)-$$.md"
+python3 "$CADENCE_HOME/engine/prompts/render.py" "$STAGE" "${CMD_ARGS[@]}" --output "$PROMPT_FILE" >> "$LOG" 2>&1
 RC=$?
+if [ "$RC" -ne 0 ]; then
+  echo "[$(date -u +%FT%TZ)] failed to render cadence $STAGE prompt (exit $RC)" >> "$LOG"
+else
+  echo "[$(date -u +%FT%TZ)] starting cadence $STAGE ($PROVIDER:$MODEL): ${CMD_ARGS[*]:-(none)}" >> "$LOG"
+  "$DIR/run-orchestrator.sh" "$PROVIDER" "$MODEL" "$WORKTREE" "$PROMPT_FILE" "$STAGE" >> "$LOG" 2>&1
+  RC=$?
+fi
 echo "[$(date -u +%FT%TZ)] finished cadence $STAGE (exit $RC)" >> "$LOG"
+rm -f "$PROMPT_FILE"
 
 # --- Informative + surfaceable: one-line summary → activity feed → push on activity ---
 # Parse this run's JSON summary (triage uses "stage", others use "loop"), build a plain
