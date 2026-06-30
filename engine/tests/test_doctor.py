@@ -116,6 +116,16 @@ else:
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("triage orchestrator provider 'claude' not on PATH", result.stdout)
 
+    def test_reports_active_cadence_config_path(self):
+        config = pathlib.Path(self.tmp.name) / "app" / "cadence" / ".env"
+        config.parent.mkdir(parents=True)
+        config.write_text(f"CADENCE_STATE_DIR={self.state}\n", encoding="utf-8")
+
+        result = self._run({"CADENCE_CONFIG": str(config)})
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(f"config file {config}", result.stdout)
+
     def test_requires_default_claude_implementer_on_runner_path(self):
         (self.runner_bin / "claude").unlink()
 

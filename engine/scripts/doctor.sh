@@ -81,7 +81,11 @@ if [ "$labels_only" = 1 ]; then
   exit "$bad"
 fi
 
-if [ -f "$CADENCE_HOME/.env" ]; then pass ".env present"; else fail ".env missing (copy .env.example)"; fi
+if [ -f "$CADENCE_CONFIG" ]; then
+  pass "config file $CADENCE_CONFIG"
+else
+  fail "config missing (create cadence/.env or copy .env.example)"
+fi
 if command -v python3 >/dev/null; then pass "python3 found"; else fail "python3 not on PATH"; fi
 if command -v gh >/dev/null; then pass "gh found"; else echo "  ⚠️  gh not found (build PR back-fill needs it)"; fi
 check_provider_cli "triage orchestrator" "$(provider_from_pair "$ORCHESTRATOR_TRIAGE")"
