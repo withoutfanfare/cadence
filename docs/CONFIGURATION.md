@@ -77,11 +77,21 @@ The build loop orchestrator still reviews the implementer's diff and owns the PR
 workflow. `BUILD_IMPLEMENTER` controls only the coding step.
 
 See [Implementers](IMPLEMENTERS.md) for the dispatch contract.
+See [AI Provider Roles](PROVIDERS.md) for the evergreen provider role map and
+the `cadence providers` command reference.
 
 Legacy fallback aliases from older profiles remain supported for compatibility
 with `.env.example`: `MODEL_TRIAGE`, `MODEL_SPEC`, `MODEL_BUILD`,
 `MODEL_REVISE`, and `MODEL_ADVANCE`. Treat them as aliases only; prefer the
 `ORCHESTRATOR_*` variables above.
+
+Important: `MODEL_*` values are model names only. Do not put `provider:model`
+values there. For example, `MODEL_BUILD=codex:gpt-5.4` expands through the
+default provider and becomes `claude:codex:gpt-5.4`, which asks Claude to run a
+Codex model name. Use `ORCHESTRATOR_BUILD=codex:gpt-5.4` instead.
+
+`BUILD_IMPLEMENTER` is also provider-only. Use `BUILD_IMPLEMENTER=codex`, not
+`BUILD_IMPLEMENTER=codex:gpt-5.4`.
 
 ### Provider Switching Examples
 
@@ -89,63 +99,44 @@ Every orchestrator setting uses `provider:model` format. Supported provider
 names are `claude`, `codex`, `kimi`, and `opencode`. The model part is passed
 through to that provider's CLI, so use a model alias that provider accepts.
 
+Use the helper command for routine changes:
+
+```bash
+cadence providers roles
+cadence providers show
+cadence providers set --all codex:gpt-5.4 --implementer codex
+cadence providers set --build opencode:zai-coding-plan/glm-5.2 --review claude:opus
+cadence doctor
+```
+
+`roles` explains what each provider slot does. `show` prints the effective raw
+settings. `set` edits only the provider-related keys in `.env` and preserves
+unrelated profile values and comments.
+
 To make Codex the lead orchestrator for every loop:
 
-```dotenv
-ORCHESTRATOR_PROVIDER=codex
-ORCHESTRATOR_TRIAGE=codex:gpt-5.4
-ORCHESTRATOR_SPEC=codex:gpt-5.4
-ORCHESTRATOR_BUILD=codex:gpt-5.4
-ORCHESTRATOR_REVISE=codex:gpt-5.4
-ORCHESTRATOR_ADVANCE=codex:gpt-5.4
-
-REVIEW_PROVIDER=codex
-REVIEW_MODEL=gpt-5.4
-BUILD_IMPLEMENTER=codex
+```bash
+cadence providers set --all codex:gpt-5.4 --review codex:gpt-5.4 --implementer codex
 ```
 
 To keep Claude on planning stages but use Codex as the build orchestrator and
 Kimi as the coding implementer:
 
-```dotenv
-ORCHESTRATOR_TRIAGE=claude:sonnet
-ORCHESTRATOR_SPEC=claude:opus
-ORCHESTRATOR_BUILD=codex:gpt-5.4
-ORCHESTRATOR_REVISE=claude:sonnet
-ORCHESTRATOR_ADVANCE=claude:sonnet
-
-REVIEW_PROVIDER=claude
-REVIEW_MODEL=opus
-BUILD_IMPLEMENTER=kimi
+```bash
+cadence providers set --triage claude:sonnet --spec claude:opus --build codex:gpt-5.4 --revise claude:sonnet --advance claude:sonnet --review claude:opus --implementer kimi
 ```
 
 To try Kimi as the lead loop provider while keeping Claude as the folded PR
 reviewer:
 
-```dotenv
-ORCHESTRATOR_TRIAGE=kimi:k2
-ORCHESTRATOR_SPEC=kimi:k2
-ORCHESTRATOR_BUILD=kimi:k2
-ORCHESTRATOR_REVISE=kimi:k2
-ORCHESTRATOR_ADVANCE=kimi:k2
-
-REVIEW_PROVIDER=claude
-REVIEW_MODEL=opus
-BUILD_IMPLEMENTER=kimi
+```bash
+cadence providers set --all kimi:k2 --review claude:opus --implementer kimi
 ```
 
 To use OpenCode for build/revise only:
 
-```dotenv
-ORCHESTRATOR_TRIAGE=claude:sonnet
-ORCHESTRATOR_SPEC=claude:opus
-ORCHESTRATOR_BUILD=opencode:zai-coding-plan/glm-5.2
-ORCHESTRATOR_REVISE=opencode:zai-coding-plan/glm-5.2
-ORCHESTRATOR_ADVANCE=claude:sonnet
-
-REVIEW_PROVIDER=opencode
-REVIEW_MODEL=zai-coding-plan/glm-5.2
-BUILD_IMPLEMENTER=opencode
+```bash
+cadence providers set --build opencode:zai-coding-plan/glm-5.2 --revise opencode:zai-coding-plan/glm-5.2 --review opencode:zai-coding-plan/glm-5.2 --implementer opencode
 ```
 
 For a one-off manual run, override values in the command environment without
@@ -161,6 +152,25 @@ After changing providers, run:
 
 ```bash
 cadence doctor
+```
+
+If you prefer to edit `.env` by hand, use the equivalent keys directly:
+
+```dotenv
+ORCHESTRATOR_BUILD=codex:gpt-5.4
+REVIEW_PROVIDER=claude
+REVIEW_MODEL=opus
+BUILD_IMPLEMENTER=kimi
+```
+
+Do not use the old alias shape for provider switching:
+
+```dotenv
+# Wrong: MODEL_* is model-only, not provider:model
+MODEL_BUILD=codex:gpt-5.4
+
+# Wrong: BUILD_IMPLEMENTER is provider-only
+BUILD_IMPLEMENTER=codex:gpt-5.4
 ```
 
 ## Autonomous Mode
@@ -282,7 +292,8 @@ REVIEW_PROVIDER=claude
 REVIEW_MODEL=opus
 BUILD_IMPLEMENTER=claude
 
-# Legacy fallback aliases retained for compatibility with .env.example
+# Legacy fallback aliases retained for compatibility with older profiles.
+# These are model names only; provider switching belongs in ORCHESTRATOR_*.
 MODEL_TRIAGE=sonnet
 MODEL_SPEC=opus
 MODEL_BUILD=opus
