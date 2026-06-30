@@ -43,21 +43,45 @@ class TestRunOrchestrator(unittest.TestCase):
         )
 
     def test_claude_invocation_uses_prompt_and_model(self):
-        self._write_exe("claude", "#!/bin/sh\nprintf 'claude:%s:%s\\n' \"$2\" \"$4\"\\n")
+        self._write_exe("claude", "#!/bin/sh\nstdin=$(cat)\nprintf 'claude:%s:%s\\n' \"$4\" \"$stdin\"")
 
         result = self._run("claude", "sonnet")
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("run-orchestrator: claude triage", result.stderr)
-        self.assertIn("claude:hello provider:sonnet", result.stdout)
+        self.assertIn("claude:sonnet:hello provider", result.stdout)
 
     def test_codex_invocation_sets_workdir_and_model(self):
-        self._write_exe("codex", "#!/bin/sh\nprintf 'codex:%s:%s:%s\\n' \"$2\" \"$3\" \"${10}\"\\n")
+        self._write_exe("codex", "#!/bin/sh\nstdin=$(cat)\nprintf 'codex:%s:%s:%s\\n' \"$(pwd)\" \"$3\" \"$stdin\"")
 
         result = self._run("codex", "gpt-test")
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("codex:--model:gpt-test:hello provider", result.stdout)
+        self.assertIn(f"codex:{self.workdir.resolve()}:gpt-test:hello provider", result.stdout)
+
+    def test_large_prompt_is_streamed_without_putting_the_whole_text_on_argv(self):
+        huge = "prompt-" + ("x" * 5000)
+        self.prompt.write_text(huge, encoding="utf-8")
+        self._write_exe(
+            "codex",
+            """#!/bin/sh
+last=""
+for arg in "$@"; do
+  last="$arg"
+done
+if [ "${#last}" -gt 10 ]; then
+  echo "argv prompt too large: ${#last}" >&2
+  exit 99
+fi
+stdin=$(cat)
+printf 'codex:%s:%s\\n' "${#stdin}" "$last"
+""",
+        )
+
+        result = self._run("codex", "gpt-test")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"codex:{len(huge)}:-", result.stdout)
 
     def test_unknown_provider_fails(self):
         result = self._run("unknown")

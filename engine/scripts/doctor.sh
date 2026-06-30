@@ -2,9 +2,15 @@
 # cadence doctor — verify a setup without changing anything.
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+_RUNNER_PATH_PREPEND="${RUNNER_PATH_PREPEND:-}"
 # shellcheck disable=SC1091
 source "$DIR/../lib/lib-env.sh"
+if [ -n "$_RUNNER_PATH_PREPEND" ]; then
+  RUNNER_PATH_PREPEND="$_RUNNER_PATH_PREPEND"
+  export RUNNER_PATH_PREPEND
+fi
 
+RUNNER_PATH="$(cadence_runner_path)"
 ok=0; bad=0
 pass(){ echo "  ✅ $1"; ok=$((ok+1)); }
 fail(){ echo "  ❌ $1"; bad=$((bad+1)); }
@@ -22,7 +28,7 @@ check_provider_cli() {
   provider="$2"
   case "$provider" in
     claude|codex|kimi|opencode)
-      if command -v "$provider" >/dev/null; then
+      if (PATH="$RUNNER_PATH"; command -v "$provider" >/dev/null); then
         pass "$label provider '$provider' found"
       else
         fail "$label provider '$provider' not on PATH"
@@ -113,12 +119,19 @@ case "${WORKTREE_TOOL:-git}" in
   *)     fail "WORKTREE_TOOL='${WORKTREE_TOOL}' invalid (use git or grove)" ;;
 esac
 
-# Selected implementer must be runnable when it isn't the bundled `claude`.
-if [ "${BUILD_IMPLEMENTER:-claude}" = "claude" ] || command -v "${BUILD_IMPLEMENTER}" >/dev/null; then
-  pass "implementer '${BUILD_IMPLEMENTER:-claude}' available"
-else
-  fail "implementer '${BUILD_IMPLEMENTER}' not on PATH"
-fi
+# Selected implementer must be runnable on the same runner PATH as the loops.
+case "${BUILD_IMPLEMENTER:-claude}" in
+  claude|codex|kimi|opencode)
+    if (PATH="$RUNNER_PATH"; command -v "${BUILD_IMPLEMENTER:-claude}" >/dev/null); then
+      pass "implementer '${BUILD_IMPLEMENTER:-claude}' available"
+    else
+      fail "implementer '${BUILD_IMPLEMENTER:-claude}' not on PATH"
+    fi
+    ;;
+  *)
+    fail "implementer '${BUILD_IMPLEMENTER:-claude}' invalid (use claude, codex, kimi, or opencode)"
+    ;;
+esac
 
 # Autonomous mode (optional; off unless explicitly enabled). Match config()'s
 # case-insensitive truthy set: 1/on/true/yes.

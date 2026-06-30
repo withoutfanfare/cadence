@@ -26,7 +26,7 @@ cadence — control the Cadence agent loops
 Usage: cadence <command> [args]
 
   status            Live/paused state, launchd jobs, last run per stage, activity
-  doctor [--labels] Verify the setup (.env, API key, labels, claude, schedule)
+  doctor [--labels] Verify the setup (.env, API key, labels, provider CLIs, schedule)
   pause | resume    Stop / resume all loops (PAUSED flag)
   run <stage>       Run one loop NOW (triage|spec|build|revise)
   run advance [--dry-run]  Autonomous advancer (opt-in; grants gates on agent:auto)

@@ -84,9 +84,9 @@ you. Re-check them before any write or worktree action for defence in depth. If
 either check fails, emit the standard pause JSON and records described in
 `docs/ARCHITECTURE.md` §5a, then exit without touching Linear, git, or files.
 
-## Implementer — who writes the code (`--implementer`, default `claude`)
+## Implementer — who writes the code (`--implementer`, default configured implementer)
 
-You (Opus) orchestrate, gate, review and own all git/Linear/PR actions. The
+You orchestrate, gate, review and own all git/Linear/PR actions. The
 **implementation** itself — writing the test + the code change — is delegated to a
 coding agent via the helper:
 
@@ -140,7 +140,7 @@ the diff, the red→green test, and the scope yourself.
      is normal.**
    - **Write `IMPLEMENT.md`** in the worktree root from the spec + acceptance
      criteria. Make it self-contained and prescriptive (a weaker model needs more
-     than an Opus self-brief). Open with a tight **"Project rules — must obey"**
+     than a terse self-brief). Open with a tight **"Project rules — must obey"**
      section listing only the recalled high-importance rules relevant to *this* change
      (never a wall of rules). Then: the problem; the **exact files to change**; the
      approach; the **test to write first** (must fail before the fix, pass after,
@@ -155,7 +155,7 @@ the diff, the red→green test, and the scope yourself.
    - **Run it SYNCHRONOUSLY and wait for it in THIS SAME TURN.** It blocks for up to
      ~20 min while the implementer writes code; that is expected — do not give up on it.
      NEVER launch it in the background (no trailing `&`, no run-in-background) and NEVER
-     end your turn expecting a completion notification: this is a headless `claude -p`
+     end your turn expecting a completion notification: this is a headless provider
      run that is **not** re-invoked on a background signal, so backgrounding it ends the
      run mid-build, orphans the `agent:claimed` label, and wastes the work (the claim
      then sits until the 2-hour reclaim). Same rule as the gates in step 5.

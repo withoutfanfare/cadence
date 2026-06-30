@@ -16,27 +16,31 @@ class TestDoctorProviderChecks(unittest.TestCase):
         self.root = pathlib.Path(self.tmp.name) / "cadence"
         self.home = pathlib.Path(self.tmp.name) / "home"
         self.bin = pathlib.Path(self.tmp.name) / "bin"
+        self.runner_bin = pathlib.Path(self.tmp.name) / "runner-bin"
         self.state = pathlib.Path(self.tmp.name) / "state"
         (self.root / "engine" / "scripts").mkdir(parents=True)
         (self.root / "engine" / "lib").mkdir(parents=True)
         (self.root / "engine" / "linear").mkdir(parents=True)
         self.home.mkdir()
         self.bin.mkdir()
+        self.runner_bin.mkdir()
         self.state.mkdir()
         (self.root / ".env").write_text("", encoding="utf-8")
         shutil.copy(ROOT / "engine" / "scripts" / "doctor.sh", self.root / "engine" / "scripts" / "doctor.sh")
         shutil.copytree(ROOT / "engine" / "lib", self.root / "engine" / "lib", dirs_exist_ok=True)
         self._write_linear_stub()
         for name in ("claude", "codex", "kimi", "opencode", "gh"):
-            self._write_exe(name, "#!/bin/sh\nexit 0\n")
+            self._write_exe(self.bin, name, "#!/bin/sh\nexit 0\n")
+            self._write_exe(self.runner_bin, name, "#!/bin/sh\nexit 0\n")
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def _write_exe(self, name, body):
-        path = self.bin / name
+    def _write_exe(self, directory, name, body):
+        path = directory / name
         path.write_text(body, encoding="utf-8")
         path.chmod(path.stat().st_mode | stat.S_IXUSR)
+        return path
 
     def _write_linear_stub(self):
         (self.root / "engine" / "linear" / "cli.py").write_text(
@@ -62,6 +66,7 @@ else:
             {
                 "HOME": str(self.home),
                 "PATH": str(self.bin) + os.pathsep + env.get("PATH", ""),
+                "RUNNER_PATH_PREPEND": str(self.runner_bin),
                 "CADENCE_STATE_DIR": str(self.state),
                 "LINEAR_API_KEY": "token",
                 "LINEAR_TEAM_ID": "team-1",
@@ -102,6 +107,31 @@ else:
         self.assertIn("build orchestrator provider 'opencode' found", result.stdout)
         self.assertIn("advance orchestrator provider 'codex' found", result.stdout)
         self.assertIn("reviewer provider 'claude' found", result.stdout)
+
+    def test_rejects_orchestrator_provider_missing_from_runner_path(self):
+        (self.runner_bin / "claude").unlink()
+
+        result = self._run({"ORCHESTRATOR_TRIAGE": "claude:sonnet"})
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("triage orchestrator provider 'claude' not on PATH", result.stdout)
+
+    def test_requires_default_claude_implementer_on_runner_path(self):
+        (self.runner_bin / "claude").unlink()
+
+        result = self._run(
+            {
+                "ORCHESTRATOR_TRIAGE": "codex:gpt-test",
+                "ORCHESTRATOR_SPEC": "opencode:zai-coding-plan/glm-5.2",
+                "ORCHESTRATOR_BUILD": "codex:gpt-test",
+                "ORCHESTRATOR_REVISE": "opencode:zai-coding-plan/glm-5.2",
+                "ORCHESTRATOR_ADVANCE": "codex:gpt-test",
+                "REVIEW_PROVIDER": "codex",
+            }
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("implementer 'claude' not on PATH", result.stdout)
 
     def test_rejects_unknown_orchestrator_provider(self):
         result = self._run({"ORCHESTRATOR_BUILD": "unknown:model"})

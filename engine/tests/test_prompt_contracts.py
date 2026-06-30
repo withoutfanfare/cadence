@@ -29,6 +29,14 @@ class TestLoopPromptContracts(unittest.TestCase):
 
         self.assertEqual(offenders, [])
 
+    def test_build_prompt_is_provider_neutral_for_the_orchestrator_role(self):
+        path = os.path.join(SKILLS, "cadence-loop-build", "SKILL.md")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+
+        self.assertNotIn("You (Opus) orchestrate", text)
+        self.assertNotIn("headless `claude -p`", text)
+
 
 if __name__ == "__main__":
     unittest.main()

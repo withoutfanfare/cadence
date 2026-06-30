@@ -37,4 +37,10 @@ export BASE_BRANCH WORKTREE_TOOL MODEL_TRIAGE MODEL_SPEC MODEL_BUILD MODEL_REVIS
        ORCHESTRATOR_PROVIDER ORCHESTRATOR_TRIAGE ORCHESTRATOR_SPEC ORCHESTRATOR_BUILD \
        ORCHESTRATOR_REVISE ORCHESTRATOR_ADVANCE REVIEW_PROVIDER REVIEW_MODEL
 
+cadence_runner_path() {
+  local _runner_prefix="${RUNNER_PATH_PREPEND:-}"
+  [ -z "$_runner_prefix" ] && [ -d "$HOME/Library/Application Support/Herd/bin" ] && _runner_prefix="$HOME/Library/Application Support/Herd/bin"
+  printf '%s%s\n' "${_runner_prefix:+$_runner_prefix:}" "$HOME/.kimi-code/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+}
+
 mkdir -p "$CADENCE_STATE_DIR/logs" "$CADENCE_STATE_DIR/runs"
