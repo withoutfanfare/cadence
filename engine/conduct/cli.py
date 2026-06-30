@@ -27,7 +27,8 @@ _advance = _load("advance_cli", "advance/cli.py")
 parse_criteria = _advance.parse_criteria
 
 _TERMINAL = {"completed", "canceled"}
-_BLOCK_OUT = {"agent:hold", "agent:superseded", "agent:needs-human", "agent:auto"}
+_BLOCK_OUT = {"agent:hold", "agent:superseded", "agent:needs-human",
+              "agent:needs-attention", "agent:auto"}
 # Linear priority: 1=urgent … 4=low, 0=none. Map so urgent ranks highest and
 # none ranks lowest, then sort priority-descending (most urgent first).
 _PRIORITY_RANK = {1: 4, 2: 3, 3: 2, 4: 1}
@@ -69,6 +70,10 @@ def is_blocked(detail):
         if state not in _TERMINAL:
             return True
     return False
+
+
+def is_parent(detail):
+    return bool(detail.get("children") or [])
 
 
 _cadence_env = _load("cadence_env", "lib/cadence_env.py")
@@ -120,11 +125,14 @@ def conduct(env, dry_run=False):
 
     active = _active_cycle()
     ranked = rank(eligible(issues), active)
-    tagged, skipped_blocked = [], []
+    tagged, skipped_blocked, skipped_parent = [], [], []
     for cand in ranked:
         if len(tagged) >= free:
             break
         detail = _linear("issue-get", cand["identifier"])
+        if is_parent(detail):
+            skipped_parent.append(cand["identifier"])
+            continue
         if is_blocked(detail):
             skipped_blocked.append(cand["identifier"])
             continue
@@ -132,12 +140,14 @@ def conduct(env, dry_run=False):
             _linear("issue-update", cand["identifier"], "--add-label", "agent:auto")
         tagged.append(cand["identifier"])
     return {"loop": "conduct", "dry_run": dry_run, "inflight": len(inflight),
-            "free": free, "tagged": tagged, "skipped_blocked": skipped_blocked}
+            "free": free, "tagged": tagged, "skipped_blocked": skipped_blocked,
+            "skipped_parent": skipped_parent}
 
 
 def _summary_line(summary):
     tagged = len(summary.get("tagged") or [])
     blocked = len(summary.get("skipped_blocked") or [])
+    parent = len(summary.get("skipped_parent") or [])
     if summary.get("paused"):
         return "PAUSED — %s" % summary.get("reason", "?")
     parts = []
@@ -145,6 +155,8 @@ def _summary_line(summary):
         parts.append("%d tagged" % tagged)
     if blocked:
         parts.append("%d blocked" % blocked)
+    if parent:
+        parts.append("%d parent" % parent)
     if summary.get("free") == 0 and summary.get("note"):
         parts.append(summary["note"])
     return ", ".join(parts) if parts else "nothing to do"

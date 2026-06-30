@@ -246,7 +246,8 @@ stdout — one line per run, one object per line. No pretty-printing.
 The deterministic conductor is not model-backed, but it still appends a compact
 summary to `runs/runs.jsonl`, `runs/activity.log`, `runs/YYYY-MM-DD.md`, and
 `logs/conduct.log`, so autonomous queue decisions show up in the normal operator
-commands.
+commands. It feeds only buildable ready slices: held, attention-needed,
+terminal, blocked, already-auto, and parent issues with children are skipped.
 
 Get the date/timestamp from the shell (`date -u +%FT%TZ`), never invent one.
 
