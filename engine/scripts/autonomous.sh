@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # cadence autonomous on|off|status — flip autonomous mode in one step.
-# "on"  sets AUTONOMOUS=on in .env and loads the advance + conduct launchd jobs.
+# "on"  sets AUTONOMOUS=on in the active config and loads the advance + conduct launchd jobs.
 # "off" sets AUTONOMOUS=0 and unloads (and removes) those two jobs.
 # The four gated loops (triage/spec/build/revise) are never touched.
 set -u
@@ -14,7 +14,7 @@ GUI="gui/$(id -u)"
 ADVANCE_PLIST="$PLISTDIR/com.cadence.loop-advance.plist"
 CONDUCT_PLIST="$PLISTDIR/com.cadence.conduct.plist"
 
-# Upsert AUTONOMOUS=<value> in .env (in place, preserving the rest of the file).
+# Upsert AUTONOMOUS=<value> in the active config (in place, preserving the rest of the file).
 set_env_flag() {
   AENV="$CADENCE_CONFIG" AVAL="$1" python3 - <<'PY'
 import os, re
@@ -34,8 +34,9 @@ open(path, "w", encoding="utf-8").write(txt)
 PY
 }
 
-# Timings come from SCHED_ADVANCE / SCHED_CONDUCT in .env (defaults reproduce the
-# historical hourly advancer + 3-hourly conductor). Same generator as `cadence schedule`.
+# Timings come from SCHED_ADVANCE / SCHED_CONDUCT in the active config (defaults
+# reproduce the historical hourly advancer + 3-hourly conductor). Same generator
+# as `cadence schedule`.
 render_job() {
   job="$1"
   plist="$2"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# cadence schedule [show|apply] — config-driven launchd timings (SCHED_* in .env).
+# cadence schedule [show|apply] — config-driven launchd timings (SCHED_* in the active config).
 #   show   print each job's configured cadence (read-only)
-#   apply  regenerate the plists from .env and reload them
+#   apply  regenerate the plists from the active config and reload them
 # Generation lives in engine/schedule/cli.py; this script orchestrates files+launchd.
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"

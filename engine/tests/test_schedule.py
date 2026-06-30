@@ -117,6 +117,8 @@ class TestScheduleApplyScript(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("launchd scheduling currently requires", result.stderr)
+        self.assertIn("active config is", result.stderr)
+        self.assertIn("project-local cadence/.env", result.stderr)
 
     def test_apply_leaves_existing_plist_intact_when_render_fails(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -66,7 +66,7 @@ cadence_require_launchd_root_config() {
     return 0
   fi
   echo "launchd scheduling currently requires $_root_config; active config is $CADENCE_CONFIG" >&2
-  echo "Use the root config fallback for scheduled jobs, or run manual commands with --config." >&2
+  echo "Use the root config fallback for scheduled jobs, or run manual commands against project-local cadence/.env with --config." >&2
   return 1
 }
 

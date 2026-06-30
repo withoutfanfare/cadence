@@ -83,6 +83,8 @@ exec {real_python} "$@"
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("launchd scheduling currently requires", result.stderr)
+        self.assertIn("active config is", result.stderr)
+        self.assertIn("project-local cadence/.env", result.stderr)
         with open(config, encoding="utf-8") as f:
             self.assertIn("AUTONOMOUS=0\n", f.read())
 
