@@ -39,11 +39,9 @@ You also need:
 ## 2. Clone Cadence
 
 ```bash
-git clone https://github.com/YOUR-ORG/cadence.git
+git clone https://github.com/withoutfanfare/cadence.git
 cd cadence
 ```
-
-Replace `YOUR-ORG` with the real GitHub owner once the public repository exists.
 
 ## 3. Put `cadence` on PATH
 
@@ -149,12 +147,18 @@ Cadence uses Linear labels as its state machine. Create the whole set once per
 team:
 
 ```bash
-cadence linear labels-init
+cadence labels init
 ```
 
 The command is idempotent — existing labels are reused, and it prints which
 labels it created versus which were already present. To add a single label by
-hand, use `cadence linear label-ensure "<name>"`.
+hand, use `cadence labels ensure "<name>"`.
+
+Check the full vocabulary is present:
+
+```bash
+cadence doctor --labels
+```
 
 ## 7. Pause Before the First Run
 
@@ -195,7 +199,34 @@ and are ready for the loop to write.
 Pausing again immediately after the manual run gives you time to inspect the
 Linear changes, logs, and digest before any scheduled loop can continue.
 
-## 9. Schedule Loops on macOS
+## 9. First 10-minute smoke test
+
+After `cadence doctor` passes and the labels exist, this read-only sequence gives
+you a quick picture of the setup:
+
+```bash
+cadence help
+cadence doctor --labels
+cadence queue -v
+cadence schedule
+cadence inspect
+```
+
+`cadence inspect` bundles `doctor`, `status`, `autonomous status`, `schedule`,
+`queue -v`, and the recent feed. It is intended for support and onboarding.
+
+The next commands are live, so keep them separate and deliberate:
+
+```bash
+cadence resume
+cadence run triage
+cadence pause
+cadence logs triage
+cadence feed 20
+cadence digest
+```
+
+## 10. Schedule Loops on macOS
 
 Cadence generates and loads the launchd jobs for you from the schedule in `.env`:
 
@@ -231,7 +262,7 @@ When ready:
 cadence resume
 ```
 
-## 10. Update Cadence Later
+## 11. Update Cadence Later
 
 ```bash
 cd /path/to/cadence

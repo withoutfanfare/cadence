@@ -42,6 +42,8 @@ def fake_post(scope_ok=True, where_nodes=None):
         if "issueUpdate" in query:                # _ISSUE_UPDATE_M
             return {"issueUpdate": {"success": True, "issue": {"id": "i"}}}
         if "issues(filter" in query:              # _ISSUES_Q (where-label)
+            if "first" not in variables or "after" not in variables:
+                raise cli.LinearError("missing pagination variables")
             return {"issues": {"nodes": where_nodes or []}}
         raise AssertionError("unexpected query: %s" % query[:40])
 

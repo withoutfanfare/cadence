@@ -6,10 +6,11 @@ Cadence.
 ## Start Here
 
 1. [Installation](INSTALL.md) - clone the repo, install the `cadence` command,
-   fill `.env`, create Linear labels, run `doctor`, and schedule the loops.
+   fill `.env`, create Linear labels, run `doctor`, smoke-test the setup, and
+   schedule the loops.
 2. [Configuration](CONFIGURATION.md) - reference for every `.env` setting.
 3. [Operating Cadence](OPERATING.md) - daily commands, logs, digests, pausing,
-   and common troubleshooting.
+   autonomous monitoring, helper commands, and common troubleshooting.
 
 ## Reference
 

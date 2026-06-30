@@ -36,8 +36,17 @@ PY
 
 # Timings come from SCHED_ADVANCE / SCHED_CONDUCT in .env (defaults reproduce the
 # historical hourly advancer + 3-hourly conductor). Same generator as `cadence schedule`.
-render_advance() { python3 "$SCHED_CLI" render advance > "$ADVANCE_PLIST"; }
-render_conduct() { python3 "$SCHED_CLI" render conduct > "$CONDUCT_PLIST"; }
+render_job() {
+  job="$1"
+  plist="$2"
+  tmp="$(mktemp "$plist.tmp.XXXXXX")" || { echo "could not create temp plist for $job" >&2; exit 1; }
+  if ! python3 "$SCHED_CLI" render "$job" > "$tmp" || [ ! -s "$tmp" ]; then
+    rm -f "$tmp"
+    echo "render $job failed — left $plist untouched" >&2
+    exit 1
+  fi
+  mv "$tmp" "$plist"
+}
 load()   { launchctl bootout "$GUI" "$1" 2>/dev/null || true; launchctl bootstrap "$GUI" "$1" && echo "  loaded $(basename "$1")" || echo "  FAILED to load $(basename "$1")" >&2; }
 unload() { launchctl bootout "$GUI" "$1" 2>/dev/null || true; rm -f "$1"; echo "  unloaded $(basename "$1")"; }
 
@@ -60,8 +69,8 @@ case "${1:-status}" in
     set_env_flag on
     AUTONOMOUS=on
     echo "AUTONOMOUS=on written to .env"
-    render_advance; load "$ADVANCE_PLIST"
-    render_conduct; load "$CONDUCT_PLIST"
+    render_job advance "$ADVANCE_PLIST"; load "$ADVANCE_PLIST"
+    render_job conduct "$CONDUCT_PLIST"; load "$CONDUCT_PLIST"
     echo
     print_status
     echo

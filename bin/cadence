@@ -26,7 +26,7 @@ cadence — control the Cadence agent loops
 Usage: cadence <command> [args]
 
   status            Live/paused state, launchd jobs, last run per stage, activity
-  doctor            Verify the setup (.env, API key, claude, schedule)
+  doctor [--labels] Verify the setup (.env, API key, labels, claude, schedule)
   pause | resume    Stop / resume all loops (PAUSED flag)
   run <stage>       Run one loop NOW (triage|spec|build|revise)
   run advance [--dry-run]  Autonomous advancer (opt-in; grants gates on agent:auto)
@@ -38,8 +38,11 @@ Usage: cadence <command> [args]
   restart           Reload all launchd jobs after editing plists
   schedule [show|apply]  Show or apply launchd timings (config-driven via SCHED_* in .env)
   autonomous on|off|status  Flip autonomous mode: set .env + load/unload advance & conduct jobs
+  inspect           Read-only setup/status bundle for support and onboarding
   tend              Run the Clio hygiene pass now
   conduct [--dry-run]  Feed the autonomous queue (deterministic; opt-in via AUTONOMOUS)
+  bakeoff <brief> <filter> [impls]  Compare implementer CLIs in isolated worktrees
+  labels init|list|ensure <name>  Initialise, inspect, or create Linear labels
   linear <args>     Linear API adapter (teams, issues-list, issue-get, …)
   advance <args>    Advancer decision core (decide, criteria, repairs)
   memory <args>     Memory adapter (recall, remember)
@@ -53,7 +56,7 @@ EOF
 cmd="${1:-help}"; shift 2>/dev/null || true
 case "$cmd" in
   status)  exec bash "$CADENCE_HOME/engine/scripts/status.sh" ;;
-  doctor)  exec bash "$CADENCE_HOME/engine/scripts/doctor.sh" ;;
+  doctor)  exec bash "$CADENCE_HOME/engine/scripts/doctor.sh" "$@" ;;
   pause)   mkdir -p "$RUNS"; touch "$PAUSED"
            echo "⏸  Paused — every loop will skip until you resume."
            echo "   flag: $PAUSED" ;;
@@ -66,12 +69,16 @@ case "$cmd" in
            exec bash "$CADENCE_HOME/engine/scripts/run-loop.sh" "$stage" "$@" ;;
   logs)    stage="${1:-}"
            if [ -n "$stage" ]; then
-             is_stage "$stage" || { echo "unknown stage: $stage" >&2; exit 2; }
+             is_stage "$stage" || [ "$stage" = "conduct" ] || { echo "unknown stage: $stage" >&2; exit 2; }
              tail -n 40 "$LOGDIR/$stage.log" 2>/dev/null || echo "no log yet for $stage"
            else
-             for s in triage spec build revise; do
+             for s in triage spec build revise advance conduct; do
                echo "── $s ──"
-               grep -E 'starting|finished' "$LOGDIR/$s.log" 2>/dev/null | tail -2 | sed 's/^/  /' || echo "  (no log)"
+               if [ "$s" = "conduct" ]; then
+                 tail -2 "$LOGDIR/$s.log" 2>/dev/null | sed 's/^/  /' || echo "  (no log)"
+               else
+                 grep -E 'starting|finished' "$LOGDIR/$s.log" 2>/dev/null | tail -2 | sed 's/^/  /' || echo "  (no log)"
+               fi
              done
            fi ;;
   feed)    n="${1:-20}"; tail -n "$n" "$RUNS/activity.log" 2>/dev/null || echo "no activity yet" ;;
@@ -79,6 +86,14 @@ case "$cmd" in
   digest)  d="${1:-$(date -u +%F)}"; f="$RUNS/$d.md"
            [ -f "$f" ] && cat "$f" || echo "no digest for $d ($f)" ;;
   throughput) exec python3 "$CADENCE_HOME/engine/throughput/cli.py" "$@" ;;
+  inspect) echo "== doctor =="; bash "$CADENCE_HOME/engine/scripts/doctor.sh"
+           echo; echo "== status =="; bash "$CADENCE_HOME/engine/scripts/status.sh"
+           echo; echo "== autonomous =="; bash "$CADENCE_HOME/engine/scripts/autonomous.sh" status
+           echo; echo "== schedule =="; bash "$CADENCE_HOME/engine/scripts/schedule.sh" show
+           echo; echo "== queue =="
+           python3 "$CADENCE_HOME/engine/queue/cli.py" -v 2>/dev/null || echo "queue unavailable"
+           echo; echo "== recent feed =="
+           tail -n 20 "$RUNS/activity.log" 2>/dev/null || echo "no activity yet" ;;
   restart) shopt -s nullglob
            found=0
            for p in "$PLISTDIR"/com.cadence.*.plist; do
@@ -91,6 +106,14 @@ case "$cmd" in
   schedule) exec bash "$CADENCE_HOME/engine/scripts/schedule.sh" "$@" ;;
   tend)    exec bash "$CADENCE_HOME/engine/scripts/tend-run.sh" ;;
   conduct) exec python3 "$CADENCE_HOME/engine/conduct/cli.py" "$@" ;;
+  bakeoff) exec bash "$CADENCE_HOME/engine/scripts/bakeoff.sh" "$@" ;;
+  labels)  sub="${1:-}"; shift 2>/dev/null || true
+           case "$sub" in
+             init) exec python3 "$CADENCE_HOME/engine/linear/cli.py" labels-init "$@" ;;
+             list) exec python3 "$CADENCE_HOME/engine/linear/cli.py" labels-list "$@" ;;
+             ensure) exec python3 "$CADENCE_HOME/engine/linear/cli.py" label-ensure "$@" ;;
+             *) echo "usage: cadence labels init | labels list | labels ensure <name>" >&2; exit 2 ;;
+           esac ;;
   linear)  exec python3 "$CADENCE_HOME/engine/linear/cli.py" "$@" ;;
   advance) exec python3 "$CADENCE_HOME/engine/advance/cli.py" "$@" ;;
   memory)  exec python3 "$CADENCE_HOME/engine/memory/cli.py" "$@" ;;

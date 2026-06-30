@@ -110,18 +110,7 @@ def _scoped_filter(env):
     }
 
 
-def cmd_issues_list(args, env, post=graphql):
-    f = _scoped_filter(env)
-    if getattr(args, "label", None):
-        f["labels"] = {"name": {"eq": args.label}}
-    if getattr(args, "state", None):
-        f["state"] = {"name": {"eq": args.state}}
-    if getattr(args, "assignee", None):
-        if args.assignee == "me":
-            _require_env(env, "LINEAR_ASSIGNEE_ID")
-        uid = env.get("LINEAR_ASSIGNEE_ID") if args.assignee == "me" else args.assignee
-        f["assignee"] = {"id": {"eq": uid}}
-    limit = getattr(args, "limit", None)
+def _issue_nodes(f, env, post=graphql, limit=None):
     remaining = int(limit) if limit else None
     after = None
     nodes = []
@@ -141,6 +130,21 @@ def cmd_issues_list(args, env, post=graphql):
         after = info.get("endCursor")
         if not after:
             break
+    return nodes
+
+
+def cmd_issues_list(args, env, post=graphql):
+    f = _scoped_filter(env)
+    if getattr(args, "label", None):
+        f["labels"] = {"name": {"eq": args.label}}
+    if getattr(args, "state", None):
+        f["state"] = {"name": {"eq": args.state}}
+    if getattr(args, "assignee", None):
+        if args.assignee == "me":
+            _require_env(env, "LINEAR_ASSIGNEE_ID")
+        uid = env.get("LINEAR_ASSIGNEE_ID") if args.assignee == "me" else args.assignee
+        f["assignee"] = {"id": {"eq": uid}}
+    nodes = _issue_nodes(f, env, post=post, limit=getattr(args, "limit", None))
     return [_shape_issue(n) for n in nodes]
 
 
@@ -207,6 +211,11 @@ def cmd_label_ensure(args, env, post=graphql):
     return {"name": args.name, "id": res["issueLabel"]["id"], "created": True}
 
 
+def cmd_labels_list(args, env, post=graphql):
+    _require_env(env, "LINEAR_TEAM_ID")
+    return post(_LABELS_Q, {"teamId": env.get("LINEAR_TEAM_ID")}, env)["issueLabels"]["nodes"]
+
+
 # The full agent:* state-machine vocabulary — single source of truth, mirrors
 # docs/LABELS.md. `labels-init` creates any that are missing on the team.
 AGENT_LABELS = [
@@ -243,7 +252,7 @@ def _resolve_label_ids(names, env, post):
     missing = [x for x in names if x not in by_name]
     if missing:
         raise LinearError(
-            f"unknown label(s): {', '.join(missing)} — run `cadence linear labels-init`")
+            f"unknown label(s): {', '.join(missing)} — run `cadence labels init`")
     return [by_name[x] for x in names]
 
 
@@ -338,7 +347,7 @@ def cmd_bulk_label(args, env, post=graphql):
         f["labels"] = {"name": {"eq": args.where_label}}
         if env.get("LINEAR_ASSIGNEE_ID"):
             f["assignee"] = {"id": {"eq": env.get("LINEAR_ASSIGNEE_ID")}}
-        nodes = post(_ISSUES_Q, {"filter": f}, env)["issues"]["nodes"]
+        nodes = _issue_nodes(f, env, post=post)
         targets = [n["identifier"] for n in nodes]
     else:
         targets = list(args.issues or [])
@@ -478,6 +487,7 @@ def _build_parser():
     r = sub.add_parser("issue-relate"); r.add_argument("a"); r.add_argument("b")
     r.add_argument("--type", choices=["duplicate", "related", "blocks"], default="related")
     le = sub.add_parser("label-ensure"); le.add_argument("name")
+    sub.add_parser("labels-list")
     sub.add_parser("labels-init")
     d = sub.add_parser("doc-upsert"); d.add_argument("--issue", required=True)
     d.add_argument("--title", required=True); d.add_argument("--body", required=True)
@@ -491,7 +501,7 @@ _DISPATCH = {
     "issue-update": cmd_issue_update, "bulk-label": cmd_bulk_label,
     "issue-comment": cmd_issue_comment,
     "issue-relate": cmd_issue_relate, "label-ensure": cmd_label_ensure,
-    "labels-init": cmd_labels_init,
+    "labels-list": cmd_labels_list, "labels-init": cmd_labels_init,
     "doc-upsert": cmd_doc_upsert, "cycles-list": cmd_cycles_list,
 }
 

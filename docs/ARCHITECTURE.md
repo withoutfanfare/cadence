@@ -125,8 +125,8 @@ and write labels to record what they did. Full label vocabulary:
 5. **Never overwrite a human's field.** Fill blanks only.
 6. **Read-only on the codebase except build/revise.** Triage and spec investigate
    read-only. Only build and revise edit files inside their own worktree.
-7. **Report and meter.** Every run writes a dated digest file (§7) and prints a
-   JSON summary to stdout.
+7. **Report and meter.** Every run records a machine summary and a human-facing
+   activity trail (§7). Model-backed loops also print a JSON summary to stdout.
 
 ---
 
@@ -199,7 +199,8 @@ $CADENCE_STATE_DIR/
     PAUSED         touch to pause all loops; delete to resume
 ```
 
-**Human digest** (`runs/YYYY-MM-DD.md`): append one section per run, headed:
+**Human digest** (`runs/YYYY-MM-DD.md`): append one section per model-backed run,
+headed:
 
 ```text
 ## <stage> · <mode> · <live|dry-run> · <UTC timestamp>
@@ -211,6 +212,11 @@ Followed by the counts line and the per-issue list. Each entry:
 
 **Machine ledger** (`runs/runs.jsonl`): append the same JSON object printed to
 stdout — one line per run, one object per line. No pretty-printing.
+
+The deterministic conductor is not model-backed, but it still appends a compact
+summary to `runs/runs.jsonl`, `runs/activity.log`, `runs/YYYY-MM-DD.md`, and
+`logs/conduct.log`, so autonomous queue decisions show up in the normal operator
+commands.
 
 Get the date/timestamp from the shell (`date -u +%FT%TZ`), never invent one.
 

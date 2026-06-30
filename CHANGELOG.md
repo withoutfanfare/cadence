@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ledger, including errors.
 - `cadence linear bulk-label` — batch label add/remove across issues, scope-checked,
   with `--where-label`, `--dry-run`, and `-y`. See `docs/BULK-LABEL.md`.
+- `cadence inspect`, `cadence labels init|list|ensure`, and `cadence bakeoff`
+  helper commands for setup support, label maintenance, and implementer comparison.
 
 ### Changed
 
@@ -41,6 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Basso" sound) and is recorded in the dated digest as well as the activity feed.
 - `cadence restart` now reloads every installed `com.cadence.*.plist` (advance and
   conduct included), not just the four gated loops.
+- `cadence conduct` now records decisions in the activity feed, dated digest,
+  machine ledger, and `logs/conduct.log`; `cadence throughput` now includes
+  `advance` and `conduct`.
 - Loop skill prompts now use the configured `BASE_BRANCH` for worktrees,
   investigation, PR creation, and PR back-fill instead of hardcoding `develop`.
 - Loop skill prompts keep Step 0 as a short defence-in-depth check and defer the
@@ -81,6 +86,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   records a quiet idle result instead of a pause.
 - `cadence schedule apply` now renders launchd plists to a temporary file and
   moves them into place only after a successful non-empty render.
+- `cadence autonomous on` now renders advance/conduct launchd plists atomically
+  instead of writing directly to the active paths.
+- `cadence linear bulk-label --where-label` now uses the paginated issue-list
+  path instead of calling the paginated GraphQL query without required variables.
 - The triage loop prompt now separates normal metadata writes, full-mode PR
   back-fill issue creation, and failure-only comments.
 - `cadence worktree add` now refuses to reuse a stale plain directory that is not

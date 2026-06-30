@@ -125,6 +125,14 @@ class TestWriteVerbs(unittest.TestCase):
         out = cli.cmd_label_ensure(args, ENV, post=fake_post(cap))
         self.assertEqual(out, {"name": "agent:build", "id": "l1", "created": False})
 
+    def test_labels_list_returns_names_and_ids(self):
+        cap = {"response": {"issueLabels": {"nodes": [
+            {"id": "l1", "name": "agent:build"},
+            {"id": "l2", "name": "agent:spec"}]}}}
+        out = cli.cmd_labels_list(types.SimpleNamespace(), ENV, post=fake_post(cap))
+        self.assertEqual(out, [{"id": "l1", "name": "agent:build"},
+                               {"id": "l2", "name": "agent:spec"}])
+
     def test_labels_init_creates_only_missing(self):
         def post(query, variables, env):
             if "issueLabels(" in query:            # the list query

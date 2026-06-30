@@ -4,19 +4,40 @@ This guide covers the commands you use after installation.
 
 ## Command Overview
 
+Daily read-only commands:
+
 ```bash
 cadence status          # live/paused state, launchd jobs, recent runs
 cadence doctor          # verify local setup
-cadence pause           # stop all loops before they do work
-cadence resume          # allow loops to run again
-cadence run triage      # run one stage now; live unless paused
-cadence logs triage     # tail one stage log
+cadence doctor --labels # verify the Linear label vocabulary exists
+cadence logs triage     # tail one stage log; conduct is supported too
 cadence feed 30         # recent activity lines
 cadence queue [-v]      # your move: board overview grouped by agent state
 cadence digest          # today's full digest, UTC date
+cadence throughput 30   # per-stage rollup from the machine ledger
+cadence schedule        # show the live schedule
+cadence inspect         # read-only support bundle
+```
+
+Live control commands:
+
+```bash
+cadence pause           # stop all loops before they do work
+cadence resume          # allow loops to run again
+cadence run triage      # run one stage now; live unless paused
 cadence restart         # reload launchd jobs
-cadence schedule        # show the live schedule (apply to change it)
-cadence autonomous on   # enable autonomous mode + schedule its jobs (off to reverse)
+cadence schedule apply  # regenerate and reload launchd plists
+```
+
+Autonomous and maintainer commands:
+
+```bash
+cadence autonomous on|off|status
+cadence conduct --dry-run
+cadence labels init|list|ensure <name>
+cadence bakeoff <brief-file> <test-filter> [implementers]
+cadence memory recall
+cadence worktree add|remove|path
 ```
 
 ## Pause and Resume
@@ -90,7 +111,8 @@ $CADENCE_STATE_DIR/runs/
 ```
 
 For a per-stage rollup of recent activity (how much each loop produced, and any
-errors), use throughput — it aggregates the machine ledger over a day window:
+errors), use throughput — it aggregates the machine ledger over a day window and
+includes autonomous `advance` and `conduct` activity:
 
 ```bash
 cadence throughput        # last 7 days
@@ -119,6 +141,8 @@ launchd stdout and stderr logs live under:
 ```text
 $CADENCE_STATE_DIR/logs/
 ```
+
+`cadence logs conduct` shows conductor activity recorded by `cadence conduct`.
 
 ## Notifications and Failure Alerts
 
@@ -163,8 +187,17 @@ cadence linear bulk-label --where-label agent:triaged --add agent:spec --dry-run
 Every target is scope-checked (team, project, assignee) before any write, so it
 can only touch your own in-scope issues. A live run prints the plan and asks for
 confirmation; `--dry-run` previews without writing, and `-y`/`--yes` skips the
-prompt for scripted use. Full flag and recipe reference: [Bulk Label
-cheatsheet](BULK-LABEL.md).
+prompt for scripted use. Full flag and recipe reference:
+[Bulk Label cheatsheet](BULK-LABEL.md).
+
+For install and maintenance, the short label helpers cover the common cases:
+
+```bash
+cadence labels init
+cadence labels list
+cadence labels ensure agent:spec
+cadence doctor --labels
+```
 
 ## Autonomous mode (opt-in)
 
@@ -208,7 +241,9 @@ issues by hand. Every 3 hours it ranks the ready backlog (priority → current c
 (default 1) — one issue in flight at a time until you raise it.
 
 - **Shadow it first:** `AUTONOMOUS=on cadence conduct --dry-run` prints which issue
-  it would set loose (and which it skipped as blocked), writing nothing.
+  it would set loose (and which it skipped as blocked), writing nothing to Linear.
+  The decision summary is still recorded in the normal Cadence feed, digest, and
+  throughput ledger.
 - **Schedule it:** `cadence autonomous on` loads it (every 3 hours) alongside the
   advancer (hourly) — no manual plist editing. The advancer carries tagged issues
   through the stages between conductor passes.
@@ -252,6 +287,42 @@ them. For example, `SCHED_BUILD=:05` moves the build loop to `:05` each hour;
 without regenerating them — use it after the Cadence repo moves, or after editing a
 plist by hand.
 
+## Maintenance Helpers
+
+### Inspect
+
+`cadence inspect` is a read-only bundle for support and onboarding. It prints
+`doctor`, `status`, `autonomous status`, the schedule, `queue -v`, and the recent
+feed in one place.
+
+### Implementer bake-off
+
+`cadence bakeoff <brief-file> <test-filter> [implementers]` runs the same
+implementation brief through the selected implementer CLIs in isolated worktrees,
+runs the configured test gate, and writes a comparison report to
+`$CADENCE_STATE_DIR/runs/implementer-bakeoff.md`.
+
+This is an advanced command. It creates and removes worktrees, may delete the
+temporary remote branches it creates, calls model CLIs, and can consume model
+budget. Keep it for maintainer experiments, not normal issue flow.
+
+## What Writes?
+
+Read-only or local-reporting commands:
+
+```text
+status, doctor, doctor --labels, logs, feed, queue, digest, throughput,
+schedule, inspect, labels list, conduct --dry-run
+```
+
+Commands with live side effects:
+
+```text
+run, schedule apply, autonomous on|off, labels init, labels ensure,
+linear issue-update, linear bulk-label without --dry-run, worktree add/remove,
+bakeoff
+```
+
 ## Troubleshooting
 
 ### A loop does nothing
@@ -260,7 +331,11 @@ Check:
 
 ```bash
 cadence status
+cadence queue -v
+cadence feed 20
 cadence logs
+cadence digest
+cadence doctor
 ```
 
 Common causes:

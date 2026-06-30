@@ -51,6 +51,21 @@ class TestAggregate(unittest.TestCase):
         agg = cli.aggregate([{"stage": "nonsense", "ts": "2026-06-29T10:00:00Z"}])
         self.assertTrue(all(agg["stages"][s]["runs"] == 0 for s in cli.STAGES))
 
+    def test_autonomous_stages_are_counted(self):
+        recs = [
+            {"loop": "advance", "ts": "2026-06-29T12:00:00Z",
+             "advanced": 1, "accepted": 1, "repaired": 1, "escalated": 1},
+            {"loop": "conduct", "ts": "2026-06-29T13:00:00Z",
+             "tagged": ["STU-1", "STU-2"], "skipped_blocked": ["STU-3"]},
+        ]
+        agg = cli.aggregate(recs)
+        self.assertEqual(agg["stages"]["advance"]["advanced"], 1)
+        self.assertEqual(agg["stages"]["advance"]["accepted"], 1)
+        self.assertEqual(agg["stages"]["advance"]["repaired"], 1)
+        self.assertEqual(agg["stages"]["advance"]["escalated"], 1)
+        self.assertEqual(agg["stages"]["conduct"]["tagged"], 2)
+        self.assertEqual(agg["stages"]["conduct"]["blocked"], 1)
+
 
 class TestRender(unittest.TestCase):
     def test_shows_produced_and_pr_count(self):
@@ -73,6 +88,21 @@ class TestRender(unittest.TestCase):
         agg = cli.aggregate(
             [{"loop": "spec", "paused": True}], since=datetime(2026, 6, 1, tzinfo=UTC))
         self.assertIn("undated run(s) skipped", cli.render(agg, 7))
+
+    def test_render_shows_autonomous_activity(self):
+        agg = cli.aggregate([
+            {"loop": "advance", "ts": "2026-06-29T12:00:00Z",
+             "advanced": 1, "accepted": 1},
+            {"loop": "conduct", "ts": "2026-06-29T13:00:00Z",
+             "tagged": ["STU-1"], "skipped_blocked": ["STU-2"]},
+        ])
+        out = cli.render(agg, 7)
+        self.assertIn("advance", out)
+        self.assertIn("1 advanced", out)
+        self.assertIn("1 accepted", out)
+        self.assertIn("conduct", out)
+        self.assertIn("1 tagged", out)
+        self.assertIn("1 blocked", out)
 
 
 if __name__ == "__main__":

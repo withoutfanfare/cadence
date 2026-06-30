@@ -105,7 +105,7 @@ cadence doctor
 After `cadence doctor` passes, create the required Linear labels in one step:
 
 ```bash
-cadence linear labels-init
+cadence labels init
 ```
 
 This creates the full `agent:*` label set on the team (and `Stale`). It is
