@@ -3,9 +3,9 @@
 ## What I implemented
 
 Added `engine/scripts/run-reviewer.sh` as a provider-neutral folded-review adapter. It accepts
-`<provider> <model> <workdir> <review-brief-file>`, validates inputs, applies the review timeout
-from `REVIEW_TIMEOUT` with a default of `1800`, and dispatches the provider with the review brief
-contents while preserving caller `PATH` resolution.
+`<provider> <model> <workdir> <review-brief-file>`, applies the review timeout
+from `REVIEW_TIMEOUT` with a default of `1800`, and delegates execution to
+`run-orchestrator.sh` with stage `review`.
 
 Added `engine/tests/test_run_reviewer.py` to cover the same-provider contract path used by the
 task brief.
@@ -64,4 +64,35 @@ OK
 ## Self-review findings or concerns
 
 - No functional concerns from the scoped checks.
-- `run-reviewer.sh` dispatches providers directly instead of delegating to `run-orchestrator.sh` so the test harness's injected provider on `PATH` is honoured.
+- `run-reviewer.sh` now delegates through `run-orchestrator.sh` and no longer hard-codes provider launch logic.
+
+## Review fix
+
+### Finding fixed
+
+Refined the reviewer adapter contract from direct provider execution to orchestrator delegation and mapped `REVIEW_TIMEOUT` to `ORCH_TIMEOUT`.
+
+### Evidence
+
+```text
+cd engine && python3 -m unittest tests.test_run_reviewer
+..
+----------------------------------------------------------------------
+Ran 1 test in 0.045s
+
+OK
+```
+
+```bash
+cd engine && python3 -m unittest tests.test_prompt_contracts tests.test_run_reviewer
+.
+----------------------------------------------------------------------
+Ran 2 tests in 0.044s
+
+OK
+```
+
+`test_run_reviewer.py` now asserts orchestrator stage/model/timeout behavior:
+
+- `run-orchestrator: claude review model=opus ... timeout=5s` in stderr
+- provider receives model and prompt via `run-orchestrator` argument forwarding (`reviewer-proxy:-p:review this diff:opus`)

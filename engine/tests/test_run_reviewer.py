@@ -28,10 +28,14 @@ class TestRunReviewer(unittest.TestCase):
         path.write_text(body, encoding="utf-8")
         path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
-    def test_reviewer_uses_same_provider_contract(self):
-        self._write_exe("claude", "#!/bin/sh\nprintf 'review:%s:%s\\n' \"$2\" \"$4\"\n")
+    def test_reviewer_uses_orchestrator_contract(self):
+        self._write_exe(
+            "claude",
+            "#!/bin/sh\nprintf 'reviewer-proxy:%s:%s:%s\\n' \"$1\" \"$2\" \"$4\"\\n",
+        )
         env = os.environ.copy()
-        env["PATH"] = str(self.bin) + os.pathsep + env.get("PATH", "")
+        env["RUNNER_PATH_PREPEND"] = str(self.bin)
+        env.pop("ORCH_TIMEOUT", None)
         env["REVIEW_TIMEOUT"] = "5"
 
         result = subprocess.run(
@@ -44,8 +48,9 @@ class TestRunReviewer(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("run-reviewer: claude model=opus", result.stderr)
-        self.assertIn("review:review this diff:opus", result.stdout)
+        self.assertIn("run-orchestrator: claude review model=opus", result.stderr)
+        self.assertIn("timeout=5s", result.stderr)
+        self.assertIn("reviewer-proxy:-p:review this diff:opus", result.stdout)
 
 
 if __name__ == "__main__":
