@@ -33,6 +33,10 @@ see what each slot does. See
 [Provider Switching Examples](CONFIGURATION.md#provider-switching-examples) for
 copyable all-Codex, mixed-provider, Kimi, and OpenCode profiles.
 
+Do not switch providers by putting `provider:model` into `MODEL_*` aliases.
+Those are legacy model-name-only fallbacks. Likewise, `BUILD_IMPLEMENTER` takes
+only the provider name, for example `codex`, not `codex:gpt-5.4`.
+
 By default the build loop uses plain `git worktree`, so nothing beyond Git is
 needed. Set `WORKTREE_TOOL=grove` only if you use grove for Laravel Herd sites.
 

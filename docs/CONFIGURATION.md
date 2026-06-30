@@ -83,6 +83,14 @@ with `.env.example`: `MODEL_TRIAGE`, `MODEL_SPEC`, `MODEL_BUILD`,
 `MODEL_REVISE`, and `MODEL_ADVANCE`. Treat them as aliases only; prefer the
 `ORCHESTRATOR_*` variables above.
 
+Important: `MODEL_*` values are model names only. Do not put `provider:model`
+values there. For example, `MODEL_BUILD=codex:gpt-5.4` expands through the
+default provider and becomes `claude:codex:gpt-5.4`, which asks Claude to run a
+Codex model name. Use `ORCHESTRATOR_BUILD=codex:gpt-5.4` instead.
+
+`BUILD_IMPLEMENTER` is also provider-only. Use `BUILD_IMPLEMENTER=codex`, not
+`BUILD_IMPLEMENTER=codex:gpt-5.4`.
+
 ### Provider Switching Examples
 
 Every orchestrator setting uses `provider:model` format. Supported provider
@@ -151,6 +159,16 @@ ORCHESTRATOR_BUILD=codex:gpt-5.4
 REVIEW_PROVIDER=claude
 REVIEW_MODEL=opus
 BUILD_IMPLEMENTER=kimi
+```
+
+Do not use the old alias shape for provider switching:
+
+```dotenv
+# Wrong: MODEL_* is model-only, not provider:model
+MODEL_BUILD=codex:gpt-5.4
+
+# Wrong: BUILD_IMPLEMENTER is provider-only
+BUILD_IMPLEMENTER=codex:gpt-5.4
 ```
 
 ## Autonomous Mode
@@ -272,7 +290,8 @@ REVIEW_PROVIDER=claude
 REVIEW_MODEL=opus
 BUILD_IMPLEMENTER=claude
 
-# Legacy fallback aliases retained for compatibility with .env.example
+# Legacy fallback aliases retained for compatibility with older profiles.
+# These are model names only; provider switching belongs in ORCHESTRATOR_*.
 MODEL_TRIAGE=sonnet
 MODEL_SPEC=opus
 MODEL_BUILD=opus
