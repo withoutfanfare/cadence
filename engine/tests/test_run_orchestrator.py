@@ -29,10 +29,10 @@ class TestRunOrchestrator(unittest.TestCase):
         path.chmod(path.stat().st_mode | stat.S_IXUSR)
         return path
 
-    def _run(self, provider, model="model-a"):
+    def _run(self, provider, model="model-a", orch_timeout="5"):
         env = os.environ.copy()
         env["RUNNER_PATH_PREPEND"] = str(self.bin)
-        env["ORCH_TIMEOUT"] = "5"
+        env["ORCH_TIMEOUT"] = orch_timeout
         return subprocess.run(
             ["bash", str(self.script), provider, model, str(self.workdir), str(self.prompt), "triage"],
             cwd=ROOT,
@@ -79,6 +79,14 @@ class TestRunOrchestrator(unittest.TestCase):
         result = self._run("claude", "sonnet")
 
         self.assertEqual(result.returncode, 42, result.stderr)
+
+    def test_timeout_returns_exit_code_124(self):
+        self._write_exe("claude", "#!/bin/sh\nsleep 2\n")
+
+        result = self._run("claude", "sonnet", orch_timeout="1")
+
+        self.assertEqual(result.returncode, 124, result.stderr)
+        self.assertIn("timed out after 1s", result.stderr)
 
 
 if __name__ == "__main__":

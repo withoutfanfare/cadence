@@ -26,20 +26,51 @@ PROMPT="$(cat "$PROMPT_FILE")"
 
 echo "run-orchestrator: $PROVIDER $STAGE model=$MODEL workdir=$WORKDIR timeout=${TIMEOUT}s" >&2
 
+_run_with_timeout() {
+  local timeout="$1"
+  local workdir="$2"
+  shift 2
+
+  python3 - "$timeout" "$workdir" "$@" <<'PY'
+import subprocess
+import sys
+
+timeout = float(sys.argv[1])
+workdir = sys.argv[2]
+cmd = sys.argv[3:]
+
+try:
+    proc = subprocess.Popen(cmd, cwd=workdir)
+except FileNotFoundError:
+    print(f"run-orchestrator: command not found: {cmd[0]}", file=sys.stderr)
+    sys.exit(127)
+
+try:
+    rc = proc.wait(timeout=timeout)
+except subprocess.TimeoutExpired:
+    proc.kill()
+    proc.wait()
+    sys.exit(124)
+except Exception as exc:  # pragma: no cover - runtime guardrail
+    print(f"run-orchestrator: unexpected error running provider: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+sys.exit(rc)
+PY
+}
+
 case "$PROVIDER" in
   claude)
-    cd "$WORKDIR" || exit 3
-    timeout "$TIMEOUT" claude -p "$PROMPT" --model "$MODEL" --dangerously-skip-permissions
+    _run_with_timeout "$TIMEOUT" "$WORKDIR" claude -p "$PROMPT" --model "$MODEL" --dangerously-skip-permissions
     ;;
   codex)
-    timeout "$TIMEOUT" codex exec --model "$MODEL" --dangerously-bypass-approvals-and-sandbox -c 'mcp_servers={}' -C "$WORKDIR" --skip-git-repo-check "$PROMPT"
+    _run_with_timeout "$TIMEOUT" "$WORKDIR" codex exec --model "$MODEL" --dangerously-bypass-approvals-and-sandbox -c 'mcp_servers={}' -C "$WORKDIR" --skip-git-repo-check "$PROMPT"
     ;;
   kimi)
-    cd "$WORKDIR" || exit 3
-    timeout "$TIMEOUT" kimi -p "$PROMPT" -m "$MODEL"
+    _run_with_timeout "$TIMEOUT" "$WORKDIR" kimi -p "$PROMPT" -m "$MODEL"
     ;;
   opencode)
-    timeout "$TIMEOUT" opencode run --model "$MODEL" --dir "$WORKDIR" --dangerously-skip-permissions "$PROMPT"
+    _run_with_timeout "$TIMEOUT" "$WORKDIR" opencode run --model "$MODEL" --dir "$WORKDIR" --dangerously-skip-permissions "$PROMPT"
     ;;
   *)
     echo "run-orchestrator: unknown provider: $PROVIDER" >&2

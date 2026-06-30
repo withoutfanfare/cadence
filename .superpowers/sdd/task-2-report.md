@@ -1,7 +1,7 @@
 # Task 2 Report — Orchestrator Provider Adapter
 
 ## What I implemented
-- Added `engine/scripts/run-orchestrator.sh` with provider dispatch for `claude`, `codex`, `kimi`, and `opencode`, plus timeout handling, argument validation, and standardized `run-orchestrator:` stderr diagnostics.
+- Added `engine/scripts/run-orchestrator.sh` with provider dispatch for `claude`, `codex`, `kimi`, and `opencode`, plus timeout handling, argument validation, and standardised `run-orchestrator:` stderr diagnostics.
 - Added adapter tests in `engine/tests/test_run_orchestrator.py` using a temporary PATH-injected binary directory.
 - Added orchestrator/review env defaults in `engine/lib/lib-env.sh`:
   - `ORCHESTRATOR_*` provider:model pair defaults
@@ -42,3 +42,9 @@
 - Added focused regression test `test_provider_nonzero_exit_code_propagates` (`fake provider exits 42`) and assert script returns `42`.
 - Command: `cd engine && python3 -m unittest tests.test_run_orchestrator` → PASS (`Ran 5 tests` / `OK`)
 - Command: `bash -n engine/scripts/run-orchestrator.sh engine/lib/lib-env.sh` → PASS (syntax clean)
+
+## Second review fix
+- `engine/scripts/run-orchestrator.sh` now uses a Python-stdlib timeout wrapper via `python3` instead of GNU `timeout`, preserving provider exit code passthrough and returning `124` on timeout.
+- `engine/tests/test_run_orchestrator.py`: updated `_run()` to inject timeout duration and added `test_timeout_returns_exit_code_124` (fake `claude` sleep command) to assert timed-out behavior and stderr timeout diagnostic.
+- Command: `cd engine && python3 -m unittest tests.test_run_orchestrator` → PASS (`Ran 6 tests` / `OK`, including timeout exit-code regression)
+- Command: `bash -n engine/scripts/run-orchestrator.sh engine/lib/lib-env.sh` → PASS
