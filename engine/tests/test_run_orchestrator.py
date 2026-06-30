@@ -31,7 +31,7 @@ class TestRunOrchestrator(unittest.TestCase):
 
     def _run(self, provider, model="model-a"):
         env = os.environ.copy()
-        env["PATH"] = str(self.bin) + os.pathsep + env.get("PATH", "")
+        env["RUNNER_PATH_PREPEND"] = str(self.bin)
         env["ORCH_TIMEOUT"] = "5"
         return subprocess.run(
             ["bash", str(self.script), provider, model, str(self.workdir), str(self.prompt), "triage"],
@@ -72,6 +72,13 @@ class TestRunOrchestrator(unittest.TestCase):
 
         self.assertEqual(result.returncode, 3)
         self.assertIn("prompt not found", result.stderr)
+
+    def test_provider_nonzero_exit_code_propagates(self):
+        self._write_exe("claude", "#!/bin/sh\nexit 42\n")
+
+        result = self._run("claude", "sonnet")
+
+        self.assertEqual(result.returncode, 42, result.stderr)
 
 
 if __name__ == "__main__":

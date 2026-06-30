@@ -6,7 +6,7 @@ set -u
 _pp="${RUNNER_PATH_PREPEND:-}"
 [ -z "$_pp" ] && [ -d "$HOME/Library/Application Support/Herd/bin" ] && _pp="$HOME/Library/Application Support/Herd/bin"
 _base_path="$HOME/.kimi-code/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
-export PATH="${_pp:+$_pp:}${PATH:+$PATH:}$_base_path"
+export PATH="${_pp:+$_pp:}$_base_path"
 
 if [ "$#" -ne 5 ]; then
   echo "run-orchestrator: bad args" >&2

@@ -33,3 +33,12 @@
 
 ## Self-review findings / concerns
 - Concern: the test stub in `test_run_orchestrator.py` needed `${10}` in a helper print to correctly read positional arg 10 under `sh`; without this, bash positional expansion yields `arg1`+`0`. This was fixed locally in the test to make the codex invocation assertion reliable.
+
+## Review fix
+- `engine/scripts/run-orchestrator.sh`: restored controlled `PATH` initialization to omit inherited `PATH` leakage:
+  - from: `export PATH="${_pp:+$_pp:}${PATH:+$PATH:}$_base_path"`
+  - to: `export PATH="${_pp:+$_pp:}$_base_path"`
+- `engine/tests/test_run_orchestrator.py`: switched provider fake binary injection to `RUNNER_PATH_PREPEND` and kept test fixture `PATH` untouched.
+- Added focused regression test `test_provider_nonzero_exit_code_propagates` (`fake provider exits 42`) and assert script returns `42`.
+- Command: `cd engine && python3 -m unittest tests.test_run_orchestrator` → PASS (`Ran 5 tests` / `OK`)
+- Command: `bash -n engine/scripts/run-orchestrator.sh engine/lib/lib-env.sh` → PASS (syntax clean)
