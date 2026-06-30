@@ -1,0 +1,22 @@
+# Profile / secrets — never commit
+.env
+.env.local
+memory/
+!engine/memory/
+private/
+
+# Runtime artefacts
+*.log
+.DS_Store
+__pycache__/
+*.pyc
+
+# Runtime state
+.cadence/
+
+# Local pre-PR review artefacts
+code-review/
+
+# Agent config — keep private
+CLAUDE.md
+.claude/

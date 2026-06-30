@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# cadence — front door to the Cadence engine. Generic: all profile values come
+# from .env via engine/lib/lib-env.sh. Heavy lifting stays in engine/.
+set -u
+
+# Resolve our own location, following a PATH symlink if present (portable; no GNU readlink -f).
+SELF="${BASH_SOURCE[0]:-$0}"
+while [ -L "$SELF" ]; do _l="$(readlink "$SELF")"; case "$_l" in /*) SELF="$_l" ;; *) SELF="$(dirname "$SELF")/$_l" ;; esac; done
+BIN="$(cd "$(dirname "$SELF")" && pwd)"
+# shellcheck disable=SC1091
+source "$BIN/../engine/lib/lib-env.sh"   # sets CADENCE_HOME, CADENCE_STATE_DIR, .env
+
+RUNS="$CADENCE_STATE_DIR/runs"
+LOGDIR="$CADENCE_STATE_DIR/logs"
+PAUSED="$RUNS/PAUSED"
+PLISTDIR="$HOME/Library/LaunchAgents"
+STAGES="triage spec build revise advance"
+GUI="gui/$(id -u)"
+
+is_stage() { case " $STAGES " in *" ${1:-} "*) return 0 ;; *) return 1 ;; esac; }
+
+usage() {
+  cat <<EOF
+cadence — control the Cadence agent loops
+
+Usage: cadence <command> [args]
+
+  status            Live/paused state, launchd jobs, last run per stage, activity
+  doctor            Verify the setup (.env, API key, claude, schedule)
+  pause | resume    Stop / resume all loops (PAUSED flag)
+  run <stage>       Run one loop NOW (triage|spec|build|revise)
+  run advance [--dry-run]  Autonomous advancer (opt-in; grants gates on agent:auto)
+  logs [stage]      Tail a stage log
+  feed [n]          Recent activity feed (default 20 lines)
+  queue [-v]        What needs you now — board overview by agent state
+  digest [date]     Full digest for a date (default: today UTC)
+  throughput [days] Per-stage rollup of recent runs (default 7 days)
+  restart           Reload all launchd jobs after editing plists
+  schedule [show|apply]  Show or apply launchd timings (config-driven via SCHED_* in .env)
+  autonomous on|off|status  Flip autonomous mode: set .env + load/unload advance & conduct jobs
+  tend              Run the Clio hygiene pass now
+  conduct [--dry-run]  Feed the autonomous queue (deterministic; opt-in via AUTONOMOUS)
+  linear <args>     Linear API adapter (teams, issues-list, issue-get, …)
+  advance <args>    Advancer decision core (decide, criteria, repairs)
+  memory <args>     Memory adapter (recall, remember)
+  worktree <args>   Build worktree helper (add|remove|path; git or grove)
+  help
+
+Home: $CADENCE_HOME   State: $CADENCE_STATE_DIR
+EOF
+}
+
+cmd="${1:-help}"; shift 2>/dev/null || true
+case "$cmd" in
+  status)  exec bash "$CADENCE_HOME/engine/scripts/status.sh" ;;
+  doctor)  exec bash "$CADENCE_HOME/engine/scripts/doctor.sh" ;;
+  pause)   mkdir -p "$RUNS"; touch "$PAUSED"
+           echo "⏸  Paused — every loop will skip until you resume."
+           echo "   flag: $PAUSED" ;;
+  resume)  if [ -f "$PAUSED" ]; then rm -f "$PAUSED"; echo "▶  Resumed."
+           else echo "▶  Already live (no PAUSED flag)."; fi ;;
+  run)     stage="${1:-}"
+           is_stage "$stage" || { echo "run needs: triage|spec|build|revise|advance" >&2; exit 2; }
+           shift 2>/dev/null || true
+           echo "Running '$stage' now (LIVE) — log: $LOGDIR/$stage.log"
+           exec bash "$CADENCE_HOME/engine/scripts/run-loop.sh" "$stage" "$@" ;;
+  logs)    stage="${1:-}"
+           if [ -n "$stage" ]; then
+             is_stage "$stage" || { echo "unknown stage: $stage" >&2; exit 2; }
+             tail -n 40 "$LOGDIR/$stage.log" 2>/dev/null || echo "no log yet for $stage"
+           else
+             for s in triage spec build revise; do
+               echo "── $s ──"
+               grep -E 'starting|finished' "$LOGDIR/$s.log" 2>/dev/null | tail -2 | sed 's/^/  /' || echo "  (no log)"
+             done
+           fi ;;
+  feed)    n="${1:-20}"; tail -n "$n" "$RUNS/activity.log" 2>/dev/null || echo "no activity yet" ;;
+  queue)   exec python3 "$CADENCE_HOME/engine/queue/cli.py" "$@" ;;
+  digest)  d="${1:-$(date -u +%F)}"; f="$RUNS/$d.md"
+           [ -f "$f" ] && cat "$f" || echo "no digest for $d ($f)" ;;
+  throughput) exec python3 "$CADENCE_HOME/engine/throughput/cli.py" "$@" ;;
+  restart) shopt -s nullglob
+           found=0
+           for p in "$PLISTDIR"/com.cadence.*.plist; do
+             found=1
+             launchctl bootout "$GUI" "$p" 2>/dev/null || true
+             launchctl bootstrap "$GUI" "$p" && echo "reloaded $(basename "$p" .plist)" || echo "FAILED $(basename "$p" .plist)" >&2
+           done
+           [ "$found" = 0 ] && echo "no com.cadence.*.plist found in $PLISTDIR" >&2 ;;
+  autonomous|auto) exec bash "$CADENCE_HOME/engine/scripts/autonomous.sh" "$@" ;;
+  schedule) exec bash "$CADENCE_HOME/engine/scripts/schedule.sh" "$@" ;;
+  tend)    exec bash "$CADENCE_HOME/engine/scripts/tend-run.sh" ;;
+  conduct) exec python3 "$CADENCE_HOME/engine/conduct/cli.py" "$@" ;;
+  linear)  exec python3 "$CADENCE_HOME/engine/linear/cli.py" "$@" ;;
+  advance) exec python3 "$CADENCE_HOME/engine/advance/cli.py" "$@" ;;
+  memory)  exec python3 "$CADENCE_HOME/engine/memory/cli.py" "$@" ;;
+  worktree) exec bash "$CADENCE_HOME/engine/scripts/worktree.sh" "$@" ;;
+  help|-h|--help) usage ;;
+  *)       echo "unknown command: $cmd" >&2; usage; exit 2 ;;
+esac

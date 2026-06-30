@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Cadence icon</title>
+  <desc id="desc">A polished app icon showing a gated loop with four stage nodes for the Cadence human-gated agent workflow.</desc>
+  <defs>
+    <clipPath id="icon-mask">
+      <rect width="512" height="512" rx="112"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#icon-mask)">
+    <rect width="512" height="512" rx="112" fill="#111827"/>
+    <circle cx="136" cy="102" r="210" fill="#1F2937" opacity="0.42"/>
+    <circle cx="438" cy="430" r="190" fill="#0B1120" opacity="0.72"/>
+  </g>
+
+  <path d="M386.5 100.5A203 203 0 1 0 386.5 411.5L336.3 351.8A125 125 0 1 1 336.3 160.2Z" fill="#020617" opacity="0.42"/>
+  <path d="M380.1 108.2A193 193 0 1 0 380.1 403.8L342.8 359.4A135 135 0 1 1 342.8 152.6Z" fill="#F8FAFC"/>
+  <path d="M256 449A193 193 0 0 1 63 256L121 256A135 135 0 0 0 256 391Z" fill="#2DD4BF"/>
+
+  <g stroke="#111827" stroke-width="11">
+    <circle cx="256" cy="92" r="24" fill="#F8FAFC"/>
+    <circle cx="94" cy="256" r="24" fill="#2DD4BF"/>
+    <circle cx="176" cy="398" r="24" fill="#2DD4BF"/>
+    <circle cx="338" cy="400" r="24" fill="#F8FAFC"/>
+  </g>
+
+  <rect x="382" y="196" width="52" height="144" rx="26" fill="#020617" opacity="0.28"/>
+  <rect x="382" y="184" width="52" height="144" rx="26" fill="#F59E0B" stroke="#111827" stroke-width="11"/>
+  <circle cx="408" cy="256" r="10" fill="#111827"/>
+</svg>
