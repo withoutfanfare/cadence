@@ -31,6 +31,7 @@ class TestFrontDoor(unittest.TestCase):
         self.assertIn("provider CLIs", result.stdout)
         self.assertIn("providers roles|show|set|help", result.stdout)
         self.assertIn("prompt render", result.stdout)
+        self.assertIn("tasks <args>", result.stdout)
 
     def test_inspect_runs_read_only_status_commands(self):
         with tempfile.TemporaryDirectory() as tmp:

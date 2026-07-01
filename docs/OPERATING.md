@@ -349,8 +349,8 @@ cadence doctor
 Common causes:
 
 - Cadence is paused.
-- `TASK_BACKEND=file` is selected. The file backend currently validates
-  `TASK_FILE` but pauses before model launch with `unsupported-task-backend`.
+- `TASK_BACKEND=file` is selected and `TASK_FILE` is missing or has no task with
+  the required agent label.
 - The issue is missing the required human gate label.
 - The issue has `agent:hold`, `agent:superseded`, or `agent:needs-human`.
 - The issue is not assigned to `LINEAR_ASSIGNEE_ID`.

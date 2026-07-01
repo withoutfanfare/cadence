@@ -8,8 +8,9 @@ stop and hand the decision back to you. Every gate between stages is yours to
 grant. The agents do the legwork around the clock; you stay the one who says
 "ship it".
 
-Cadence is a human-gated agent loop for Linear projects. It moves issues through
-four stages:
+Cadence is a human-gated agent loop for Linear projects, with a small local
+markdown task-file backend for projects that do not need Linear. It moves work
+through four stages:
 
 ```text
 triage -> spec -> build -> revise
@@ -18,7 +19,7 @@ triage -> spec -> build -> revise
 The loops can run unattended, but authority stays with a person. Agents can tidy
 issues, write specs, create draft PRs, and push revisions; they do not approve
 their own work, grant the next gate, mark PRs ready, merge PRs, or act outside
-the configured Linear project.
+the configured project.
 
 ## What it does
 
@@ -77,7 +78,8 @@ scheduler docs are macOS-specific.
 You need:
 
 - `bash`, `git`, and `python3`.
-- A Linear personal API key.
+- A Linear personal API key when `TASK_BACKEND=linear`; or a local
+  `cadence/tasks.md` file when `TASK_BACKEND=file`.
 - One orchestrator CLI on `PATH`: `claude`, `codex`, `kimi`, or `opencode`.
 - Optional implementer CLIs if you choose them: `claude`, `kimi`, `opencode`, or `codex`.
 - `gh` if you want the build loop to open or back-fill GitHub PR information.

@@ -110,9 +110,9 @@ WORKTREE_BASE=/Users/you/Code/app-worktrees
 
 Read [Configuration](CONFIGURATION.md) for the full reference.
 
-`TASK_BACKEND=file` is available only as guarded groundwork right now. It lets
-`cadence doctor` validate a local `TASK_FILE` without Linear credentials, but
-model-backed runs pause before launch until the file loop adapter is implemented.
+For a local task file instead of Linear, set `TASK_BACKEND=file`, create
+`cadence/tasks.md`, and leave the Linear values blank. The file format is shown
+in [Configuration](CONFIGURATION.md#task-backend).
 
 ### Finding Linear IDs
 
