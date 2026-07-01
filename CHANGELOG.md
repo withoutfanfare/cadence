@@ -55,6 +55,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Loop skill prompts keep Step 0 as a short defence-in-depth check and defer the
   detailed pause-recording mechanics to `docs/ARCHITECTURE.md`.
 
+### Fixed
+
+- Local task file: a body line starting `status:` or `labels:` (e.g. `status: 200`
+  in a spec) is kept as body text instead of being silently absorbed into the
+  task's metadata on the next read.
+- Scheduler: a non-numeric `CADENCE_SCHEDULER_MAX_RUNS` or
+  `CADENCE_SCHEDULER_WINDOW_MINUTES` now degrades to the default instead of
+  crashing every tick; two stages due in the same window each run rather than the
+  first starving the rest; and `KEY = value` (space before `=`) is ignored, matching
+  bash, so the scheduler's view can't diverge from the loaded config.
+- `cadence conduct` now records a FAILED entry in the ledger when a Linear/tasks
+  adapter fails, so a scheduled feeder run no longer stops without a trace.
+- Config loading tolerates CRLF (`.env` and profile files) and expands a leading
+  `~/` in `--config`/profile paths; a stray `CADENCE_HOME=` line can no longer
+  repoint the install, and triage/spec-only configs without `PROJECT_DIR` no longer
+  crash under `set -u`.
+- Build/revise worktree lock reclaims by age (survives macOS PID reuse) and reclaims
+  stale locks atomically so two racers can't both acquire it; a timed-out run with no
+  summary no longer reports the previous run's counts.
+- Registered projects that share a `CADENCE_STATE_DIR` are flagged by
+  `cadence schedule status` and each tick.
+- Linear adapter: a non-JSON API response surfaces as a clean error, not a traceback.
+
 ### Added (engine extraction)
 
 - `WORKTREE_TOOL` config (`git` default, `grove` opt-in) and a `cadence worktree

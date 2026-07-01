@@ -181,6 +181,8 @@ def conduct(env, dry_run=False):
 
 
 def _summary_line(summary):
+    if summary.get("error"):
+        return "FAILED — %s" % summary["error"]
     tagged = len(summary.get("tagged") or [])
     blocked = len(summary.get("skipped_blocked") or [])
     parent = len(summary.get("skipped_parent") or [])
@@ -225,7 +227,19 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
     env = _cadence_env.load_env()
-    summary = conduct(env, dry_run=args.dry_run)
+    try:
+        summary = conduct(env, dry_run=args.dry_run)
+    except (SystemExit, Exception) as exc:
+        # An adapter failed (_linear/_tasks call sys.exit) or conduct raised. Record
+        # the failure so a scheduled run leaves a trace in the ledger a human monitors,
+        # then re-raise to preserve the non-zero exit.
+        detail = ("adapter exit %s" % exc.code) if isinstance(exc, SystemExit) \
+            else ("%s: %s" % (type(exc).__name__, exc))
+        try:
+            append_ledger({"loop": "conduct", "dry_run": args.dry_run, "error": detail}, env)
+        except Exception:
+            pass  # never mask the original failure with a ledger-write error
+        raise
     append_ledger(summary, env)
     print(json.dumps(summary, separators=(",", ":")))
 

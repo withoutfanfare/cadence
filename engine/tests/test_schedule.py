@@ -216,6 +216,35 @@ class TestSchedulerTick(unittest.TestCase):
                 rc = cli.tick(env, now=now, run=fake_run)
             self.assertEqual(rc, 0)
 
+    def test_two_stages_due_same_window_both_run_across_ticks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "app")
+            config_dir = os.path.join(project, "cadence")
+            state = os.path.join(tmp, "state")
+            registry = os.path.join(tmp, "projects.txt")
+            os.makedirs(config_dir)
+            with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                # spec shares triage's :00 slot — both are due in the same window.
+                f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\nSCHED_SPEC=:00\n" % state)
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(project + "\n")
+
+            calls = []
+
+            def fake_run(cmd, cwd=None, env=None):
+                calls.append(cmd)
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "10"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+            with contextlib.redirect_stdout(io.StringIO()):
+                cli.tick(env, now=now, run=fake_run)
+                cli.tick(env, now=now, run=fake_run)
+
+        # Both due stages run (one per tick); neither starves the other.
+        self.assertEqual(sorted(c[-1] for c in calls), ["spec", "triage"])
+
     def test_read_env_file_ignores_spaced_assignment(self):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = os.path.join(tmp, ".env")

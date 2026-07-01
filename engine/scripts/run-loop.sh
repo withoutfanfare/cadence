@@ -32,14 +32,34 @@ case "$STAGE" in
   *)            _LOCK="$STAGE" ;;    # triage/spec/advance → only self-exclusive
 esac
 LOCKDIR="$LOGDIR/$_LOCK.lock.d"
-if ! mkdir "$LOCKDIR" 2>/dev/null; then
-  _holder="$(cat "$LOCKDIR/pid" 2>/dev/null || echo '')"
-  if [ -n "$_holder" ] && kill -0 "$_holder" 2>/dev/null; then
-    echo "[$(date -u +%FT%TZ)] $STAGE — skipped (run $_holder already in flight)" >> "$LOGDIR/$STAGE.log"
-    exit 0
-  fi
-  rm -rf "$LOCKDIR"   # stale lock — holder is dead
-  mkdir "$LOCKDIR" 2>/dev/null || { echo "[$(date -u +%FT%TZ)] $STAGE — skipped (lock race)" >> "$LOGDIR/$STAGE.log"; exit 0; }
+# A lock older than this is treated as abandoned even if its recorded PID is alive
+# again (macOS recycles PIDs), matching the 2h agent:claimed reclaim window.
+_LOCK_MAX_AGE="${CADENCE_LOCK_MAX_AGE_SECONDS:-7200}"
+_lock_alive() {   # true only if the holder PID is live AND the lock is young enough
+  local holder now mtime
+  holder="$(cat "$LOCKDIR/pid" 2>/dev/null || echo '')"
+  [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null || return 1
+  now="$(date +%s)"
+  mtime="$(stat -f %m "$LOCKDIR/pid" 2>/dev/null || stat -c %Y "$LOCKDIR/pid" 2>/dev/null || echo "$now")"
+  [ "$(( now - mtime ))" -lt "$_LOCK_MAX_AGE" ]
+}
+if mkdir "$LOCKDIR" 2>/dev/null; then
+  :   # acquired cleanly
+elif _lock_alive; then
+  echo "[$(date -u +%FT%TZ)] $STAGE — skipped (run $(cat "$LOCKDIR/pid" 2>/dev/null) already in flight)" >> "$LOGDIR/$STAGE.log"
+  exit 0
+elif mkdir "$LOCKDIR.reclaim" 2>/dev/null; then
+  # Won the right to reclaim a stale lock. Doing rm+mkdir under this second atomic
+  # lock stops two racers both recreating LOCKDIR and each thinking they hold it.
+  # ponytail: .reclaim is held only across the adjacent rm+mkdir (µs, no I/O); a hard
+  # kill in that gap is vanishingly unlikely and an operator clears it like any lock.
+  rm -rf "$LOCKDIR"
+  mkdir "$LOCKDIR" 2>/dev/null
+  rmdir "$LOCKDIR.reclaim" 2>/dev/null || true
+  [ -d "$LOCKDIR" ] || { echo "[$(date -u +%FT%TZ)] $STAGE — skipped (lock race)" >> "$LOGDIR/$STAGE.log"; exit 0; }
+else
+  echo "[$(date -u +%FT%TZ)] $STAGE — skipped (lock reclaim in progress)" >> "$LOGDIR/$STAGE.log"
+  exit 0
 fi
 echo "$$" > "$LOCKDIR/pid"
 trap 'rm -rf "$LOCKDIR"' EXIT
@@ -219,6 +239,7 @@ if [ "$STAGE" = "build" ] || [ "$STAGE" = "revise" ]; then
 fi
 
 LOG="$LOGDIR/$STAGE.log"
+_LOG_START=$(wc -c < "$LOG" 2>/dev/null || echo 0)   # scan only THIS run's output for a summary
 PROMPT_FILE="$RUNS/prompt-$STAGE-$(date -u +%Y%m%dT%H%M%SZ)-$$.md"
 python3 "$CADENCE_HOME/engine/prompts/render.py" "$STAGE" "${CMD_ARGS[@]}" --output "$PROMPT_FILE" >> "$LOG" 2>&1
 RC=$?
@@ -236,12 +257,19 @@ rm -f "$PROMPT_FILE"
 # Parse this run's JSON summary (triage uses "stage", others use "loop"), build a plain
 # one-liner, append it to a single chronological activity feed, and fire a macOS
 # notification only when a LIVE run actually did something (or paused / errored).
-SUM=$(python3 - "$STAGE" "$LOG" "$RC" <<'PY'
+SUM=$(python3 - "$STAGE" "$LOG" "$RC" "$_LOG_START" <<'PY'
 import sys, json
 stage, logpath, rc = sys.argv[1], sys.argv[2], int(sys.argv[3])
+try:
+    start = int(sys.argv[4])
+except (IndexError, ValueError):
+    start = 0
 last = None
 try:
-    for line in open(logpath, encoding='utf-8', errors='replace'):
+    with open(logpath, 'rb') as f:
+        f.seek(start)          # skip prior runs' output so a no-summary run isn't
+        chunk = f.read()       # mislabelled with the previous run's stale counts
+    for line in chunk.decode('utf-8', 'replace').splitlines():
         s = line.strip()
         if s.startswith('{') and ('"stage"' in s or '"loop"' in s):
             try: d = json.loads(s)

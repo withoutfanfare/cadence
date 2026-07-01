@@ -320,10 +320,6 @@ def _marker(state, stage):
     return os.path.join(state, "scheduler", f"{stage}.last")
 
 
-def _project_key(now, window):
-    return f"project:{now:%Y%m%dT%H}:{now.minute // window}"
-
-
 def _already_ran(state, stage, key):
     try:
         with open(_marker(state, stage), encoding="utf-8") as f:
@@ -375,9 +371,9 @@ def tick(env, now=None, run=subprocess.run):
             print(f"{project}: skipped (CADENCE_SCHEDULED not enabled)")
             continue
         state = _path_value(values.get("CADENCE_STATE_DIR"), os.path.expanduser("~/.cadence"))
-        project_key = _project_key(now, window)
-        if _already_ran(state, "project", project_key):
-            continue
+        # Dedup is per (stage, slot) only — a project is never excluded as a whole,
+        # so two stages due in the same window each get their turn (across ticks),
+        # rather than the first one silently starving the rest.
         for stage in JOBS:
             spec = (values.get("SCHED_" + stage.upper()) or JOBS[stage][3]).strip()
             try:
@@ -389,7 +385,6 @@ def tick(env, now=None, run=subprocess.run):
             if not key or _already_ran(state, stage, key):
                 continue
             proc = _run_stage(home, project, config, stage, run)
-            _mark_ran(state, "project", project_key)
             _mark_ran(state, stage, key)
             ran += 1
             print(f"{project}: {stage} exit {proc.returncode}")
