@@ -285,5 +285,29 @@ class TestWriteVerbs(unittest.TestCase):
         with self.assertRaises(cli.LinearError):
             cli.cmd_doc_upsert(args, ENV, post=post)
 
+
+class TestGraphqlErrors(unittest.TestCase):
+    def test_non_json_response_raises_linear_error(self):
+        # A 2xx with a non-JSON body (e.g. a WAF/CDN HTML page) must surface as the
+        # adapter's normal LinearError, not a raw JSONDecodeError traceback.
+        class FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return b"<html>Access Denied</html>"
+
+        orig = cli.urllib.request.urlopen
+        cli.urllib.request.urlopen = lambda req, timeout=None: FakeResp()
+        try:
+            with self.assertRaises(cli.LinearError):
+                cli.graphql("{ viewer { id } }", {}, ENV)
+        finally:
+            cli.urllib.request.urlopen = orig
+
+
 if __name__ == "__main__":
     unittest.main()

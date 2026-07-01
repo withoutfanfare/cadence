@@ -43,6 +43,8 @@ def graphql(query, variables, env):
         raise LinearError(f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')}")
     except urllib.error.URLError as e:
         raise LinearError(f"network error: {e.reason}")
+    except json.JSONDecodeError as e:
+        raise LinearError(f"invalid JSON response from Linear: {e}")
     if payload.get("errors"):
         raise LinearError(json.dumps(payload["errors"]))
     return payload["data"]

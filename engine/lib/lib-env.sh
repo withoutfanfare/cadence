@@ -45,6 +45,7 @@ else
 fi
 export CADENCE_CONFIG
 _CADENCE_RESOLVED_CONFIG="$CADENCE_CONFIG"
+_CADENCE_RESOLVED_HOME="$CADENCE_HOME"
 
 if [ -f "$CADENCE_CONFIG" ]; then
   set -a
@@ -52,9 +53,13 @@ if [ -f "$CADENCE_CONFIG" ]; then
   . "$CADENCE_CONFIG"
   set +a
 fi
+# Restore engine-resolved values that `set -a` sourcing must not let a config
+# override — a stray CADENCE_HOME/CADENCE_CONFIG line would otherwise repoint the
+# whole install and crash every downstream `$CADENCE_HOME/engine/...` lookup.
 CADENCE_CONFIG="$_CADENCE_RESOLVED_CONFIG"
-export CADENCE_CONFIG
-unset _CADENCE_RESOLVED_CONFIG
+CADENCE_HOME="$_CADENCE_RESOLVED_HOME"
+export CADENCE_CONFIG CADENCE_HOME
+unset _CADENCE_RESOLVED_CONFIG _CADENCE_RESOLVED_HOME
 unset _CADENCE_PROFILE_FILE _CADENCE_PROFILE_LINE
 
 : "${BASE_BRANCH:=develop}"

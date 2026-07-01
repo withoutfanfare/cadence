@@ -252,6 +252,11 @@ def read_env_file(path):
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, val = line.split("=", 1)
+            # bash does not treat `KEY = value` (whitespace before `=`) as an
+            # assignment, so neither should we — otherwise the scheduler's parsed
+            # view of a value can diverge from what lib-env.sh actually sources.
+            if key != key.rstrip():
+                continue
             key = key.strip()
             if key.startswith("export "):
                 key = key.split(None, 1)[1]
@@ -261,6 +266,19 @@ def read_env_file(path):
 
 def _path_value(value, default):
     return os.path.expanduser(os.path.expandvars(value or default))
+
+
+def _int_env(env, key, default):
+    """Read an integer setting, degrading to the default on a non-numeric value
+    instead of crashing the whole tick (mirrors the SCHED_* graceful handling)."""
+    raw = env.get(key)
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        print(f"scheduler: {key}={raw!r} is not an integer; using {default}", file=sys.stderr)
+        return default
 
 
 def _shared_state_warnings(projects):
@@ -335,8 +353,8 @@ def _run_stage(home, project, config, stage, run):
 def tick(env, now=None, run=subprocess.run):
     home = env.get("CADENCE_HOME") or HOME
     now = now or datetime.now(timezone.utc)
-    window = max(1, int(env.get("CADENCE_SCHEDULER_WINDOW_MINUTES") or 5))
-    max_runs = int(env.get("CADENCE_SCHEDULER_MAX_RUNS") or 1)
+    window = max(1, _int_env(env, "CADENCE_SCHEDULER_WINDOW_MINUTES", 5))
+    max_runs = _int_env(env, "CADENCE_SCHEDULER_MAX_RUNS", 1)
     projects = read_projects(projects_file(env))
     ran = 0
     failed = 0

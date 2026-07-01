@@ -12,7 +12,9 @@ _pp="${RUNNER_PATH_PREPEND:-}"
 [ -z "$_pp" ] && [ -d "$HOME/Library/Application Support/Herd/bin" ] && _pp="$HOME/Library/Application Support/Herd/bin"
 export PATH="${_pp:+$_pp:}$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 STAGE="${1:?stage required (triage|spec|build|revise)}"
-WORKTREE="$PROJECT_DIR"
+# Default so a config that legitimately omits PROJECT_DIR (triage/spec-only setups)
+# reaches the `cd "$WORKTREE" || ...` handler below rather than crashing on `set -u`.
+WORKTREE="${PROJECT_DIR:-}"
 LOGDIR="$CADENCE_STATE_DIR/logs"
 RUNS="$CADENCE_STATE_DIR/runs"
 mkdir -p "$LOGDIR" "$RUNS"
