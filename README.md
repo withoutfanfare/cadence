@@ -169,6 +169,8 @@ loops, read [docs/INSTALL.md](docs/INSTALL.md).
 Start with [docs/README.md](docs/README.md), or jump directly to:
 
 - [Installation](docs/INSTALL.md) - step-by-step setup for a new machine.
+- [Current Capabilities](docs/CAPABILITIES.md) - what Cadence can do now and
+  where config, state, tasks, and worktrees live.
 - [Configuration](docs/CONFIGURATION.md) - every config value explained.
 - [Operating Cadence](docs/OPERATING.md) - day-to-day commands and recovery.
 - [Architecture](docs/ARCHITECTURE.md) - gates, labels, state, and invariants.

@@ -17,8 +17,9 @@ For front-door `cadence` commands, config resolves in this order:
 Scripts invoked directly skip the front door, so ambient `CADENCE_CONFIG` is
 their explicit override.
 
-New projects should use `<project repo>/cadence/.env` so Cadence does not
-collide with the app's own `.env`.
+New projects should use `<project repo>/cadence/.env` in the base application
+checkout (`PROJECT_DIR`) so Cadence does not collide with the app's own `.env`.
+Generated worktrees do not get their own Cadence config unless you create one.
 
 Existing root `.env` installs still work, but new project profiles should use
 `cadence/.env`.
@@ -98,9 +99,9 @@ back-fill. Use `file` when a local `cadence/tasks.md` board is enough.
 | `WORKTREE_BASE` | Build/revise | Directory where build/revise create temporary worktrees. |
 | `WORKTREE_TOOL` | Build/revise | `git` (default) or `grove` — how worktrees are created. |
 
-`PROJECT_DIR` should be a normal checkout of the application repo. `WORKTREE_BASE`
-should be a separate directory so generated worktrees do not clutter the main
-checkout.
+`PROJECT_DIR` should be a normal checkout of the application repo. This is the
+base repo whose `cadence/.env` Cadence normally reads. `WORKTREE_BASE` should be
+a separate directory so generated worktrees do not clutter the main checkout.
 
 `WORKTREE_TOOL` chooses how the build and revise loops create their isolated
 worktrees:
@@ -114,7 +115,9 @@ worktrees:
   stays under Herd's SSL length limit.
 
 Either way the loops drive worktrees through `cadence worktree add|remove|path`, so
-the skills themselves stay tool-agnostic.
+the skills themselves stay tool-agnostic. The generated worktree path is
+`$WORKTREE_BASE/<branch>`; keep the Cadence config in
+`$PROJECT_DIR/cadence/.env`, not in each generated worktree.
 
 ## Orchestrators, Reviewer, and Implementer
 

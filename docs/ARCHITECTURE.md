@@ -216,6 +216,11 @@ or scripts. Scheduled multi-project work is centralised in `cadence schedule tic
 which reads project folders from `CADENCE_PROJECTS_FILE` and refuses to run a
 project unless its own config opts in with `CADENCE_SCHEDULED=1`.
 
+For code-writing stages, `PROJECT_DIR` is the base application checkout and
+`WORKTREE_BASE` is where disposable build/revise worktrees are created. The
+project config normally stays in `<PROJECT_DIR>/cadence/.env`; generated
+worktrees do not need their own Cadence config.
+
 ### Config file conventions
 
 See [Configuration](CONFIGURATION.md) for the full profile reference.

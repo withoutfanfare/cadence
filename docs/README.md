@@ -8,16 +8,20 @@ Cadence.
 1. [Installation](INSTALL.md) - clone the repo, install the `cadence` command,
    fill `cadence/.env`, create Linear labels, run `doctor`, smoke-test the setup,
    and understand the current scheduling caveat.
-2. [Configuration](CONFIGURATION.md) - reference for every config setting.
-3. [AI Provider Roles](PROVIDERS.md) - how to inspect and switch orchestrators,
+2. [Current Capabilities](CAPABILITIES.md) - what the runtime can do now, where
+   config/state/tasks/worktrees live, and how profiles are selected.
+3. [Configuration](CONFIGURATION.md) - reference for every config setting.
+4. [AI Provider Roles](PROVIDERS.md) - how to inspect and switch orchestrators,
    reviewers, and build implementers without confusing legacy `MODEL_*` aliases.
-4. [Operating Cadence](OPERATING.md) - daily commands, logs, digests, pausing,
+5. [Operating Cadence](OPERATING.md) - daily commands, logs, digests, pausing,
    autonomous monitoring, helper commands, and common troubleshooting.
 
 ## Reference
 
 - [Architecture](ARCHITECTURE.md) - control model, human gates, runtime state,
   pause guard, memory convention, and verification gates.
+- [Current Capabilities](CAPABILITIES.md) - high-level current feature and file
+  location summary.
 - [Agent Labels](LABELS.md) - the Linear label vocabulary used as the state
   machine.
 - [Bulk Label](BULK-LABEL.md) - cheatsheet for `cadence linear bulk-label`:
@@ -44,7 +48,7 @@ folders and runs due stages with each project's config. See
 For a first install, read:
 
 ```text
-README.md -> docs/INSTALL.md -> docs/CONFIGURATION.md -> docs/PROVIDERS.md -> docs/OPERATING.md
+README.md -> docs/INSTALL.md -> docs/CAPABILITIES.md -> docs/CONFIGURATION.md -> docs/PROVIDERS.md -> docs/OPERATING.md
 ```
 
 For maintainers changing the engine, read:
