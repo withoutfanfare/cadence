@@ -262,7 +262,9 @@ The deterministic conductor is not model-backed, but it still appends a compact
 summary to `runs/runs.jsonl`, `runs/activity.log`, `runs/YYYY-MM-DD.md`, and
 `logs/conduct.log`, so autonomous queue decisions show up in the normal operator
 commands. It feeds only buildable ready slices: held, attention-needed,
-terminal, blocked, already-auto, and parent issues with children are skipped.
+terminal, and already-auto work is skipped. Linear profiles also skip blocked
+issues and parent issues with children; file profiles use the local task labels,
+status, and body only, then add `agent:auto` through `cadence tasks update`.
 
 Get the date/timestamp from the shell (`date -u +%FT%TZ`), never invent one.
 

@@ -112,15 +112,29 @@ def render(buckets, team_name=None, verbose=False):
     return "\n".join(out)
 
 
-def fetch_issues():
-    """Run the existing Linear adapter and parse its JSON array of issues."""
-    adapter = os.path.join(os.path.dirname(__file__), "..", "linear", "cli.py")
+def _backend(env=None):
+    return ((env or os.environ).get("TASK_BACKEND") or "linear").strip().lower()
+
+
+def fetch_issues(env=None):
+    """Run the configured task adapter and parse its JSON array of issues."""
+    env = env or os.environ
+    if _backend(env) == "file":
+        adapter = os.path.join(os.path.dirname(__file__), "..", "tasks", "cli.py")
+        args = ["list"]
+        error = "cadence queue: tasks adapter failed\n"
+    else:
+        adapter = os.path.join(os.path.dirname(__file__), "..", "linear", "cli.py")
+        args = ["issues-list", "--assignee", "me"]
+        error = "cadence queue: linear adapter failed\n"
+    run_env = os.environ.copy()
+    run_env.update(env)
     proc = subprocess.run(
-        [sys.executable, adapter, "issues-list", "--assignee", "me"],
-        capture_output=True, text=True,
+        [sys.executable, adapter, *args],
+        capture_output=True, text=True, env=run_env,
     )
     if proc.returncode != 0:
-        sys.stderr.write(proc.stderr or "cadence queue: linear adapter failed\n")
+        sys.stderr.write(proc.stderr or error)
         sys.exit(1)
     try:
         return json.loads(proc.stdout or "[]")
