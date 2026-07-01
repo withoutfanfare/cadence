@@ -41,9 +41,11 @@ tidy or to read what the agents produced.
    teams` must show `LINEAR_TEAM_ID`. For `TASK_BACKEND=file`, the configured
    `TASK_FILE` must exist. A paused or unsafe run exits cheaply without paying for
    a model call.
-5. It renders the matching loop skill into a provider-neutral prompt, then invokes
-   `engine/scripts/run-orchestrator.sh` with the configured `provider:model`.
-6. The matching **skill** in `skills/cadence-loop-<stage>/SKILL.md` is the loop body.
+5. It renders the matching loop contract into a provider-neutral prompt. Linear
+   profiles render `skills/cadence-loop-<stage>/SKILL.md`; file profiles render
+   the local `cadence tasks` contract.
+6. It invokes `engine/scripts/run-orchestrator.sh` with the configured
+   `provider:model`.
 7. The run appends a human digest + a JSON line to `$CADENCE_STATE_DIR` (default
    `~/.cadence`): `runs/YYYY-MM-DD.md`, `runs/runs.jsonl`, `runs/activity.log`,
    `logs/<stage>.log`.
@@ -183,9 +185,8 @@ run log, prints `{"stage":…,"paused":true,"reason":…}`, and exits.
 
    With `TASK_BACKEND=file`, missing Linear credentials are not a safety fault.
    The runner resolves `TASK_FILE` relative to `$PROJECT_DIR` and pauses with
-   `reason: missing-task-file` if it is absent. The file backend is currently
-   guard-only: when the file exists, model-backed runs pause with
-   `reason: unsupported-task-backend` until the file loop adapter lands.
+   `reason: missing-task-file` if it is absent. When the file exists, the prompt
+   renderer switches the loop to the local `cadence tasks` adapter.
 
 The Linear branch of this guard exists because the API key is the runtime
 authority boundary. The workspace it can currently reach is treated as the

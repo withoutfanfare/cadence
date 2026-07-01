@@ -1,7 +1,7 @@
 # Configuring Cadence
 
 Cadence reads profile-specific values from the active config file. The engine
-files and skills are generic; the config file tells Cadence which Linear project,
+files and skills are generic; the config file tells Cadence which task backend,
 repo, models, memory backend, and verification commands to use.
 
 For front-door `cadence` commands, config resolves in this order:
@@ -41,11 +41,11 @@ RUNNER_PATH_PREPEND="$HOME/Library/Application Support/Herd/bin"
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `LINEAR_API_KEY` | Yes | Personal API key from Linear Settings -> API. |
-| `LINEAR_TEAM_ID` | Yes | Team ID Cadence is allowed to operate in. `cadence doctor` verifies this. |
-| `LINEAR_PROJECT_ID` | Yes | Project ID used to scope every issue query. |
+| `LINEAR_API_KEY` | `TASK_BACKEND=linear` | Personal API key from Linear Settings -> API. |
+| `LINEAR_TEAM_ID` | `TASK_BACKEND=linear` | Team ID Cadence is allowed to operate in. `cadence doctor` verifies this. |
+| `LINEAR_PROJECT_ID` | `TASK_BACKEND=linear` | Project ID used to scope every issue query. |
 | `LINEAR_TEAM_NAME` | Recommended | Display name used in status output and human-facing checks. Quote it if it contains spaces. |
-| `LINEAR_ASSIGNEE_ID` | Yes | User ID whose assigned issues Cadence may act on. |
+| `LINEAR_ASSIGNEE_ID` | `TASK_BACKEND=linear` | User ID whose assigned issues Cadence may act on. |
 
 Cadence always scopes issue lists to both `LINEAR_TEAM_ID` and
 `LINEAR_PROJECT_ID`. The loop skills also query only issues assigned to
@@ -55,13 +55,24 @@ Cadence always scopes issue lists to both `LINEAR_TEAM_ID` and
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `TASK_BACKEND` | `linear` | `linear` uses the Linear adapter and is the only full loop backend today. `file` switches Step 0 to a local task-file guard and skips Linear credential checks. |
+| `TASK_BACKEND` | `linear` | `linear` uses the Linear adapter. `file` uses a local markdown task file and skips Linear credential checks. |
 | `TASK_FILE` | `cadence/tasks.md` | Local task file for `TASK_BACKEND=file`, resolved relative to `PROJECT_DIR` when not absolute. |
 
-`TASK_BACKEND=file` is guard-only in the current engine: `cadence doctor`
-validates `TASK_FILE` without requiring Linear credentials, and `cadence run ...`
-pauses before model launch with `unsupported-task-backend` until the file loop
-adapter is implemented. Use `linear` for live unattended loops.
+The file backend is intentionally small. It stores human-editable tasks as
+markdown sections and exposes them through `cadence tasks list|get|update`:
+
+```markdown
+# Cadence Tasks
+
+## TASK-1: Short title
+status: open
+labels: agent:triaged, Bug
+
+Task body and acceptance notes.
+```
+
+Use `linear` when you want Linear documents, project scoping, comments, and PR
+back-fill. Use `file` when a local `cadence/tasks.md` board is enough.
 
 ## Repository
 

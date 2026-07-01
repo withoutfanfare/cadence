@@ -130,7 +130,7 @@ case "$task_backend" in
     else
       fail "TASK_BACKEND=file but task file missing: $_task_file"
     fi
-    echo "  ⚠️  TASK_BACKEND=file is guard-only until the file loop adapter lands"
+    echo "  task backend: local file (no Linear credential check)"
     ;;
   *)
     fail "TASK_BACKEND='${TASK_BACKEND:-}' invalid (use linear or file)"

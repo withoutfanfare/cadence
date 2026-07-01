@@ -133,7 +133,6 @@ PY
     fi
     TASK_FILE="$_task_file"
     export TASK_FILE
-    pause_before_launch "unsupported-task-backend" "TASK_BACKEND=file needs file loop adapter"
     ;;
   *)
     pause_before_launch "invalid-task-backend" "TASK_BACKEND=${TASK_BACKEND:-} (use linear or file)"
@@ -147,7 +146,10 @@ if [ "$STAGE" = "advance" ]; then
     1|on|true|yes) : ;;
     *) pause_before_launch "autonomous-off" "AUTONOMOUS not enabled" ;;
   esac
-  _n="$(python3 "$CADENCE_HOME/engine/linear/cli.py" issues-list --label agent:auto --assignee me 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)"
+  case "$_task_backend" in
+    file) _n="$(python3 "$CADENCE_HOME/engine/tasks/cli.py" list --label agent:auto 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)" ;;
+    *)    _n="$(python3 "$CADENCE_HOME/engine/linear/cli.py" issues-list --label agent:auto --assignee me 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)" ;;
+  esac
   [ "$_n" = "0" ] && idle_before_launch "no-auto-work" "no agent:auto issues in scope"
 fi
 
