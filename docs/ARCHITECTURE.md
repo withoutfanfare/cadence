@@ -37,9 +37,10 @@ tidy or to read what the agents produced.
    scheduled work.
 4. `run-loop.sh` sources `engine/lib/lib-env.sh` (resolves the active config file,
    applies defaults), then enforces **Step 0** *before* any model launch: the
-   PAUSED flag and the **workspace guard** (`cadence linear teams` must show
-   `LINEAR_TEAM_ID`). A paused or wrong-workspace run exits cheaply without
-   paying for a model call.
+   PAUSED flag and the backend guard. For `TASK_BACKEND=linear`, `cadence linear
+   teams` must show `LINEAR_TEAM_ID`. For `TASK_BACKEND=file`, the configured
+   `TASK_FILE` must exist. A paused or unsafe run exits cheaply without paying for
+   a model call.
 5. It renders the matching loop skill into a provider-neutral prompt, then invokes
    `engine/scripts/run-orchestrator.sh` with the configured `provider:model`.
 6. The matching **skill** in `skills/cadence-loop-<stage>/SKILL.md` is the loop body.
@@ -162,7 +163,7 @@ and write labels to record what they did. Full label vocabulary:
 
 ---
 
-## 5a. PAUSED + workspace guard — Step 0 of every loop
+## 5a. PAUSED + backend guard — Step 0 of every loop
 
 Before any read, write, or claim, every loop runs two pause checks. If either
 trips it writes nothing, fires a notification, appends a `⏸` line to the dated
@@ -174,15 +175,21 @@ run log, prints `{"stage":…,"paused":true,"reason":…}`, and exits.
    (`run-loop.sh`) also checks this flag *before* invoking the model, so a paused
    stage exits immediately and costs nothing — enforcement does not depend on the
    prompt.
-2. **Workspace guard.** The loop calls `cadence linear teams` and proceeds only
-   if the configured team id is present in the response. If the API key cannot
-   see that team, the loop pauses with `reason: wrong-workspace`. It resumes
-   automatically once the active config file and Linear API key point at the intended
-   workspace again.
+2. **Backend guard.** With the default `TASK_BACKEND=linear`, the loop calls
+   `cadence linear teams` and proceeds only if the configured team id is present
+   in the response. If the API key cannot see that team, the loop pauses with
+   `reason: wrong-workspace`. It resumes automatically once the active config file
+   and Linear API key point at the intended workspace again.
 
-This guard exists because the Linear API key is the runtime authority boundary.
-The workspace it can currently reach is treated as the authoritative signal for
-whether it is safe to run.
+   With `TASK_BACKEND=file`, missing Linear credentials are not a safety fault.
+   The runner resolves `TASK_FILE` relative to `$PROJECT_DIR` and pauses with
+   `reason: missing-task-file` if it is absent. The file backend is currently
+   guard-only: when the file exists, model-backed runs pause with
+   `reason: unsupported-task-backend` until the file loop adapter lands.
+
+The Linear branch of this guard exists because the API key is the runtime
+authority boundary. The workspace it can currently reach is treated as the
+authoritative signal for whether it is safe to run.
 
 The `advance` runner also exits before invoking the model when autonomous mode is
 on but no in-scope issue carries `agent:auto`. That is recorded as an idle run,
@@ -196,10 +203,10 @@ not a pause: there is no safety fault, just no autonomous work to advance.
 Skills hold no ids, no project names, no repo paths.
 
 **Profile** — the project-specific facts loaded at runtime from the active
-config file and `memory/`. A profile supplies: the team id, project filter,
-assignee id, repo remote, base branch, worktree root, orchestrator providers,
-reviewer provider, models, and the Clio namespace. The engine reads these from
-environment variables at runtime.
+config file and `memory/`. A profile supplies: the task backend, team id, project
+filter, assignee id, repo remote, base branch, worktree root, orchestrator
+providers, reviewer provider, models, and the Clio namespace. The engine reads
+these from environment variables at runtime.
 
 This separation means the same engine code can run against multiple projects by
 switching the active config path for manual commands — without touching the skills

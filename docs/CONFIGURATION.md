@@ -51,6 +51,18 @@ Cadence always scopes issue lists to both `LINEAR_TEAM_ID` and
 `LINEAR_PROJECT_ID`. The loop skills also query only issues assigned to
 `LINEAR_ASSIGNEE_ID`.
 
+## Task Backend
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `TASK_BACKEND` | `linear` | `linear` uses the Linear adapter and is the only full loop backend today. `file` switches Step 0 to a local task-file guard and skips Linear credential checks. |
+| `TASK_FILE` | `cadence/tasks.md` | Local task file for `TASK_BACKEND=file`, resolved relative to `PROJECT_DIR` when not absolute. |
+
+`TASK_BACKEND=file` is guard-only in the current engine: `cadence doctor`
+validates `TASK_FILE` without requiring Linear credentials, and `cadence run ...`
+pauses before model launch with `unsupported-task-backend` until the file loop
+adapter is implemented. Use `linear` for live unattended loops.
+
 ## Repository
 
 | Variable | Required | Description |
@@ -313,6 +325,9 @@ LINEAR_TEAM_ID=team-id
 LINEAR_PROJECT_ID=project-id
 LINEAR_TEAM_NAME="Example Team"
 LINEAR_ASSIGNEE_ID=user-id
+
+TASK_BACKEND=linear
+TASK_FILE=cadence/tasks.md
 
 REPO_SLUG=example/app
 BASE_BRANCH=develop

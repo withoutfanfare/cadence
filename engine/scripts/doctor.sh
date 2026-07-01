@@ -47,6 +47,8 @@ case "${1:-}" in
   *) echo "usage: cadence doctor [--labels]" >&2; exit 2 ;;
 esac
 
+task_backend="$(printf '%s' "${TASK_BACKEND:-linear}" | tr '[:upper:]' '[:lower:]')"
+
 check_labels() {
   labels_json="$(python3 "$CADENCE_HOME/engine/linear/cli.py" labels-list 2>/dev/null)" || {
     fail "could not list Linear labels"
@@ -75,6 +77,10 @@ PY
 
 echo "── cadence doctor ────────────────────────────────"
 if [ "$labels_only" = 1 ]; then
+  if [ "$task_backend" != "linear" ]; then
+    echo "  doctor --labels skipped (TASK_BACKEND=$task_backend)"
+    exit 0
+  fi
   check_labels
   echo
   [ "$bad" -eq 0 ] && echo "doctor: all label checks passed ($ok ok)" || echo "doctor: $bad problem(s), $ok ok"
@@ -95,20 +101,41 @@ check_provider_cli "revise orchestrator" "$(provider_from_pair "$ORCHESTRATOR_RE
 check_provider_cli "advance orchestrator" "$(provider_from_pair "$ORCHESTRATOR_ADVANCE")"
 check_provider_cli "reviewer" "${REVIEW_PROVIDER:-claude}"
 
-if [ -n "${LINEAR_API_KEY:-}" ]; then
-  teams="$(python3 "$CADENCE_HOME/engine/linear/cli.py" teams 2>/dev/null)"
-  if echo "$teams" | grep -q "\"id\": \"${LINEAR_TEAM_ID:-__none__}\""; then
-    pass "Linear API key valid; team ${LINEAR_TEAM_NAME:-?} visible"
-  else
-    fail "Linear API key invalid OR team ${LINEAR_TEAM_ID:-unset} not in workspace"
-  fi
-else
-  fail "LINEAR_API_KEY not set"
-fi
+case "$task_backend" in
+  linear)
+    pass "task backend linear"
+    if [ -n "${LINEAR_API_KEY:-}" ]; then
+      teams="$(python3 "$CADENCE_HOME/engine/linear/cli.py" teams 2>/dev/null)"
+      if echo "$teams" | grep -q "\"id\": \"${LINEAR_TEAM_ID:-__none__}\""; then
+        pass "Linear API key valid; team ${LINEAR_TEAM_NAME:-?} visible"
+      else
+        fail "Linear API key invalid OR team ${LINEAR_TEAM_ID:-unset} not in workspace"
+      fi
+    else
+      fail "LINEAR_API_KEY not set"
+    fi
 
-# Required scope ids — blank values silently widen scope or break filters.
-if [ -n "${LINEAR_PROJECT_ID:-}" ]; then pass "LINEAR_PROJECT_ID set"; else fail "LINEAR_PROJECT_ID not set (loops would not be project-scoped)"; fi
-if [ -n "${LINEAR_ASSIGNEE_ID:-}" ]; then pass "LINEAR_ASSIGNEE_ID set"; else fail "LINEAR_ASSIGNEE_ID not set"; fi
+    # Required scope ids — blank values silently widen scope or break filters.
+    if [ -n "${LINEAR_PROJECT_ID:-}" ]; then pass "LINEAR_PROJECT_ID set"; else fail "LINEAR_PROJECT_ID not set (loops would not be project-scoped)"; fi
+    if [ -n "${LINEAR_ASSIGNEE_ID:-}" ]; then pass "LINEAR_ASSIGNEE_ID set"; else fail "LINEAR_ASSIGNEE_ID not set"; fi
+    ;;
+  file)
+    _task_file="${TASK_FILE:-cadence/tasks.md}"
+    case "$_task_file" in
+      /*) : ;;
+      *) _task_file="${PROJECT_DIR:-$PWD}/$_task_file" ;;
+    esac
+    if [ -f "$_task_file" ]; then
+      pass "task backend file; task file $_task_file"
+    else
+      fail "TASK_BACKEND=file but task file missing: $_task_file"
+    fi
+    echo "  ⚠️  TASK_BACKEND=file is guard-only until the file loop adapter lands"
+    ;;
+  *)
+    fail "TASK_BACKEND='${TASK_BACKEND:-}' invalid (use linear or file)"
+    ;;
+esac
 
 # Paths the build/revise loops need (warn-only: a triage-only setup may skip them).
 if [ -n "${PROJECT_DIR:-}" ] && [ -d "$PROJECT_DIR" ]; then pass "PROJECT_DIR exists"
@@ -158,7 +185,11 @@ else
   echo "  schedule: off for this project"
 fi
 
-check_labels
+if [ "$task_backend" = "linear" ]; then
+  check_labels
+else
+  echo "  Linear label check skipped for TASK_BACKEND=$task_backend"
+fi
 
 echo
 [ "$bad" -eq 0 ] && echo "doctor: all critical checks passed ($ok ok)" || echo "doctor: $bad problem(s), $ok ok"
