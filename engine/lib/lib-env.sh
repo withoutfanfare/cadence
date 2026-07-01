@@ -7,6 +7,31 @@
 CADENCE_HOME="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)"
 export CADENCE_HOME
 
+if [ -n "${CADENCE_PROFILE:-}" ]; then
+  case "$CADENCE_PROFILE" in
+    *[!A-Za-z0-9_.-]*|"") echo "invalid profile: $CADENCE_PROFILE" >&2; exit 2 ;;
+  esac
+  _CADENCE_PROFILE_FILE="$CADENCE_HOME/profiles/$CADENCE_PROFILE"
+  if [ ! -f "$_CADENCE_PROFILE_FILE" ]; then
+    echo "unknown profile: $CADENCE_PROFILE" >&2
+    exit 2
+  fi
+  CADENCE_CONFIG=""
+  while IFS= read -r _CADENCE_PROFILE_LINE || [ -n "$_CADENCE_PROFILE_LINE" ]; do
+    case "$_CADENCE_PROFILE_LINE" in ""|\#*) continue ;; esac
+    CADENCE_CONFIG="$_CADENCE_PROFILE_LINE"
+    break
+  done < "$_CADENCE_PROFILE_FILE"
+  if [ -z "$CADENCE_CONFIG" ]; then
+    echo "empty profile: $CADENCE_PROFILE" >&2
+    exit 2
+  fi
+  if [ ! -f "$CADENCE_CONFIG" ] && [ ! -L "$CADENCE_CONFIG" ]; then
+    echo "profile config missing: $CADENCE_CONFIG" >&2
+    exit 2
+  fi
+fi
+
 if [ -n "${CADENCE_CONFIG:-}" ]; then
   if [ -f "$CADENCE_CONFIG" ] || [ -L "$CADENCE_CONFIG" ]; then
     CADENCE_CONFIG="$(cd "$(dirname "$CADENCE_CONFIG")" && pwd)/$(basename "$CADENCE_CONFIG")"
@@ -30,6 +55,7 @@ fi
 CADENCE_CONFIG="$_CADENCE_RESOLVED_CONFIG"
 export CADENCE_CONFIG
 unset _CADENCE_RESOLVED_CONFIG
+unset _CADENCE_PROFILE_FILE _CADENCE_PROFILE_LINE
 
 : "${BASE_BRANCH:=develop}"
 : "${TASK_BACKEND:=linear}"
