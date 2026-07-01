@@ -321,9 +321,27 @@ turn, then escalates to `agent:needs-attention` if it still fails.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `CADENCE_STATE_DIR` | `$HOME/.cadence` | Logs, digests, activity feed, machine ledger, and pause flag. |
+| `CADENCE_STATE_DIR` | `$HOME/.cadence` | Logs, digests, activity feed, machine ledger, and pause flag. **Set a unique value per project** — see below. |
 | `NOTIFY` | `on` | macOS notifications for runs that did work, paused, or **failed**. Failures (non-zero exit or reported errors) use a distinct title and "Basso" sound and are always also recorded in the dated digest and activity feed. `off` silences the notifications only; the digest/feed records are kept. |
 | `RUNNER_PATH_PREPEND` | unset | Optional directory prepended to `PATH` for loop runners. |
+
+**Every project profile must set its own `CADENCE_STATE_DIR`.** If two projects
+share one — most easily by both leaving it blank, which defaults to
+`$HOME/.cadence` — their pause flag, logs, digests, and scheduler run-markers
+collide: pausing one pauses the other, and one project's activity is written over
+the other's. Point each project at a unique directory, for example:
+
+```dotenv
+CADENCE_STATE_DIR=$HOME/.cadence/projects/<name>
+```
+
+Create that directory with normal permissions (`chmod 700`) so the loop can make
+its own `logs/` and `runs/` subdirectories. A directory created without the
+execute bit fails at run time with `mkdir: .../logs: Permission denied`.
+
+`cadence schedule status` flags any registered projects that resolve to the same
+state dir, and the scheduler prints the same warning on each tick — so a shared
+dir is caught at setup time rather than silently dropping runs.
 
 Use `RUNNER_PATH_PREPEND` when launchd cannot find project-specific tooling. For
 scheduled jobs, put it in the config file the launchd job actually loads; current
@@ -385,7 +403,9 @@ GATE_TEST=
 GATE_ANALYSE=
 
 MEMORY_BACKEND=markdown
-CADENCE_STATE_DIR=
+CADENCE_STATE_DIR=$HOME/.cadence/projects/app   # unique per project; chmod 700
 ```
 
-Leaving `CADENCE_STATE_DIR` blank uses `$HOME/.cadence`.
+Leaving `CADENCE_STATE_DIR` blank uses `$HOME/.cadence`. That default is only safe
+for a single project — give every project a unique state dir (see **Runtime**
+above).

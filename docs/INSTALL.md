@@ -263,7 +263,22 @@ Project-local `cadence/.env` is supported for manual and scheduled commands.
 Scheduled runs use one global launchd job that reads an explicit projects file,
 then runs due stages with each project's own config.
 
-Add the project folder to the scheduler registry and opt the project in:
+First make sure the project has its **own** `CADENCE_STATE_DIR` (see
+`CONFIGURATION.md` → Runtime). Sharing one across projects makes their pause flag,
+logs, and scheduler markers collide. Create it explicitly, with the execute bit,
+so the loop can write to it:
+
+```bash
+mkdir -p -m 700 "$HOME/.cadence/projects/app"   # unique per project
+```
+
+Set that path in the project's `cadence/.env`:
+
+```dotenv
+CADENCE_STATE_DIR=$HOME/.cadence/projects/app
+```
+
+Then add the project folder to the scheduler registry and opt the project in:
 
 ```bash
 mkdir -p "$HOME/.cadence"

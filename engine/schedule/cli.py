@@ -263,6 +263,26 @@ def _path_value(value, default):
     return os.path.expanduser(os.path.expandvars(value or default))
 
 
+def _shared_state_warnings(projects):
+    """Projects resolving to the same CADENCE_STATE_DIR collide on the pause flag,
+    logs, and scheduler run-markers (so one can silently skip the other's slot).
+    Return one warning line per directory shared by more than one project."""
+    seen = {}
+    for item in projects:
+        values = read_env_file(item["config"])
+        state = _path_value(values.get("CADENCE_STATE_DIR"), os.path.expanduser("~/.cadence"))
+        seen.setdefault(state, []).append(item["project"])
+    lines = []
+    for state, projs in seen.items():
+        if len(projs) > 1:
+            lines.append(
+                "warning: %d projects share CADENCE_STATE_DIR %s — pause flag, logs, "
+                "and scheduler markers will collide; give each its own state dir: %s"
+                % (len(projs), state, ", ".join(projs))
+            )
+    return lines
+
+
 def _slot_key(stage, spec, now, window):
     if is_off(spec):
         return None
@@ -325,6 +345,9 @@ def tick(env, now=None, run=subprocess.run):
         print(f"scheduler: no projects in {projects_file(env)}")
         return 0
 
+    for w in _shared_state_warnings(projects):
+        print(w, file=sys.stderr)
+
     for item in projects:
         if ran >= max_runs:
             break
@@ -372,6 +395,8 @@ def print_status(env):
         values = read_env_file(item["config"])
         enabled = "yes" if (values.get("CADENCE_SCHEDULED") or "").lower() in TRUE else "no"
         print(f"  {item['project']}  scheduled={enabled}  config={item['config']}")
+    for w in _shared_state_warnings(projects):
+        print("  " + w)
     return 0
 
 

@@ -158,6 +158,37 @@ class TestSchedulerTick(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(cli.tick(env, now=now, run=fake_run), 0)
 
+    def test_status_warns_only_when_projects_share_state_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+
+            def make(name, state):
+                config_dir = os.path.join(tmp, name, "cadence")
+                os.makedirs(config_dir)
+                with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                    f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n" % state)
+                return os.path.join(tmp, name)
+
+            shared = os.path.join(tmp, "shared")
+            own = os.path.join(tmp, "own")
+            p1 = make("app1", shared)
+            p2 = make("app2", shared)
+            p3 = make("app3", own)
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(p1 + "\n" + p2 + "\n" + p3 + "\n")
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                cli.print_status({"CADENCE_PROJECTS_FILE": registry})
+            out = buf.getvalue()
+
+            self.assertIn("share CADENCE_STATE_DIR", out)
+            self.assertIn(shared, out)
+            self.assertIn(p1, out)
+            self.assertIn(p2, out)
+            # The isolated project's state dir is never flagged.
+            self.assertNotIn(own, out)
+
 
 class TestScheduleApplyScript(unittest.TestCase):
     def test_apply_rejects_project_local_config_until_launchd_supports_it(self):

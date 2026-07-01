@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Per-project state-dir guard: `cadence schedule status` and each scheduler tick now
+  warn when two registered projects resolve to the same `CADENCE_STATE_DIR`, which would
+  otherwise make them collide on the pause flag, logs, and scheduler run-markers (one
+  project silently skipping the other's slot). Give each project its own state dir.
 - Autonomous mode (Layer 1 — the advancer): the `advance` loop, the `agent:auto`
   opt-in label, `cadence run advance [--dry-run]`, and the `AUTONOMOUS`,
   `AUTO_MAX_ISSUES_PER_RUN`, `AUTO_MAX_REPAIRS`, and `MODEL_ADVANCE` settings. On

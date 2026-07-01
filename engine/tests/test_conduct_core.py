@@ -103,7 +103,13 @@ class TestConduct(unittest.TestCase):
         old = cli._linear
         try:
             cli._linear = fake_linear
-            out = cli.conduct({"AUTONOMOUS": "on", "CONDUCT_WIP": "1"}, dry_run=False)
+            # Point at a temp state dir so the pass does not read a real
+            # ~/.cadence/runs/PAUSED flag on the developer's machine.
+            with tempfile.TemporaryDirectory() as tmp:
+                out = cli.conduct(
+                    {"AUTONOMOUS": "on", "CONDUCT_WIP": "1", "CADENCE_STATE_DIR": tmp},
+                    dry_run=False,
+                )
         finally:
             cli._linear = old
 
