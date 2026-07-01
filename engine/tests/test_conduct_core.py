@@ -30,7 +30,8 @@ class TestEligible(unittest.TestCase):
         self.assertEqual(out, [])
 
     def test_drops_held_superseded_needshuman_and_already_auto(self):
-        for lab in ("agent:hold", "agent:superseded", "agent:needs-human", "agent:auto"):
+        for lab in ("agent:hold", "agent:superseded", "agent:needs-human",
+                    "agent:needs-attention", "agent:auto"):
             self.assertEqual(cli.eligible([issue("A", ["agent:triaged", lab])]), [])
 
     def test_drops_not_triaged(self):
@@ -83,12 +84,40 @@ class TestIsBlocked(unittest.TestCase):
         self.assertFalse(cli.is_blocked({}))
 
 
+class TestConduct(unittest.TestCase):
+    def test_skips_parent_issue_with_children_before_tagging(self):
+        calls = []
+
+        def fake_linear(*args):
+            calls.append(args)
+            if args[:2] == ("issues-list", "--assignee"):
+                return [issue("PARENT", ["agent:triaged"])]
+            if args == ("cycles-list",):
+                return []
+            if args == ("issue-get", "PARENT"):
+                return {"children": [{"identifier": "CHILD"}], "inverseRelations": []}
+            if args[:2] == ("issue-update", "PARENT"):
+                raise AssertionError("parent issue should not be tagged")
+            raise AssertionError(args)
+
+        old = cli._linear
+        try:
+            cli._linear = fake_linear
+            out = cli.conduct({"AUTONOMOUS": "on", "CONDUCT_WIP": "1"}, dry_run=False)
+        finally:
+            cli._linear = old
+
+        self.assertEqual(out["tagged"], [])
+        self.assertEqual(out["skipped_parent"], ["PARENT"])
+
+
 class TestLedger(unittest.TestCase):
     def test_append_ledger_records_activity_and_machine_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = {"CADENCE_STATE_DIR": tmp}
             summary = {"loop": "conduct", "dry_run": True,
-                       "tagged": ["STU-1"], "skipped_blocked": ["STU-2"]}
+                       "tagged": ["STU-1"], "skipped_blocked": ["STU-2"],
+                       "skipped_parent": ["STU-3"]}
 
             cli.append_ledger(summary, env, ts="2026-06-30T10:00:00Z")
 
@@ -103,15 +132,16 @@ class TestLedger(unittest.TestCase):
             self.assertIn("conduct", activity)
             self.assertIn("1 tagged", activity)
             self.assertIn("1 blocked", activity)
+            self.assertIn("1 parent", activity)
 
             with open(os.path.join(tmp, "logs", "conduct.log"), encoding="utf-8") as f:
                 log = f.read()
-            self.assertIn("conduct — 1 tagged, 1 blocked", log)
+            self.assertIn("conduct — 1 tagged, 1 blocked, 1 parent", log)
 
             with open(os.path.join(tmp, "runs", "2026-06-30.md"), encoding="utf-8") as f:
                 digest = f.read()
             self.assertIn("## conduct · dry-run · 2026-06-30T10:00:00Z", digest)
-            self.assertIn("1 tagged, 1 blocked", digest)
+            self.assertIn("1 tagged, 1 blocked, 1 parent", digest)
 
 
 if __name__ == "__main__":

@@ -17,13 +17,12 @@ First slice:
 - Add a small `--config <path>` front-door option for manual commands.
 - Auto-detect `$PWD/cadence/.env` when Cadence is launched from a project repo.
 - Preserve existing `WORKTREE_TOOL=git|grove` behaviour.
-- Define, but do not fully implement, profile-specific launchd labels.
+- Define and implement one global launchd scheduler that dispatches per-folder
+  configs.
 
 Follow-up slice:
 
 - Add friendly profile aliases, for example `cadence --profile mpw run build`.
-- Add profile-specific launchd labels, for example
-  `com.cadence.mpw.loop-build`.
 - Add a local tasks-file backend once profile loading is stable.
 
 Out of scope for the first slice:
@@ -148,25 +147,27 @@ automation in its first version.
 
 ## Scheduling
 
-Scheduling should be designed around profile-specific launchd labels, but not
-implemented until manual profile runs are proven.
-
-Current labels collide across projects:
+Scheduling uses one launchd job:
 
 ```text
-com.cadence.loop-build
+com.cadence.scheduler
 ```
 
-Target labels:
+That job runs `cadence schedule tick`. The tick reads an explicit project
+registry, loads each project's `cadence/.env`, skips projects without
+`CADENCE_SCHEDULED=1`, and runs due stages with `cadence --config ...`.
+
+Default registry:
 
 ```text
-com.cadence.<profile>.loop-build
-com.cadence.<profile>.conduct
+$CADENCE_STATE_DIR/projects.txt
 ```
 
-The schedule renderer should eventually receive a stable profile id and use it
-in both labels and plist file names. Until that exists, manual runs are the
-truth path for this branch.
+Each non-comment line is either a project folder or an explicit
+`cadence/.env` path. The scheduler runs at most `CADENCE_SCHEDULER_MAX_RUNS`
+stages per wake, default `1`, and records per-project markers to avoid duplicate
+runs when launchd wakes twice in the same due window. This keeps the moving parts
+small: one plist, one status command, one global cap.
 
 ## Safety
 
@@ -192,8 +193,7 @@ The implementation plan should split this into small testable tasks:
 2. Teach the loaders to auto-detect `$PWD/cadence/.env`.
 3. Add front-door `--config <path>` handling and tests.
 4. Update doctor/docs/examples to prefer `cadence/.env`.
-5. Add schedule design hooks only if needed for docs; avoid launchd changes in
-   the first implementation.
+5. Add the single launchd scheduler and avoid per-project/per-stage plists.
 6. Defer `--profile` aliases and `TASK_BACKEND=file` to follow-up specs unless
    the first slice stays very small after implementation.
 

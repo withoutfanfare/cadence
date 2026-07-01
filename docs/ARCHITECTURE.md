@@ -27,15 +27,24 @@ tidy or to read what the agents produced.
 
 ## 1a. How a run executes
 
-1. **launchd** fires `engine/scripts/run-loop.sh <stage>` on a schedule.
-2. `run-loop.sh` sources `engine/lib/lib-env.sh` (loads `.env`, applies defaults),
-   then enforces **Step 0** *before* any model launch: the PAUSED flag and the
-   **workspace guard** (`cadence linear teams` must show `LINEAR_TEAM_ID`). A paused
-   or wrong-workspace run exits cheaply without paying for a model call.
-3. It renders the matching loop skill into a provider-neutral prompt, then invokes
+1. **launchd** fires one job, `com.cadence.scheduler`, which runs
+   `cadence schedule tick`.
+2. The scheduler reads the explicit projects file, skips any project without
+   `CADENCE_SCHEDULED=1`, and launches at most `CADENCE_SCHEDULER_MAX_RUNS`
+   due stages per tick.
+3. Due stages run through `cadence --config <project>/cadence/.env run <stage>`
+   (or `cadence --config ... conduct`), so the same run path handles manual and
+   scheduled work.
+4. `run-loop.sh` sources `engine/lib/lib-env.sh` (resolves the active config file,
+   applies defaults), then enforces **Step 0** *before* any model launch: the
+   PAUSED flag and the backend guard. For `TASK_BACKEND=linear`, `cadence linear
+   teams` must show `LINEAR_TEAM_ID`. For `TASK_BACKEND=file`, the configured
+   `TASK_FILE` must exist. A paused or unsafe run exits cheaply without paying for
+   a model call.
+5. It renders the matching loop skill into a provider-neutral prompt, then invokes
    `engine/scripts/run-orchestrator.sh` with the configured `provider:model`.
-4. The matching **skill** in `skills/cadence-loop-<stage>/SKILL.md` is the loop body.
-5. The run appends a human digest + a JSON line to `$CADENCE_STATE_DIR` (default
+6. The matching **skill** in `skills/cadence-loop-<stage>/SKILL.md` is the loop body.
+7. The run appends a human digest + a JSON line to `$CADENCE_STATE_DIR` (default
    `~/.cadence`): `runs/YYYY-MM-DD.md`, `runs/runs.jsonl`, `runs/activity.log`,
    `logs/<stage>.log`.
 
@@ -43,6 +52,11 @@ Provider roles are deliberately separate: loop orchestrators use
 `ORCHESTRATOR_*`, folded review uses `REVIEW_PROVIDER`/`REVIEW_MODEL`, and the
 build coding agent uses `BUILD_IMPLEMENTER`. See [AI Provider Roles](PROVIDERS.md)
 or `cadence providers help` for the evergreen role map and examples.
+
+Manual front-door commands can use project-local config by running from the app
+checkout or passing `cadence --config /path/to/app/cadence/.env ...`. Scheduled
+runs use the same config path through the single scheduler, not one launchd plist
+per project or stage.
 
 ## 2. The board is the state machine — label vocabulary
 
@@ -149,7 +163,7 @@ and write labels to record what they did. Full label vocabulary:
 
 ---
 
-## 5a. PAUSED + workspace guard — Step 0 of every loop
+## 5a. PAUSED + backend guard — Step 0 of every loop
 
 Before any read, write, or claim, every loop runs two pause checks. If either
 trips it writes nothing, fires a notification, appends a `⏸` line to the dated
@@ -161,15 +175,21 @@ run log, prints `{"stage":…,"paused":true,"reason":…}`, and exits.
    (`run-loop.sh`) also checks this flag *before* invoking the model, so a paused
    stage exits immediately and costs nothing — enforcement does not depend on the
    prompt.
-2. **Workspace guard.** The loop calls `cadence linear teams` and proceeds only
-   if the configured team id is present in the response. If the API key cannot
-   see that team, the loop pauses with `reason: wrong-workspace`. It resumes
-   automatically once `.env` and the Linear API key point at the intended
-   workspace again.
+2. **Backend guard.** With the default `TASK_BACKEND=linear`, the loop calls
+   `cadence linear teams` and proceeds only if the configured team id is present
+   in the response. If the API key cannot see that team, the loop pauses with
+   `reason: wrong-workspace`. It resumes automatically once the active config file
+   and Linear API key point at the intended workspace again.
 
-This guard exists because the Linear API key is the runtime authority boundary.
-The workspace it can currently reach is treated as the authoritative signal for
-whether it is safe to run.
+   With `TASK_BACKEND=file`, missing Linear credentials are not a safety fault.
+   The runner resolves `TASK_FILE` relative to `$PROJECT_DIR` and pauses with
+   `reason: missing-task-file` if it is absent. The file backend is currently
+   guard-only: when the file exists, model-backed runs pause with
+   `reason: unsupported-task-backend` until the file loop adapter lands.
+
+The Linear branch of this guard exists because the API key is the runtime
+authority boundary. The workspace it can currently reach is treated as the
+authoritative signal for whether it is safe to run.
 
 The `advance` runner also exits before invoking the model when autonomous mode is
 on but no in-scope issue carries `agent:auto`. That is recorded as an idle run,
@@ -182,21 +202,25 @@ not a pause: there is no safety fault, just no autonomous work to advance.
 **Engine** — the generic control-flow code, scripts, and skills in this repo.
 Skills hold no ids, no project names, no repo paths.
 
-**Profile** — the project-specific facts loaded at runtime from `.env` and
-`memory/`. A profile supplies: the team id, project filter, assignee id, repo
-remote, base branch, worktree root, orchestrator providers, reviewer provider,
-models, and the Clio namespace. The engine reads these from environment
-variables at runtime.
+**Profile** — the project-specific facts loaded at runtime from the active
+config file and `memory/`. A profile supplies: the task backend, team id, project
+filter, assignee id, repo remote, base branch, worktree root, orchestrator
+providers, reviewer provider, models, and the Clio namespace. The engine reads
+these from environment variables at runtime.
 
 This separation means the same engine code can run against multiple projects by
-switching `.env` — without touching the skills or scripts.
+switching the active config path for manual commands — without touching the skills
+or scripts. Scheduled multi-project work is centralised in `cadence schedule tick`,
+which reads project folders from `CADENCE_PROJECTS_FILE` and refuses to run a
+project unless its own config opts in with `CADENCE_SCHEDULED=1`.
 
-### `.env` conventions
+### Config file conventions
 
 See [Configuration](CONFIGURATION.md) for the full profile reference.
 
 - **Quote any value containing spaces.** The bash loader (`engine/lib/lib-env.sh`)
-  *sources* `.env`, so a multi-word value must be quoted or sourcing breaks, e.g.
+  *sources* the active config file, so a multi-word value must be quoted or
+  sourcing breaks, e.g.
   `GATE_TEST="composer test:filter"` (not `GATE_TEST=composer test:filter`).
 - **`RUNNER_PATH_PREPEND`** (optional) — a directory prepended to the runner's `PATH`
   for project tooling, e.g. a specific PHP so bare `php`/`composer` resolve correctly:
@@ -236,7 +260,8 @@ stdout — one line per run, one object per line. No pretty-printing.
 The deterministic conductor is not model-backed, but it still appends a compact
 summary to `runs/runs.jsonl`, `runs/activity.log`, `runs/YYYY-MM-DD.md`, and
 `logs/conduct.log`, so autonomous queue decisions show up in the normal operator
-commands.
+commands. It feeds only buildable ready slices: held, attention-needed,
+terminal, blocked, already-auto, and parent issues with children are skipped.
 
 Get the date/timestamp from the shell (`date -u +%FT%TZ`), never invent one.
 
@@ -291,8 +316,8 @@ hours** is a crashed run and may be reclaimed; a **fresh** claim is respected.
 
 ## 9. Gate semantics — `GATE_LINT`, `GATE_TEST`, `GATE_ANALYSE`
 
-These three environment variables (set in `.env`) control the build loop's
-verification step after the implementer writes code.
+These three environment variables (set in the active config file) control the
+build loop's verification step after the implementer writes code.
 
 - A **non-empty value** is the shell command to run (e.g. `composer test -- --no-coverage`).
 - A **blank value** means skip that gate entirely.

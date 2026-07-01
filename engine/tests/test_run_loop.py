@@ -96,6 +96,56 @@ exec {real_python} "$@"
         self.assertIn("wrong-workspace", self._read_today_digest())
         self.assertEqual(json.loads(self._read_ledger().strip())["reason"], "wrong-workspace")
 
+    def test_file_backend_stops_before_linear_only_prompt_without_credentials(self):
+        real_python = sys.executable
+        linear_cli = os.path.join(self.root, "engine", "linear", "cli.py")
+        os.makedirs(os.path.join(self.project, "cadence"))
+        with open(os.path.join(self.project, "cadence", "tasks.md"), "w", encoding="utf-8") as f:
+            f.write("# Tasks\n")
+        os.makedirs(os.path.join(self.root, "skills", "cadence-loop-triage"))
+        with open(os.path.join(self.root, "skills", "cadence-loop-triage", "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: cadence-loop-triage\n---\nLoop body\n")
+        shutil.copytree(os.path.join(ROOT, "engine", "prompts"),
+                        os.path.join(self.root, "engine", "prompts"))
+        self._write_exe("python3", f"""#!/bin/sh
+if [ "$1" = "{linear_cli}" ]; then
+  echo linear should not run >&2
+  exit 66
+fi
+exec {real_python} "$@"
+""")
+        self._write_exe("codex", "#!/bin/sh\necho codex should not run >&2\nexit 99\n")
+
+        result = self._run(
+            "triage",
+            TASK_BACKEND="file",
+            ORCHESTRATOR_TRIAGE="codex:gpt-test",
+            LINEAR_TEAM_ID="",
+            LINEAR_PROJECT_ID="",
+            LINEAR_ASSIGNEE_ID="",
+            LINEAR_API_KEY="",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["reason"], "unsupported-task-backend")
+        self.assertNotIn("wrong-workspace", result.stdout)
+
+    def test_file_backend_missing_task_file_pauses_before_launch(self):
+        result = self._run(
+            "triage",
+            TASK_BACKEND="file",
+            LINEAR_TEAM_ID="",
+            LINEAR_PROJECT_ID="",
+            LINEAR_ASSIGNEE_ID="",
+            LINEAR_API_KEY="",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["reason"], "missing-task-file")
+        self.assertIn("cadence/tasks.md", payload["detail"])
+
     def test_failed_run_alerts_via_activity_feed_and_digest(self):
         real_python = sys.executable
         linear_cli = os.path.join(self.root, "engine", "linear", "cli.py")
