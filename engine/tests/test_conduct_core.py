@@ -110,6 +110,64 @@ class TestConduct(unittest.TestCase):
         self.assertEqual(out["tagged"], [])
         self.assertEqual(out["skipped_parent"], ["PARENT"])
 
+    def test_file_backend_tags_ready_task_without_linear(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            task_file = os.path.join(tmp, "tasks.md")
+            with open(task_file, "w", encoding="utf-8") as f:
+                f.write("""# Cadence Tasks
+
+## TASK-1: Ready
+status: open
+labels: agent:triaged
+
+## Acceptance criteria
+- it works
+""")
+
+            old_linear = cli._linear
+            try:
+                cli._linear = lambda *args: (_ for _ in ()).throw(
+                    AssertionError("file backend should not use Linear"))
+                out = cli.conduct({
+                    "AUTONOMOUS": "on",
+                    "CONDUCT_WIP": "1",
+                    "TASK_BACKEND": "file",
+                    "TASK_FILE": task_file,
+                    "CADENCE_STATE_DIR": tmp,
+                }, dry_run=False)
+            finally:
+                cli._linear = old_linear
+
+            self.assertEqual(out["tagged"], ["TASK-1"])
+            with open(task_file, encoding="utf-8") as f:
+                self.assertIn("labels: agent:triaged, agent:auto", f.read())
+
+    def test_file_backend_skips_completed_task(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            task_file = os.path.join(tmp, "tasks.md")
+            with open(task_file, "w", encoding="utf-8") as f:
+                f.write("""# Cadence Tasks
+
+## TASK-1: Done
+status: completed
+labels: agent:triaged
+
+## Acceptance criteria
+- it works
+""")
+
+            out = cli.conduct({
+                "AUTONOMOUS": "on",
+                "CONDUCT_WIP": "1",
+                "TASK_BACKEND": "file",
+                "TASK_FILE": task_file,
+                "CADENCE_STATE_DIR": tmp,
+            }, dry_run=False)
+
+            self.assertEqual(out["tagged"], [])
+            with open(task_file, encoding="utf-8") as f:
+                self.assertNotIn("agent:auto", f.read())
+
 
 class TestLedger(unittest.TestCase):
     def test_append_ledger_records_activity_and_machine_summary(self):

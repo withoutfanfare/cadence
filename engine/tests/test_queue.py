@@ -1,4 +1,4 @@
-import os, sys, unittest
+import os, sys, tempfile, unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "queue"))
 import cli  # noqa: E402
 
@@ -85,6 +85,32 @@ class TestRender(unittest.TestCase):
         self.assertIn("https://x/P-7", out)
         self.assertIn("P2", out)
         self.assertIn("cycle 5", out)
+
+
+class TestFetchIssues(unittest.TestCase):
+    def test_file_backend_reads_tasks_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "tasks.md")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("""# Cadence Tasks
+
+## TASK-1: Local work
+status: open
+labels: agent:specced
+
+## Acceptance criteria
+- works
+""")
+            old = os.environ.copy()
+            try:
+                os.environ.clear()
+                os.environ.update({"TASK_BACKEND": "file", "TASK_FILE": path})
+                issues = cli.fetch_issues()
+            finally:
+                os.environ.clear()
+                os.environ.update(old)
+
+        self.assertEqual([i["identifier"] for i in issues], ["TASK-1"])
 
 
 if __name__ == "__main__":

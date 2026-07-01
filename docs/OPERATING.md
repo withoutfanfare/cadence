@@ -239,14 +239,15 @@ still tagged.
 
 With autonomous mode on, the conductor feeds the queue so you do not have to tag
 issues by hand. Every 3 hours it ranks the ready backlog (priority → current cycle
-→ oldest), skips anything blocked or not buildable yet (held, needs-attention,
-terminal, already-auto, or parent issues with children), and tops up `agent:auto`
-to `CONDUCT_WIP` (default 1) — one issue in flight at a time until you raise it.
+→ oldest), skips anything not buildable yet (held, needs-attention, terminal,
+already-auto, and, for Linear, blocked or parent issues with children), and tops
+up `agent:auto` to `CONDUCT_WIP` (default 1) — one issue in flight at a time
+until you raise it.
 
 - **Shadow it first:** `AUTONOMOUS=on cadence conduct --dry-run` prints which issue
-  it would set loose (and which it skipped as blocked or parent work), writing nothing to Linear.
-  The decision summary is still recorded in the normal Cadence feed, digest, and
-  throughput ledger.
+  it would set loose (and, for Linear, which it skipped as blocked or parent work),
+  writing nothing to the active task backend. The decision summary is still
+  recorded in the normal Cadence feed, digest, and throughput ledger.
 - **Schedule it:** set `CADENCE_SCHEDULED=1`; the scheduler runs conductor work
   every 3 hours at `:50` by default. The advancer carries tagged issues through
   the stages between conductor passes.

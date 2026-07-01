@@ -59,7 +59,8 @@ Cadence always scopes issue lists to both `LINEAR_TEAM_ID` and
 | `TASK_FILE` | `cadence/tasks.md` | Local task file for `TASK_BACKEND=file`, resolved relative to `PROJECT_DIR` when not absolute. |
 
 The file backend is intentionally small. It stores human-editable tasks as
-markdown sections and exposes them through `cadence tasks list|get|update`:
+markdown sections, exposes them through `cadence tasks list|get|update`, and is
+used by `cadence queue` and `cadence conduct` when selected:
 
 ```markdown
 # Cadence Tasks
