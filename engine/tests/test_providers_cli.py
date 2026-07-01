@@ -24,8 +24,12 @@ class TestProvidersCli(unittest.TestCase):
         self.tmp.cleanup()
 
     def _run(self, *args):
+        return self._run_with_env({}, *args)
+
+    def _run_with_env(self, extra_env, *args):
         env = os.environ.copy()
         env.update({"HOME": str(self.home), "CADENCE_HOME": str(self.cadence_home)})
+        env.update(extra_env)
         return subprocess.run(
             [sys.executable, str(self.script), *args],
             cwd=ROOT,
@@ -100,6 +104,17 @@ class TestProvidersCli(unittest.TestCase):
         self.assertIn("REVIEW_PROVIDER=claude\n", text)
         self.assertIn("REVIEW_MODEL=opus\n", text)
         self.assertIn("BUILD_IMPLEMENTER=codex\n", text)
+
+    def test_set_writes_to_cadence_config_when_set(self):
+        config = pathlib.Path(self.tmp.name) / "app" / "cadence" / ".env"
+        config.parent.mkdir(parents=True)
+        config.write_text("BUILD_IMPLEMENTER=claude\n", encoding="utf-8")
+
+        result = self._run_with_env({"CADENCE_CONFIG": str(config)}, "set", "--implementer", "codex")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("BUILD_IMPLEMENTER=codex\n", config.read_text(encoding="utf-8"))
+        self.assertFalse(self.env_path.exists())
 
     def test_set_rejects_unknown_provider(self):
         result = self._run("set", "--build", "unknown:model")

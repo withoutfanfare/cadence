@@ -1,16 +1,50 @@
 # Configuring Cadence
 
-Cadence reads profile-specific values from `.env` in the repo root. The engine
-files and skills are generic; the `.env` file tells Cadence which Linear project,
+Cadence reads profile-specific values from the active config file. The engine
+files and skills are generic; the config file tells Cadence which task backend,
 repo, models, memory backend, and verification commands to use.
+
+For front-door `cadence` commands, config resolves in this order:
+
+1. `cadence --config /path/to/cadence/.env ...` sets `CADENCE_CONFIG` for that
+   invocation and wins over any ambient value.
+2. `cadence --profile name ...` reads `$CADENCE_HOME/profiles/name`; the first
+   non-comment line is the target config path.
+3. `CADENCE_CONFIG`
+4. `$PWD/cadence/.env`
+5. `$CADENCE_HOME/.env` for existing installs
+
+Scripts invoked directly skip the front door, so ambient `CADENCE_CONFIG` is
+their explicit override.
+
+New projects should use `<project repo>/cadence/.env` in the base application
+checkout (`PROJECT_DIR`) so Cadence does not collide with the app's own `.env`.
+Generated worktrees do not get their own Cadence config unless you create one.
+
+Existing root `.env` installs still work, but new project profiles should use
+`cadence/.env`.
+
+For a shorter command, create a profile alias that points at the real config:
+
+```bash
+mkdir -p "$CADENCE_HOME/profiles"
+printf '%s\n' /path/to/app/cadence/.env > "$CADENCE_HOME/profiles/app"
+cadence --profile app status
+```
+
+Aliases are just path lookups; the config values still live in the target
+`cadence/.env`.
 
 Copy the example first:
 
 ```bash
-cp .env.example .env
+mkdir -p /path/to/app/cadence
+cp .env.example /path/to/app/cadence/.env
+$EDITOR /path/to/app/cadence/.env
 ```
 
-Because the shell scripts source `.env`, quote values that contain spaces:
+Because the shell scripts source the active config file, quote values that
+contain spaces:
 
 ```dotenv
 LINEAR_TEAM_NAME="Modern Print Works"
@@ -21,15 +55,39 @@ RUNNER_PATH_PREPEND="$HOME/Library/Application Support/Herd/bin"
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `LINEAR_API_KEY` | Yes | Personal API key from Linear Settings -> API. |
-| `LINEAR_TEAM_ID` | Yes | Team ID Cadence is allowed to operate in. `cadence doctor` verifies this. |
-| `LINEAR_PROJECT_ID` | Yes | Project ID used to scope every issue query. |
+| `LINEAR_API_KEY` | `TASK_BACKEND=linear` | Personal API key from Linear Settings -> API. |
+| `LINEAR_TEAM_ID` | `TASK_BACKEND=linear` | Team ID Cadence is allowed to operate in. `cadence doctor` verifies this. |
+| `LINEAR_PROJECT_ID` | `TASK_BACKEND=linear` | Project ID used to scope every issue query. |
 | `LINEAR_TEAM_NAME` | Recommended | Display name used in status output and human-facing checks. Quote it if it contains spaces. |
-| `LINEAR_ASSIGNEE_ID` | Yes | User ID whose assigned issues Cadence may act on. |
+| `LINEAR_ASSIGNEE_ID` | `TASK_BACKEND=linear` | User ID whose assigned issues Cadence may act on. |
 
 Cadence always scopes issue lists to both `LINEAR_TEAM_ID` and
 `LINEAR_PROJECT_ID`. The loop skills also query only issues assigned to
 `LINEAR_ASSIGNEE_ID`.
+
+## Task Backend
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `TASK_BACKEND` | `linear` | `linear` uses the Linear adapter. `file` uses a local markdown task file and skips Linear credential checks. |
+| `TASK_FILE` | `cadence/tasks.md` | Local task file for `TASK_BACKEND=file`, resolved relative to `PROJECT_DIR` when not absolute. |
+
+The file backend is intentionally small. It stores human-editable tasks as
+markdown sections, exposes them through `cadence tasks list|get|update`, and is
+used by `cadence queue` and `cadence conduct` when selected:
+
+```markdown
+# Cadence Tasks
+
+## TASK-1: Short title
+status: open
+labels: agent:triaged, Bug
+
+Task body and acceptance notes.
+```
+
+Use `linear` when you want Linear documents, project scoping, comments, and PR
+back-fill. Use `file` when a local `cadence/tasks.md` board is enough.
 
 ## Repository
 
@@ -41,9 +99,9 @@ Cadence always scopes issue lists to both `LINEAR_TEAM_ID` and
 | `WORKTREE_BASE` | Build/revise | Directory where build/revise create temporary worktrees. |
 | `WORKTREE_TOOL` | Build/revise | `git` (default) or `grove` — how worktrees are created. |
 
-`PROJECT_DIR` should be a normal checkout of the application repo. `WORKTREE_BASE`
-should be a separate directory so generated worktrees do not clutter the main
-checkout.
+`PROJECT_DIR` should be a normal checkout of the application repo. This is the
+base repo whose `cadence/.env` Cadence normally reads. `WORKTREE_BASE` should be
+a separate directory so generated worktrees do not clutter the main checkout.
 
 `WORKTREE_TOOL` chooses how the build and revise loops create their isolated
 worktrees:
@@ -57,7 +115,9 @@ worktrees:
   stays under Herd's SSL length limit.
 
 Either way the loops drive worktrees through `cadence worktree add|remove|path`, so
-the skills themselves stay tool-agnostic.
+the skills themselves stay tool-agnostic. The generated worktree path is
+`$WORKTREE_BASE/<branch>`; keep the Cadence config in
+`$PROJECT_DIR/cadence/.env`, not in each generated worktree.
 
 ## Orchestrators, Reviewer, and Implementer
 
@@ -110,8 +170,8 @@ cadence doctor
 ```
 
 `roles` explains what each provider slot does. `show` prints the effective raw
-settings. `set` edits only the provider-related keys in `.env` and preserves
-unrelated profile values and comments.
+settings. `set` edits only the provider-related keys in the active config file
+and preserves unrelated profile values and comments.
 
 To make Codex the lead orchestrator for every loop:
 
@@ -140,7 +200,7 @@ cadence providers set --build opencode:zai-coding-plan/glm-5.2 --revise opencode
 ```
 
 For a one-off manual run, override values in the command environment without
-editing `.env`:
+editing the active config file:
 
 ```bash
 ORCHESTRATOR_BUILD=codex:gpt-5.4
@@ -154,7 +214,8 @@ After changing providers, run:
 cadence doctor
 ```
 
-If you prefer to edit `.env` by hand, use the equivalent keys directly:
+If you prefer to edit the active config file by hand, use the equivalent keys
+directly:
 
 ```dotenv
 ORCHESTRATOR_BUILD=codex:gpt-5.4
@@ -192,10 +253,27 @@ it does not override the pause flag or any other gate.
 
 ## Schedule
 
-By default every loop runs hourly, staggered 15 minutes apart, with the conductor
-every 3 hours. Override any of these per loop with a `SCHED_<STAGE>` value, then run
-`cadence schedule apply` (regenerates the launchd plists and reloads them).
-`cadence schedule` with no argument prints the live schedule.
+Cadence uses one launchd job, `com.cadence.scheduler`. That job runs
+`cadence schedule tick`; the tick reads an explicit projects file and then runs
+due stages with `cadence --config <project>/cadence/.env ...`.
+
+Scheduling is opt-in per project. Add the project folder to
+`CADENCE_PROJECTS_FILE`, then set `CADENCE_SCHEDULED=1` in that project's
+`cadence/.env`. The global tick runs at most `CADENCE_SCHEDULER_MAX_RUNS`
+stages per wake, default `1`, so adding projects does not create an unbounded
+fan-out.
+
+`cadence schedule` with no argument prints the stage cadence for the active
+config. `cadence schedule status` prints the projects file and whether each
+registered project has scheduling enabled.
+
+| Variable | Default | Scope | Description |
+| --- | --- | --- | --- |
+| `CADENCE_PROJECTS_FILE` | `$CADENCE_STATE_DIR/projects.txt` | scheduler | Newline-separated project folders or explicit `cadence/.env` paths. |
+| `CADENCE_SCHEDULER_INTERVAL` | `300` | scheduler | Launchd wake interval in seconds. |
+| `CADENCE_SCHEDULER_MAX_RUNS` | `1` | scheduler | Maximum scheduled stage runs per tick across all projects. |
+| `CADENCE_SCHEDULER_WINDOW_MINUTES` | `5` | scheduler | Due window used to tolerate launchd jitter without catching up old missed runs. |
+| `CADENCE_SCHEDULED` | unset/off | project | Set to `1`, `on`, `true`, or `yes` to let the scheduler run this project. |
 
 | Variable | Default | Job |
 | --- | --- | --- |
@@ -204,7 +282,7 @@ every 3 hours. Override any of these per loop with a `SCHED_<STAGE>` value, then
 | `SCHED_BUILD` | `:30` | build loop |
 | `SCHED_REVISE` | `:45` | revise loop |
 | `SCHED_ADVANCE` | `:55` | autonomous advancer |
-| `SCHED_CONDUCT` | `3h` | conductor |
+| `SCHED_CONDUCT` | `3h@50` | conductor |
 
 Value format — every cadence is clock-aligned to midnight, so firing times are
 predictable; stagger loops by giving them distinct minutes:
@@ -212,16 +290,12 @@ predictable; stagger loops by giving them distinct minutes:
 - `:MM` — hourly, at minute MM (e.g. `:15` runs every hour at `:15`).
 - `Nh` — every N hours, at minute 0 (e.g. `4h` → 00:00, 04:00, 08:00, …).
 - `Nh@MM` — every N hours, at minute MM (e.g. `4h@30` → 00:30, 04:30, …).
+- `off` — do not schedule this stage for this project.
 
-N is 1–24. `cadence schedule apply` validates every value first and refuses to write
-a broken
-plist. The defaults reproduce the historical schedule, so leaving `SCHED_*` unset
-changes nothing. The advancer still grants only one stage per pass, so an
-autonomous issue advances at most one stage per `SCHED_ADVANCE` interval.
-
-`cadence schedule apply` always (re)writes the four gated loops; it touches the
-advance and conduct jobs only when autonomous mode has already installed them, so
-it never enables autonomous on its own.
+N is 1–24. `cadence schedule apply` validates the active config before writing
+the scheduler plist; project configs are checked when the scheduler reads them.
+The scheduler records a small marker in each project's state dir so a jittery
+launchd wake cannot run the same stage twice in one due window.
 
 ## Verification Gates
 
@@ -251,7 +325,10 @@ turn, then escalates to `agent:needs-attention` if it still fails.
 | `NOTIFY` | `on` | macOS notifications for runs that did work, paused, or **failed**. Failures (non-zero exit or reported errors) use a distinct title and "Basso" sound and are always also recorded in the dated digest and activity feed. `off` silences the notifications only; the digest/feed records are kept. |
 | `RUNNER_PATH_PREPEND` | unset | Optional directory prepended to `PATH` for loop runners. |
 
-Use `RUNNER_PATH_PREPEND` when launchd cannot find project-specific tooling:
+Use `RUNNER_PATH_PREPEND` when launchd cannot find project-specific tooling. For
+scheduled jobs, put it in the config file the launchd job actually loads; current
+generated jobs use the root compatibility config unless explicit launchd config
+support is added.
 
 ```dotenv
 RUNNER_PATH_PREPEND="$HOME/Library/Application Support/Herd/bin"
@@ -276,6 +353,9 @@ LINEAR_TEAM_ID=team-id
 LINEAR_PROJECT_ID=project-id
 LINEAR_TEAM_NAME="Example Team"
 LINEAR_ASSIGNEE_ID=user-id
+
+TASK_BACKEND=linear
+TASK_FILE=cadence/tasks.md
 
 REPO_SLUG=example/app
 BASE_BRANCH=develop

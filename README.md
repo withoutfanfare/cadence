@@ -8,8 +8,9 @@ stop and hand the decision back to you. Every gate between stages is yours to
 grant. The agents do the legwork around the clock; you stay the one who says
 "ship it".
 
-Cadence is a human-gated agent loop for Linear projects. It moves issues through
-four stages:
+Cadence is a human-gated agent loop for Linear projects, with a small local
+markdown task-file backend for projects that do not need Linear. It moves work
+through four stages:
 
 ```text
 triage -> spec -> build -> revise
@@ -18,7 +19,7 @@ triage -> spec -> build -> revise
 The loops can run unattended, but authority stays with a person. Agents can tidy
 issues, write specs, create draft PRs, and push revisions; they do not approve
 their own work, grant the next gate, mark PRs ready, merge PRs, or act outside
-the configured Linear project.
+the configured project.
 
 ## What it does
 
@@ -57,9 +58,9 @@ Cadence can also run *without* a human granting each gate. Tag issues `agent:aut
 (or let the conductor pick them) and turn it on:
 
 ```bash
-cadence autonomous on      # set AUTONOMOUS + schedule the advancer (hourly) and conductor (3-hourly)
-cadence autonomous status  # show the flag and whether both jobs are loaded
-cadence autonomous off     # reverse both — sets AUTONOMOUS=0 and unloads the jobs
+cadence autonomous on      # set AUTONOMOUS in the active config
+cadence autonomous status  # show the flag and scheduler state
+cadence autonomous off     # set AUTONOMOUS=0 and remove legacy autonomous jobs
 ```
 
 The advancer grants gates on your behalf and the conductor decides what to work on
@@ -77,7 +78,8 @@ scheduler docs are macOS-specific.
 You need:
 
 - `bash`, `git`, and `python3`.
-- A Linear personal API key.
+- A Linear personal API key when `TASK_BACKEND=linear`; or a local
+  `cadence/tasks.md` file when `TASK_BACKEND=file`.
 - One orchestrator CLI on `PATH`: `claude`, `codex`, `kimi`, or `opencode`.
 - Optional implementer CLIs if you choose them: `claude`, `kimi`, `opencode`, or `codex`.
 - `gh` if you want the build loop to open or back-fill GitHub PR information.
@@ -86,8 +88,8 @@ There are no package dependencies to install for the engine itself; the Python
 adapters use the standard library.
 
 Lead loop providers are configured per stage with `cadence providers set`, which
-updates `.env` for you. Use `cadence providers roles` to see what each slot
-does, and see
+updates the active config file for you. Use `cadence providers roles` to see
+what each slot does, and see
 [AI Provider Roles](docs/PROVIDERS.md) or
 [configuration provider examples](docs/CONFIGURATION.md#provider-switching-examples)
 for all-Codex, mixed-provider, Kimi, and OpenCode examples.
@@ -104,10 +106,16 @@ ln -s "$PWD/bin/cadence" "$HOME/.local/bin/cadence"
 # Make sure this is in your shell startup file if it is not already.
 export PATH="$HOME/.local/bin:$PATH"
 
-cp .env.example .env
-$EDITOR .env
+mkdir -p /path/to/app/cadence
+cp .env.example /path/to/app/cadence/.env
+$EDITOR /path/to/app/cadence/.env
+
+cd /path/to/app
 cadence doctor
 ```
+
+Existing root `.env` installs still work, but new project profiles should use
+`cadence/.env`.
 
 After `cadence doctor` passes, create the required Linear labels in one step:
 
@@ -125,8 +133,22 @@ cadence pause
 cadence status
 ```
 
-When you are ready for one deliberate live triage run, resume, run it, then pause
-again while you inspect the result:
+In a configured project, run Cadence from the application checkout so it picks
+up `cadence/.env` for manual commands:
+
+```bash
+cd /path/to/app
+cadence doctor
+cadence run triage
+```
+
+Project-local `cadence/.env` works for manual and scheduled runs. Scheduling uses
+one global launchd job, `com.cadence.scheduler`; it reads a projects file and
+then runs due stages with each project's own config. Projects are skipped unless
+their config contains `CADENCE_SCHEDULED=1`.
+
+For the first deliberate live triage run, keep the system paused until you are
+ready, then resume, run it, and pause again while you inspect the result:
 
 ```bash
 cadence resume
@@ -147,7 +169,9 @@ loops, read [docs/INSTALL.md](docs/INSTALL.md).
 Start with [docs/README.md](docs/README.md), or jump directly to:
 
 - [Installation](docs/INSTALL.md) - step-by-step setup for a new machine.
-- [Configuration](docs/CONFIGURATION.md) - every `.env` value explained.
+- [Current Capabilities](docs/CAPABILITIES.md) - what Cadence can do now and
+  where config, state, tasks, and worktrees live.
+- [Configuration](docs/CONFIGURATION.md) - every config value explained.
 - [Operating Cadence](docs/OPERATING.md) - day-to-day commands and recovery.
 - [Architecture](docs/ARCHITECTURE.md) - gates, labels, state, and invariants.
 - [Agent Labels](docs/LABELS.md) - the full Linear label vocabulary.
@@ -157,7 +181,7 @@ Start with [docs/README.md](docs/README.md), or jump directly to:
 
 Cadence is designed around three constraints:
 
-- Project scope comes from `.env`; the engine contains no project IDs.
+- Project scope comes from the active config file; the engine contains no project IDs.
 - Every loop checks the pause flag before doing work.
 - Agents never set downstream gate labels or merge PRs.
 

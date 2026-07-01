@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # cadence — front door to the Cadence engine. Generic: all profile values come
-# from .env via engine/lib/lib-env.sh. Heavy lifting stays in engine/.
+# from the active config via engine/lib/lib-env.sh. Heavy lifting stays in engine/.
 set -u
 
 # Resolve our own location, following a PATH symlink if present (portable; no GNU readlink -f).
@@ -8,15 +8,32 @@ SELF="${BASH_SOURCE[0]:-$0}"
 while [ -L "$SELF" ]; do _l="$(readlink "$SELF")"; case "$_l" in /*) SELF="$_l" ;; *) SELF="$(dirname "$SELF")/$_l" ;; esac; done
 BIN="$(cd "$(dirname "$SELF")" && pwd)"
 
-if [ "${1:-}" = "--config" ]; then
-  [ -n "${2:-}" ] || { echo "--config needs a path" >&2; exit 2; }
-  CADENCE_CONFIG="$2"
-  export CADENCE_CONFIG
-  shift 2
-fi
+while [ "${1:-}" = "--config" ] || [ "${1:-}" = "--profile" ]; do
+  case "$1" in
+    --config)
+      [ -n "${2:-}" ] || { echo "--config needs a path" >&2; exit 2; }
+      [ -z "${_CADENCE_PROFILE_OPT:-}" ] || { echo "use --config or --profile, not both" >&2; exit 2; }
+      _CADENCE_CONFIG_OPT=1
+      CADENCE_CONFIG="$2"
+      unset CADENCE_PROFILE
+      export CADENCE_CONFIG
+      shift 2
+      ;;
+    --profile)
+      [ -n "${2:-}" ] || { echo "--profile needs a name" >&2; exit 2; }
+      [ -z "${_CADENCE_CONFIG_OPT:-}" ] || { echo "use --config or --profile, not both" >&2; exit 2; }
+      _CADENCE_PROFILE_OPT=1
+      CADENCE_PROFILE="$2"
+      unset CADENCE_CONFIG
+      export CADENCE_PROFILE
+      shift 2
+      ;;
+  esac
+done
+unset _CADENCE_CONFIG_OPT _CADENCE_PROFILE_OPT
 
 # shellcheck disable=SC1091
-source "$BIN/../engine/lib/lib-env.sh"   # sets CADENCE_HOME, CADENCE_STATE_DIR, .env
+source "$BIN/../engine/lib/lib-env.sh"   # sets CADENCE_HOME, CADENCE_CONFIG, CADENCE_STATE_DIR
 
 RUNS="$CADENCE_STATE_DIR/runs"
 LOGDIR="$CADENCE_STATE_DIR/logs"
@@ -31,10 +48,10 @@ usage() {
   cat <<EOF
 cadence — control the Cadence agent loops
 
-Usage: cadence [--config path] <command> [args]
+Usage: cadence [--config path|--profile name] <command> [args]
 
   status            Live/paused state, launchd jobs, last run per stage, activity
-  doctor [--labels] Verify the setup (.env, API key, labels, provider CLIs, schedule)
+  doctor [--labels] Verify the setup (active config, API key, labels, provider CLIs, schedule)
   pause | resume    Stop / resume all loops (PAUSED flag)
   run <stage>       Run one loop NOW (triage|spec|build|revise)
   run advance [--dry-run]  Autonomous advancer (opt-in; grants gates on agent:auto)
@@ -44,14 +61,15 @@ Usage: cadence [--config path] <command> [args]
   digest [date]     Full digest for a date (default: today UTC)
   throughput [days] Per-stage rollup of recent runs (default 7 days)
   restart           Reload all launchd jobs after editing plists
-  schedule [show|apply]  Show or apply launchd timings (config-driven via SCHED_* in .env)
-  autonomous on|off|status  Flip autonomous mode: set .env + load/unload advance & conduct jobs
+  schedule [show|status|tick|apply]  Manage the single launchd scheduler
+  autonomous on|off|status  Flip autonomous mode in the active config
   inspect           Read-only setup/status bundle for support and onboarding
   tend              Run the Clio hygiene pass now
   conduct [--dry-run]  Feed the autonomous queue (deterministic; opt-in via AUTONOMOUS)
   bakeoff <brief> <filter> [impls]  Compare implementer CLIs in isolated worktrees
   labels init|list|ensure <name>  Initialise, inspect, or create Linear labels
   linear <args>     Linear API adapter (teams, issues-list, issue-get, …)
+  tasks <args>      Local task-file adapter (list, get, update)
   providers roles|show|set|help  Inspect, update, or explain AI provider roles
   prompt render <stage> [args...] --output <file>  Render a provider-neutral loop prompt
   advance <args>    Advancer decision core (decide, criteria, repairs)
@@ -130,6 +148,7 @@ case "$cmd" in
              *) echo "usage: cadence prompt render <stage> [args...] --output <file>" >&2; exit 2 ;;
            esac ;;
   linear)  exec python3 "$CADENCE_HOME/engine/linear/cli.py" "$@" ;;
+  tasks)   exec python3 "$CADENCE_HOME/engine/tasks/cli.py" "$@" ;;
   providers) exec python3 "$CADENCE_HOME/engine/providers/cli.py" "$@" ;;
   advance) exec python3 "$CADENCE_HOME/engine/advance/cli.py" "$@" ;;
   memory)  exec python3 "$CADENCE_HOME/engine/memory/cli.py" "$@" ;;

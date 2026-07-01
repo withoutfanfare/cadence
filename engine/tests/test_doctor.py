@@ -116,6 +116,37 @@ else:
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("triage orchestrator provider 'claude' not on PATH", result.stdout)
 
+    def test_reports_active_cadence_config_path(self):
+        config = pathlib.Path(self.tmp.name) / "app" / "cadence" / ".env"
+        config.parent.mkdir(parents=True)
+        config.write_text(f"CADENCE_STATE_DIR={self.state}\n", encoding="utf-8")
+
+        result = self._run({"CADENCE_CONFIG": str(config)})
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(f"config file {config}", result.stdout)
+
+    def test_file_backend_skips_linear_checks_and_reports_task_file(self):
+        task_file = self.root / "cadence" / "tasks.md"
+        task_file.parent.mkdir()
+        task_file.write_text("# Tasks\n", encoding="utf-8")
+
+        result = self._run(
+            {
+                "TASK_BACKEND": "file",
+                "LINEAR_API_KEY": "",
+                "LINEAR_TEAM_ID": "",
+                "LINEAR_TEAM_NAME": "",
+                "LINEAR_PROJECT_ID": "",
+                "LINEAR_ASSIGNEE_ID": "",
+            }
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(f"task backend file; task file {task_file}", result.stdout)
+        self.assertNotIn("LINEAR_API_KEY not set", result.stdout)
+        self.assertNotIn("LINEAR_PROJECT_ID not set", result.stdout)
+
     def test_requires_default_claude_implementer_on_runner_path(self):
         (self.runner_bin / "claude").unlink()
 

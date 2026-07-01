@@ -31,6 +31,7 @@ class TestFrontDoor(unittest.TestCase):
         self.assertIn("provider CLIs", result.stdout)
         self.assertIn("providers roles|show|set|help", result.stdout)
         self.assertIn("prompt render", result.stdout)
+        self.assertIn("tasks <args>", result.stdout)
 
     def test_inspect_runs_read_only_status_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -81,7 +82,7 @@ class TestFrontDoor(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             home = os.path.join(tmp, "home")
             root = os.path.join(tmp, "cadence-engine")
-            project = os.path.join(tmp, "app")
+            project = os.path.join(root, "app")
             state = os.path.join(tmp, "state")
             os.makedirs(home)
             os.makedirs(os.path.join(root, "bin"))
@@ -96,6 +97,100 @@ class TestFrontDoor(unittest.TestCase):
                 f.write("CADENCE_STATE_DIR=%s\n" % state)
             env = os.environ.copy()
             env["HOME"] = home
+            relative_config_path = os.path.join("app", "cadence", ".env")
+
+            result = subprocess.run(
+                ["bash", os.path.join(root, "bin", "cadence"), "--config", relative_config_path, "status"],
+                cwd=root,
+                env=env,
+                text=True,
+                capture_output=True,
+                timeout=10,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("%s|%s" % (state, os.path.realpath(os.path.join(root, relative_config_path))), result.stdout)
+
+    def test_profile_option_selects_named_config_before_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, "home")
+            root = os.path.join(tmp, "cadence-engine")
+            project = os.path.join(root, "app")
+            state = os.path.join(tmp, "state")
+            os.makedirs(home)
+            os.makedirs(os.path.join(root, "bin"))
+            os.makedirs(os.path.join(root, "engine", "lib"))
+            os.makedirs(os.path.join(root, "engine", "scripts"))
+            os.makedirs(os.path.join(root, "profiles"))
+            os.makedirs(os.path.join(project, "cadence"))
+            shutil.copy(os.path.join(ROOT, "bin", "cadence"), os.path.join(root, "bin", "cadence"))
+            shutil.copytree(os.path.join(ROOT, "engine", "lib"), os.path.join(root, "engine", "lib"), dirs_exist_ok=True)
+            self._write_exe(os.path.join(root, "engine", "scripts", "status.sh"), "#!/bin/sh\necho \"$CADENCE_STATE_DIR|$CADENCE_CONFIG\"\n")
+            config_path = os.path.join(project, "cadence", ".env")
+            with open(config_path, "w", encoding="utf-8") as f:
+                f.write("CADENCE_STATE_DIR=%s\n" % state)
+            with open(os.path.join(root, "profiles", "mpw"), "w", encoding="utf-8") as f:
+                f.write("# profile alias\n%s\n" % config_path)
+            env = os.environ.copy()
+            env["HOME"] = home
+
+            result = subprocess.run(
+                ["bash", os.path.join(root, "bin", "cadence"), "--profile", "mpw", "status"],
+                cwd=root,
+                env=env,
+                text=True,
+                capture_output=True,
+                timeout=10,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("%s|%s" % (state, os.path.abspath(config_path)), result.stdout)
+
+    def test_profile_option_reports_missing_alias(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, "home")
+            root = os.path.join(tmp, "cadence-engine")
+            os.makedirs(home)
+            os.makedirs(os.path.join(root, "bin"))
+            os.makedirs(os.path.join(root, "engine", "lib"))
+            shutil.copy(os.path.join(ROOT, "bin", "cadence"), os.path.join(root, "bin", "cadence"))
+            shutil.copytree(os.path.join(ROOT, "engine", "lib"), os.path.join(root, "engine", "lib"), dirs_exist_ok=True)
+            env = os.environ.copy()
+            env["HOME"] = home
+
+            result = subprocess.run(
+                ["bash", os.path.join(root, "bin", "cadence"), "--profile", "missing", "status"],
+                cwd=root,
+                env=env,
+                text=True,
+                capture_output=True,
+                timeout=10,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unknown profile: missing", result.stderr)
+
+    def test_selected_config_path_survives_values_inside_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, "home")
+            root = os.path.join(tmp, "cadence-engine")
+            project = os.path.join(root, "app")
+            state = os.path.join(tmp, "state")
+            os.makedirs(home)
+            os.makedirs(os.path.join(root, "bin"))
+            os.makedirs(os.path.join(root, "engine", "lib"))
+            os.makedirs(os.path.join(root, "engine", "scripts"))
+            os.makedirs(os.path.join(project, "cadence"))
+            shutil.copy(os.path.join(ROOT, "bin", "cadence"), os.path.join(root, "bin", "cadence"))
+            shutil.copytree(os.path.join(ROOT, "engine", "lib"), os.path.join(root, "engine", "lib"), dirs_exist_ok=True)
+            self._write_exe(os.path.join(root, "engine", "scripts", "status.sh"),
+                            "#!/bin/sh\necho \"$CADENCE_STATE_DIR|$CADENCE_CONFIG\"\n")
+            config_path = os.path.join(project, "cadence", ".env")
+            with open(config_path, "w", encoding="utf-8") as f:
+                f.write("CADENCE_CONFIG=/tmp/wrong\nCADENCE_STATE_DIR=%s\n" % state)
+            env = os.environ.copy()
+            env["HOME"] = home
+            env.pop("CADENCE_CONFIG", None)
 
             result = subprocess.run(
                 ["bash", os.path.join(root, "bin", "cadence"), "--config", config_path, "status"],
@@ -107,7 +202,8 @@ class TestFrontDoor(unittest.TestCase):
             )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("%s|%s" % (state, config_path), result.stdout)
+        self.assertIn("%s|%s" % (state, os.path.abspath(config_path)), result.stdout)
+        self.assertNotIn("/tmp/wrong", result.stdout)
 
     def test_project_cadence_env_is_auto_detected_from_cwd(self):
         with tempfile.TemporaryDirectory() as tmp:

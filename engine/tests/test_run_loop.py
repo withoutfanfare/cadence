@@ -23,6 +23,8 @@ class TestRunLoopPreLaunchGuards(unittest.TestCase):
                         os.path.join(self.root, "engine", "scripts"))
         shutil.copytree(os.path.join(ROOT, "engine", "lib"),
                         os.path.join(self.root, "engine", "lib"))
+        shutil.copytree(os.path.join(ROOT, "engine", "tasks"),
+                        os.path.join(self.root, "engine", "tasks"))
         os.makedirs(os.path.join(self.state, "runs"))
         os.makedirs(self.project)
         os.makedirs(self.bin)
@@ -95,6 +97,63 @@ exec {real_python} "$@"
         self.assertEqual(payload["reason"], "wrong-workspace")
         self.assertIn("wrong-workspace", self._read_today_digest())
         self.assertEqual(json.loads(self._read_ledger().strip())["reason"], "wrong-workspace")
+
+    def test_file_backend_launches_tasks_prompt_without_linear_credentials(self):
+        real_python = sys.executable
+        linear_cli = os.path.join(self.root, "engine", "linear", "cli.py")
+        prompt_copy = os.path.join(self.state, "file-prompt.md")
+        os.makedirs(os.path.join(self.project, "cadence"))
+        with open(os.path.join(self.project, "cadence", "tasks.md"), "w", encoding="utf-8") as f:
+            f.write("# Tasks\n")
+        os.makedirs(os.path.join(self.root, "skills", "cadence-loop-triage"))
+        with open(os.path.join(self.root, "skills", "cadence-loop-triage", "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: cadence-loop-triage\n---\nLoop body\n")
+        shutil.copytree(os.path.join(ROOT, "engine", "prompts"),
+                        os.path.join(self.root, "engine", "prompts"))
+        self._write_exe("python3", f"""#!/bin/sh
+if [ "$1" = "{linear_cli}" ]; then
+  echo linear should not run >&2
+  exit 66
+fi
+exec {real_python} "$@"
+""")
+        self._write_exe("codex", f"""#!/bin/sh
+cat > "{prompt_copy}"
+printf '{{"stage":"triage","triaged":1,"errors":0}}\\n'
+""")
+
+        result = self._run(
+            "triage",
+            TASK_BACKEND="file",
+            ORCHESTRATOR_TRIAGE="codex:gpt-test",
+            LINEAR_TEAM_ID="",
+            LINEAR_PROJECT_ID="",
+            LINEAR_ASSIGNEE_ID="",
+            LINEAR_API_KEY="",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("wrong-workspace", result.stdout)
+        with open(prompt_copy, encoding="utf-8") as f:
+            prompt = f.read()
+        self.assertIn("TASK_BACKEND=file", prompt)
+        self.assertIn("cadence tasks list", prompt)
+        self.assertNotIn("cadence linear", prompt)
+
+    def test_file_backend_missing_task_file_pauses_before_launch(self):
+        result = self._run(
+            "triage",
+            TASK_BACKEND="file",
+            LINEAR_TEAM_ID="",
+            LINEAR_PROJECT_ID="",
+            LINEAR_ASSIGNEE_ID="",
+            LINEAR_API_KEY="",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["reason"], "missing-task-file")
+        self.assertIn("cadence/tasks.md", payload["detail"])
 
     def test_failed_run_alerts_via_activity_feed_and_digest(self):
         real_python = sys.executable
@@ -174,6 +233,50 @@ exec {real_python} "$@"
         self.assertFalse(payload.get("paused", False))
         self.assertFalse([x for x in os.listdir(os.path.join(self.state, "runs"))
                           if x.endswith(".md")])
+
+    def test_file_backend_advance_launches_when_auto_task_exists(self):
+        real_python = sys.executable
+        linear_cli = os.path.join(self.root, "engine", "linear", "cli.py")
+        os.makedirs(os.path.join(self.project, "cadence"))
+        with open(os.path.join(self.project, "cadence", "tasks.md"), "w", encoding="utf-8") as f:
+            f.write("""# Tasks
+
+## TASK-1: Auto task
+status: ready
+labels: agent:auto, agent:triaged
+
+Body.
+""")
+        os.makedirs(os.path.join(self.root, "skills", "cadence-loop-advance"))
+        with open(os.path.join(self.root, "skills", "cadence-loop-advance", "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: cadence-loop-advance\n---\nLoop body\n")
+        shutil.copytree(os.path.join(ROOT, "engine", "prompts"),
+                        os.path.join(self.root, "engine", "prompts"))
+        self._write_exe("python3", f"""#!/bin/sh
+if [ "$1" = "{linear_cli}" ]; then
+  echo linear should not run >&2
+  exit 66
+fi
+exec {real_python} "$@"
+""")
+        self._write_exe("codex", "#!/bin/sh\nprintf '{\"stage\":\"advance\",\"advanced\":1,\"errors\":0}\\n'\n")
+
+        result = self._run(
+            "advance",
+            TASK_BACKEND="file",
+            AUTONOMOUS="on",
+            ORCHESTRATOR_ADVANCE="codex:gpt-test",
+            LINEAR_TEAM_ID="",
+            LINEAR_PROJECT_ID="",
+            LINEAR_ASSIGNEE_ID="",
+            LINEAR_API_KEY="",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('"idle":true', result.stdout)
+        with open(os.path.join(self.state, "logs", "advance.log"), encoding="utf-8") as f:
+            log = f.read()
+        self.assertIn("starting cadence advance (codex:gpt-test)", log)
 
     def _read_today_digest(self):
         files = [x for x in os.listdir(os.path.join(self.state, "runs"))

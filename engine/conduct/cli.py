@@ -27,7 +27,8 @@ _advance = _load("advance_cli", "advance/cli.py")
 parse_criteria = _advance.parse_criteria
 
 _TERMINAL = {"completed", "canceled"}
-_BLOCK_OUT = {"agent:hold", "agent:superseded", "agent:needs-human", "agent:auto"}
+_BLOCK_OUT = {"agent:hold", "agent:superseded", "agent:needs-human",
+              "agent:needs-attention", "agent:auto"}
 # Linear priority: 1=urgent … 4=low, 0=none. Map so urgent ranks highest and
 # none ranks lowest, then sort priority-descending (most urgent first).
 _PRIORITY_RANK = {1: 4, 2: 3, 3: 2, 4: 1}
@@ -41,7 +42,7 @@ def eligible(issues):
             continue
         if labels & _BLOCK_OUT:
             continue
-        if (i.get("state_type") or "") in _TERMINAL:
+        if (i.get("state_type") or i.get("status") or "") in _TERMINAL:
             continue
         if not parse_criteria(i.get("description") or ""):
             continue
@@ -71,6 +72,10 @@ def is_blocked(detail):
     return False
 
 
+def is_parent(detail):
+    return bool(detail.get("children") or [])
+
+
 _cadence_env = _load("cadence_env", "lib/cadence_env.py")
 
 _TRUE = {"1", "true", "on", "yes"}
@@ -85,7 +90,43 @@ def _linear(*args):
     return json.loads(proc.stdout or "null")
 
 
-def _active_cycle():
+def _backend(env):
+    return (env.get("TASK_BACKEND") or "linear").strip().lower()
+
+
+def _tasks(env, *args):
+    adapter = os.path.join(_ENGINE, "tasks", "cli.py")
+    run_env = os.environ.copy()
+    run_env.update(env)
+    proc = subprocess.run([sys.executable, adapter, *args],
+                          capture_output=True, text=True, env=run_env)
+    if proc.returncode != 0:
+        sys.stderr.write(proc.stderr or "cadence conduct: tasks adapter failed\n")
+        sys.exit(1)
+    return json.loads(proc.stdout or "null")
+
+
+def _issues_list(env):
+    if _backend(env) == "file":
+        return _tasks(env, "list") or []
+    return _linear("issues-list", "--assignee", "me") or []
+
+
+def _issue_detail(env, identifier):
+    if _backend(env) == "file":
+        return {"children": [], "inverseRelations": []}
+    return _linear("issue-get", identifier)
+
+
+def _add_auto(env, identifier):
+    if _backend(env) == "file":
+        return _tasks(env, "update", identifier, "--add-label", "agent:auto")
+    return _linear("issue-update", identifier, "--add-label", "agent:auto")
+
+
+def _active_cycle(env):
+    if _backend(env) == "file":
+        return None
     # cycles-list returns {number, starts_at, ends_at}; the active cycle is the
     # one whose window contains now (there is no isActive flag).
     from datetime import datetime, timezone
@@ -111,33 +152,38 @@ def conduct(env, dry_run=False):
         return {"loop": "conduct", "dry_run": dry_run, "paused": True, "reason": "autonomous-off"}
 
     wip = int(env.get("CONDUCT_WIP") or 1)
-    issues = _linear("issues-list", "--assignee", "me") or []
+    issues = _issues_list(env)
     inflight = [i for i in issues if "agent:auto" in (i.get("labels") or [])]
     free = wip - len(inflight)
     if free <= 0:
         return {"loop": "conduct", "dry_run": dry_run, "inflight": len(inflight),
                 "free": 0, "tagged": [], "note": "queue full"}
 
-    active = _active_cycle()
+    active = _active_cycle(env)
     ranked = rank(eligible(issues), active)
-    tagged, skipped_blocked = [], []
+    tagged, skipped_blocked, skipped_parent = [], [], []
     for cand in ranked:
         if len(tagged) >= free:
             break
-        detail = _linear("issue-get", cand["identifier"])
+        detail = _issue_detail(env, cand["identifier"])
+        if is_parent(detail):
+            skipped_parent.append(cand["identifier"])
+            continue
         if is_blocked(detail):
             skipped_blocked.append(cand["identifier"])
             continue
         if not dry_run:
-            _linear("issue-update", cand["identifier"], "--add-label", "agent:auto")
+            _add_auto(env, cand["identifier"])
         tagged.append(cand["identifier"])
     return {"loop": "conduct", "dry_run": dry_run, "inflight": len(inflight),
-            "free": free, "tagged": tagged, "skipped_blocked": skipped_blocked}
+            "free": free, "tagged": tagged, "skipped_blocked": skipped_blocked,
+            "skipped_parent": skipped_parent}
 
 
 def _summary_line(summary):
     tagged = len(summary.get("tagged") or [])
     blocked = len(summary.get("skipped_blocked") or [])
+    parent = len(summary.get("skipped_parent") or [])
     if summary.get("paused"):
         return "PAUSED — %s" % summary.get("reason", "?")
     parts = []
@@ -145,6 +191,8 @@ def _summary_line(summary):
         parts.append("%d tagged" % tagged)
     if blocked:
         parts.append("%d blocked" % blocked)
+    if parent:
+        parts.append("%d parent" % parent)
     if summary.get("free") == 0 and summary.get("note"):
         parts.append(summary["note"])
     return ", ".join(parts) if parts else "nothing to do"

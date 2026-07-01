@@ -74,6 +74,12 @@ def cadence_home() -> pathlib.Path:
 
 
 def env_path() -> pathlib.Path:
+    explicit = os.environ.get("CADENCE_CONFIG")
+    if explicit:
+        return pathlib.Path(explicit)
+    project = pathlib.Path.cwd() / "cadence" / ".env"
+    if project.exists():
+        return project
     return cadence_home() / ".env"
 
 
@@ -225,7 +231,7 @@ def build_parser() -> argparse.ArgumentParser:
     man = sub.add_parser("man", help="show provider role manual")
     man.set_defaults(func=cmd_help)
 
-    set_parser = sub.add_parser("set", help="update provider configuration in .env")
+    set_parser = sub.add_parser("set", help="update provider configuration in the active config")
     set_parser.add_argument("--all", help="set every orchestrator to provider:model")
     for stage in STAGES:
         set_parser.add_argument(f"--{stage}", help=f"set {stage} orchestrator to provider:model")

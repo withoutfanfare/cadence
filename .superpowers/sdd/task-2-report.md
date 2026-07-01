@@ -60,3 +60,70 @@ Both commands passed.
 ## Concern
 
 On this macOS host, project-cwd path resolution comes through `/private/var/...` in the shell while the temp path fixture is created as `/var/...`. The test now compares against `os.path.realpath(config_path)` for the cwd-autodetect case so the assertion matches the shell’s physical path output.
+
+## Fix/Verification
+
+### RED capture (relative `--config` failure before canonicalization)
+
+```bash
+cd engine && python3 -m unittest tests.test_front_door
+```
+
+Output:
+
+```text
+F...
+======================================================================
+FAIL: test_config_option_selects_project_config_before_command (tests.test_front_door.TestFrontDoor.test_config_option_selects_project_config_before_command)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/dannyharding/Development/Code/Project/cadence/engine/tests/test_front_door.py", line 111, in test_config_option_selects_project_config_before_command
+    self.assertIn("%s|%s" % (state, os.path.realpath(os.path.join(root, relative_config_path))), result.stdout)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: '/var/folders/6m/0mz983295hxb9phsbnbg_9mr0000gn/T/tmp5xj9t6j1/state|/var/folders/6m/0mz983295hxb9phsbnbg_9mr0000gn/T/tmp5xj9t6j1/cadence-engine/app/cadence/.env' not found in '/var/folders/6m/0mz983295hxb9phsbnbg_9mr0000gn/T/tmp5xj9t6j1/state|app/cadence/.env\n'
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.141s
+
+FAILED (failures=1)
+```
+
+### GREEN capture (patched)
+
+```bash
+cd engine && python3 -m unittest tests.test_front_door
+```
+
+Output:
+
+```text
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.141s
+
+OK
+```
+
+```bash
+cd engine && python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
+Output:
+
+```text
+...............................................................................................................................................................
+----------------------------------------------------------------------
+Ran 159 tests in 12.078s
+
+OK
+```
+
+```bash
+cd /Users/dannyharding/Development/Code/Project/cadence && shellcheck bin/cadence engine/scripts/*.sh engine/lib/lib-env.sh
+```
+
+Output:
+
+```text
+(no output)
+```

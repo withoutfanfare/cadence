@@ -15,7 +15,8 @@ cadence feed 30         # recent activity lines
 cadence queue [-v]      # your move: board overview grouped by agent state
 cadence digest          # today's full digest, UTC date
 cadence throughput 30   # per-stage rollup from the machine ledger
-cadence schedule        # show the live schedule
+cadence schedule        # show the active config's stage cadence
+cadence schedule status # show registered scheduled projects
 cadence inspect         # read-only support bundle
 ```
 
@@ -26,7 +27,7 @@ cadence pause           # stop all loops before they do work
 cadence resume          # allow loops to run again
 cadence run triage      # run one stage now; live unless paused
 cadence restart         # reload launchd jobs
-cadence schedule apply  # regenerate and reload launchd plists
+cadence schedule apply  # regenerate and reload the single scheduler plist
 ```
 
 Autonomous and maintainer commands:
@@ -220,13 +221,14 @@ Roll it out carefully:
    cadence autonomous on
    ```
 
-   This sets `AUTONOMOUS=on` in `.env` and loads two launchd jobs — the advancer
-   (hourly, just after the gated loops, so it sees a fresh board) and the conductor
-   (every 3 hours). Keep `AUTO_MAX_ISSUES_PER_RUN=1` and `CONDUCT_WIP=1` at first.
+   This sets `AUTONOMOUS=on` in the active config. Scheduled advance/conduct
+   work is picked up by the single scheduler when `CADENCE_SCHEDULED=1`. Keep
+   `AUTO_MAX_ISSUES_PER_RUN=1` and `CONDUCT_WIP=1` at first.
 
-   - `cadence autonomous status` shows the flag and whether both jobs are loaded.
-   - `cadence autonomous off` reverses everything: sets `AUTONOMOUS=0` and unloads
-     both jobs. The four gated loops (triage/spec/build/revise) are never touched.
+   - `cadence autonomous status` shows the flag and scheduler state.
+   - `cadence autonomous off` sets `AUTONOMOUS=0` and removes any legacy
+     autonomous launchd jobs. The four gated loops (triage/spec/build/revise) are
+     never touched.
 
 On accept it removes `agent:auto` (re-add it if you want more autonomous work
 after reviewing). A run with nothing to do — autonomous off, or no `agent:auto`
@@ -237,16 +239,18 @@ still tagged.
 
 With autonomous mode on, the conductor feeds the queue so you do not have to tag
 issues by hand. Every 3 hours it ranks the ready backlog (priority → current cycle
-→ oldest), skips anything blocked, and tops up `agent:auto` to `CONDUCT_WIP`
-(default 1) — one issue in flight at a time until you raise it.
+→ oldest), skips anything not buildable yet (held, needs-attention, terminal,
+already-auto, and, for Linear, blocked or parent issues with children), and tops
+up `agent:auto` to `CONDUCT_WIP` (default 1) — one issue in flight at a time
+until you raise it.
 
 - **Shadow it first:** `AUTONOMOUS=on cadence conduct --dry-run` prints which issue
-  it would set loose (and which it skipped as blocked), writing nothing to Linear.
-  The decision summary is still recorded in the normal Cadence feed, digest, and
-  throughput ledger.
-- **Schedule it:** `cadence autonomous on` loads it (every 3 hours) alongside the
-  advancer (hourly) — no manual plist editing. The advancer carries tagged issues
-  through the stages between conductor passes.
+  it would set loose (and, for Linear, which it skipped as blocked or parent work),
+  writing nothing to the active task backend. The decision summary is still
+  recorded in the normal Cadence feed, digest, and throughput ledger.
+- **Schedule it:** set `CADENCE_SCHEDULED=1`; the scheduler runs conductor work
+  every 3 hours at `:50` by default. The advancer carries tagged issues through
+  the stages between conductor passes.
 - **Steer it:** `agent:hold` excludes an issue; raise/lower `CONDUCT_WIP` to speed
   up or slow down; `cadence pause` or `AUTONOMOUS=0` stops it. It never starts an
   issue whose blockers are not done.
@@ -266,22 +270,27 @@ If the run crashed, remove `agent:claimed` and inspect any
 
 ## Changing the Schedule
 
-Each loop's cadence is config-driven. See the current schedule:
+Each loop's cadence is config-driven per project. See the active config's
+schedule and the registered scheduled projects:
 
 ```bash
 cadence schedule
+cadence schedule status
 ```
 
-To change it, set the relevant `SCHED_<STAGE>` value in `.env` (format and defaults
-in [Configuration](CONFIGURATION.md#schedule)), then apply:
+To change it, set the relevant `SCHED_<STAGE>` value in the project's
+`cadence/.env` (format and defaults in [Configuration](CONFIGURATION.md#schedule)),
+then apply the global scheduler:
 
 ```bash
 cadence schedule apply
 ```
 
-`apply` validates every `SCHED_*` value, regenerates the launchd plists, and reloads
-them. For example, `SCHED_BUILD=:05` moves the build loop to `:05` each hour;
-`SCHED_TRIAGE=4h@0` runs triage every four hours (00:00, 04:00, …).
+`apply` validates the active config, writes `com.cadence.scheduler`, removes
+older per-stage Cadence plists, and reloads the scheduler. Project configs are
+checked when the scheduler reads them. For example, `SCHED_BUILD=:05` moves the
+build loop to `:05` each hour; `SCHED_TRIAGE=4h@0` runs triage every four hours
+(00:00, 04:00, …). Use `SCHED_BUILD=off` to disable a stage for one project.
 
 `cadence restart` is the lighter sibling: it reloads the existing plist files
 without regenerating them — use it after the Cadence repo moves, or after editing a
@@ -341,6 +350,8 @@ cadence doctor
 Common causes:
 
 - Cadence is paused.
+- `TASK_BACKEND=file` is selected and `TASK_FILE` is missing or has no task with
+  the required agent label.
 - The issue is missing the required human gate label.
 - The issue has `agent:hold`, `agent:superseded`, or `agent:needs-human`.
 - The issue is not assigned to `LINEAR_ASSIGNEE_ID`.

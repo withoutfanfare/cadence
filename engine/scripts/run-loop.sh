@@ -1,5 +1,5 @@
 #!/bin/bash
-# Cadence agent loop runner — invoked by launchd (com.cadence.loop-<stage>).
+# Cadence agent loop runner — invoked by the scheduler or manually.
 # Usage: run-loop.sh <triage|spec|build|revise>
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -97,13 +97,16 @@ if [ -f "$RUNS/PAUSED" ]; then
   pause_before_launch "manual" "PAUSED present"
 fi
 
-if [ -z "${LINEAR_TEAM_ID:-}" ]; then
-  pause_before_launch "wrong-workspace" "LINEAR_TEAM_ID unset"
-fi
-teams_json="$(python3 "$CADENCE_HOME/engine/linear/cli.py" teams 2>&1)" || {
-  pause_before_launch "wrong-workspace" "cadence linear teams failed"
-}
-if ! TEAM_JSON="$teams_json" TEAM_ID="$LINEAR_TEAM_ID" python3 - <<'PY'
+_task_backend="$(printf '%s' "${TASK_BACKEND:-linear}" | tr '[:upper:]' '[:lower:]')"
+case "$_task_backend" in
+  linear)
+    if [ -z "${LINEAR_TEAM_ID:-}" ]; then
+      pause_before_launch "wrong-workspace" "LINEAR_TEAM_ID unset"
+    fi
+    teams_json="$(python3 "$CADENCE_HOME/engine/linear/cli.py" teams 2>&1)" || {
+      pause_before_launch "wrong-workspace" "cadence linear teams failed"
+    }
+    if ! TEAM_JSON="$teams_json" TEAM_ID="$LINEAR_TEAM_ID" python3 - <<'PY'
 import json, os, sys
 try:
     teams = json.loads(os.environ["TEAM_JSON"])
@@ -115,9 +118,26 @@ for team in teams:
         sys.exit(0)
 sys.exit(1)
 PY
-then
-  pause_before_launch "wrong-workspace" "team $LINEAR_TEAM_ID not visible"
-fi
+    then
+      pause_before_launch "wrong-workspace" "team $LINEAR_TEAM_ID not visible"
+    fi
+    ;;
+  file)
+    _task_file="${TASK_FILE:-cadence/tasks.md}"
+    case "$_task_file" in
+      /*) : ;;
+      *) _task_file="$PROJECT_DIR/$_task_file" ;;
+    esac
+    if [ ! -f "$_task_file" ]; then
+      pause_before_launch "missing-task-file" "$_task_file"
+    fi
+    TASK_FILE="$_task_file"
+    export TASK_FILE
+    ;;
+  *)
+    pause_before_launch "invalid-task-backend" "TASK_BACKEND=${TASK_BACKEND:-} (use linear or file)"
+    ;;
+esac
 
 # Advance loop is opt-in and must not pay for a model launch when idle.
 if [ "$STAGE" = "advance" ]; then
@@ -126,7 +146,10 @@ if [ "$STAGE" = "advance" ]; then
     1|on|true|yes) : ;;
     *) pause_before_launch "autonomous-off" "AUTONOMOUS not enabled" ;;
   esac
-  _n="$(python3 "$CADENCE_HOME/engine/linear/cli.py" issues-list --label agent:auto --assignee me 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)"
+  case "$_task_backend" in
+    file) _n="$(python3 "$CADENCE_HOME/engine/tasks/cli.py" list --label agent:auto 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)" ;;
+    *)    _n="$(python3 "$CADENCE_HOME/engine/linear/cli.py" issues-list --label agent:auto --assignee me 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)" ;;
+  esac
   [ "$_n" = "0" ] && idle_before_launch "no-auto-work" "no agent:auto issues in scope"
 fi
 
