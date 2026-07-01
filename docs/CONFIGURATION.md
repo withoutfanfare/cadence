@@ -8,9 +8,11 @@ For front-door `cadence` commands, config resolves in this order:
 
 1. `cadence --config /path/to/cadence/.env ...` sets `CADENCE_CONFIG` for that
    invocation and wins over any ambient value.
-2. `CADENCE_CONFIG`
-3. `$PWD/cadence/.env`
-4. `$CADENCE_HOME/.env` for existing installs
+2. `cadence --profile name ...` reads `$CADENCE_HOME/profiles/name`; the first
+   non-comment line is the target config path.
+3. `CADENCE_CONFIG`
+4. `$PWD/cadence/.env`
+5. `$CADENCE_HOME/.env` for existing installs
 
 Scripts invoked directly skip the front door, so ambient `CADENCE_CONFIG` is
 their explicit override.
@@ -19,6 +21,17 @@ New projects should use `<project repo>/cadence/.env` so Cadence does not
 collide with the app's own `.env`.
 
 Existing root `.env` installs still work, but new project profiles should use
+`cadence/.env`.
+
+For a shorter command, create a profile alias that points at the real config:
+
+```bash
+mkdir -p "$CADENCE_HOME/profiles"
+printf '%s\n' /path/to/app/cadence/.env > "$CADENCE_HOME/profiles/app"
+cadence --profile app status
+```
+
+Aliases are just path lookups; the config values still live in the target
 `cadence/.env`.
 
 Copy the example first:

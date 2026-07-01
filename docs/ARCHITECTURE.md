@@ -56,9 +56,10 @@ build coding agent uses `BUILD_IMPLEMENTER`. See [AI Provider Roles](PROVIDERS.m
 or `cadence providers help` for the evergreen role map and examples.
 
 Manual front-door commands can use project-local config by running from the app
-checkout or passing `cadence --config /path/to/app/cadence/.env ...`. Scheduled
-runs use the same config path through the single scheduler, not one launchd plist
-per project or stage.
+checkout, passing `cadence --config /path/to/app/cadence/.env ...`, or using a
+thin profile alias that resolves to the same config path. Scheduled runs use the
+same config path through the single scheduler, not one launchd plist per project
+or stage.
 
 ## 2. The board is the state machine — label vocabulary
 

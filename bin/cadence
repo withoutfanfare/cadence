@@ -8,12 +8,29 @@ SELF="${BASH_SOURCE[0]:-$0}"
 while [ -L "$SELF" ]; do _l="$(readlink "$SELF")"; case "$_l" in /*) SELF="$_l" ;; *) SELF="$(dirname "$SELF")/$_l" ;; esac; done
 BIN="$(cd "$(dirname "$SELF")" && pwd)"
 
-if [ "${1:-}" = "--config" ]; then
-  [ -n "${2:-}" ] || { echo "--config needs a path" >&2; exit 2; }
-  CADENCE_CONFIG="$2"
-  export CADENCE_CONFIG
-  shift 2
-fi
+while [ "${1:-}" = "--config" ] || [ "${1:-}" = "--profile" ]; do
+  case "$1" in
+    --config)
+      [ -n "${2:-}" ] || { echo "--config needs a path" >&2; exit 2; }
+      [ -z "${_CADENCE_PROFILE_OPT:-}" ] || { echo "use --config or --profile, not both" >&2; exit 2; }
+      _CADENCE_CONFIG_OPT=1
+      CADENCE_CONFIG="$2"
+      unset CADENCE_PROFILE
+      export CADENCE_CONFIG
+      shift 2
+      ;;
+    --profile)
+      [ -n "${2:-}" ] || { echo "--profile needs a name" >&2; exit 2; }
+      [ -z "${_CADENCE_CONFIG_OPT:-}" ] || { echo "use --config or --profile, not both" >&2; exit 2; }
+      _CADENCE_PROFILE_OPT=1
+      CADENCE_PROFILE="$2"
+      unset CADENCE_CONFIG
+      export CADENCE_PROFILE
+      shift 2
+      ;;
+  esac
+done
+unset _CADENCE_CONFIG_OPT _CADENCE_PROFILE_OPT
 
 # shellcheck disable=SC1091
 source "$BIN/../engine/lib/lib-env.sh"   # sets CADENCE_HOME, CADENCE_CONFIG, CADENCE_STATE_DIR
@@ -31,7 +48,7 @@ usage() {
   cat <<EOF
 cadence — control the Cadence agent loops
 
-Usage: cadence [--config path] <command> [args]
+Usage: cadence [--config path|--profile name] <command> [args]
 
   status            Live/paused state, launchd jobs, last run per stage, activity
   doctor [--labels] Verify the setup (active config, API key, labels, provider CLIs, schedule)

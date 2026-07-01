@@ -91,6 +91,14 @@ Cadence will find this file when you run manual commands from `/path/to/app`.
 Existing root `.env` installs still work, but new project profiles should use
 `cadence/.env`.
 
+Optional shortcut:
+
+```bash
+mkdir -p "$CADENCE_HOME/profiles"
+printf '%s\n' /path/to/app/cadence/.env > "$CADENCE_HOME/profiles/app"
+cadence --profile app doctor
+```
+
 At minimum, fill:
 
 ```dotenv
