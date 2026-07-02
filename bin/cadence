@@ -61,14 +61,14 @@ Usage: cadence [--config path|--profile name] <command> [args]
   digest [date]     Full digest for a date (default: today UTC)
   throughput [days] Per-stage rollup of recent runs (default 7 days)
   restart           Reload all launchd jobs after editing plists
-  schedule [show|status|tick|apply]  Manage the single launchd scheduler
+  schedule [show|status|register|tick|apply]  Manage the single launchd scheduler and its project registry
   autonomous on|off|status  Flip autonomous mode in the active config
   inspect           Read-only setup/status bundle for support and onboarding
   tend              Run the Clio hygiene pass now
   conduct [--dry-run]  Feed the autonomous queue (deterministic; opt-in via AUTONOMOUS)
   bakeoff <brief> <filter> [impls]  Compare implementer CLIs in isolated worktrees
   labels init|list|ensure <name>  Initialise, inspect, or create Linear labels
-  linear <args>     Linear API adapter (teams, issues-list, issue-get, …)
+  linear <args>     Linear API adapter (teams, me, projects, issues-list, issue-get, …)
   tasks <args>      Local task-file adapter (list, get, update)
   providers roles|show|set|help  Inspect, update, or explain AI provider roles
   prompt render <stage> [args...] --output <file>  Render a provider-neutral loop prompt

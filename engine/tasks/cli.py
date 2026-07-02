@@ -63,6 +63,64 @@ def parse(text):
     return tasks
 
 
+def validate(text):
+    """Return a list of format problems that would cause silent data loss.
+
+    The parser (parse) never errors — it ignores lines it does not recognise.
+    That means a malformed header or metadata placed a line too late is dropped
+    silently. This surfaces exactly those cases so `cadence doctor` can flag them.
+    """
+    problems = []
+    seen_ids = {}
+    current = None
+    in_header = False
+    header_meta = set()
+    awaiting_body = False
+    for n, line in enumerate(text.splitlines(), 1):
+        match = HEADER_RE.match(line)
+        if match:
+            tid = match.group(1).strip()
+            if tid in seen_ids:
+                problems.append(
+                    f"line {n}: duplicate task id '{tid}' (first at line "
+                    f"{seen_ids[tid]}); only the first is reachable"
+                )
+            else:
+                seen_ids[tid] = n
+            current = tid
+            in_header = True
+            header_meta = set()
+            awaiting_body = True
+            continue
+        # `## ` is reserved for task headers. A `## ` line that is not a valid
+        # `## <ID>: <Title>` is swallowed into the previous task's body.
+        if line.startswith("## "):
+            problems.append(
+                f"line {n}: malformed task header {line.strip()!r}; expected "
+                "'## <ID>: <Title>' (the ID must not contain a colon)"
+            )
+            continue
+        if current is None:
+            continue
+        if in_header and line.startswith("status:"):
+            header_meta.add("status")
+        elif in_header and line.startswith("labels:"):
+            header_meta.add("labels")
+        else:
+            in_header = False
+            if awaiting_body and line.strip():
+                awaiting_body = False
+                key = "status" if line.startswith("status:") else (
+                    "labels" if line.startswith("labels:") else None)
+                if key and key not in header_meta:
+                    problems.append(
+                        f"line {n}: '{key}:' is in the body of task '{current}', "
+                        f"not its header; move it directly under the "
+                        f"'## {current}: …' line with no blank line between"
+                    )
+    return problems
+
+
 def render(tasks):
     parts = ["# Cadence Tasks", ""]
     for task in tasks:
@@ -131,9 +189,19 @@ def cmd_update(args, env=None):
     return task
 
 
+def cmd_validate(args, env=None):
+    path = task_path(env)
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+    with open(path, encoding="utf-8") as f:
+        return validate(f.read())
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog="cadence tasks")
     sub = parser.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("validate")
 
     list_p = sub.add_parser("list")
     list_p.add_argument("--label")
@@ -154,6 +222,11 @@ def build_parser():
 def main(argv=None, env=None):
     args = build_parser().parse_args(argv)
     try:
+        if args.cmd == "validate":
+            problems = cmd_validate(args, env)
+            for problem in problems:
+                print(problem, file=sys.stderr)
+            return 1 if problems else 0
         if args.cmd == "list":
             out = cmd_list(args, env)
         elif args.cmd == "get":

@@ -6,6 +6,10 @@ act on and write labels to record what they did.
 Create the whole set during installation with `cadence labels init`; see
 [Installation](INSTALL.md#6-create-the-linear-labels).
 
+The same vocabulary applies to the local file backend (`TASK_BACKEND=file`):
+the labels below go in a task's `labels:` line in `cadence/tasks.md`, with no
+creation step. See [TASKS.md](TASKS.md) for that format.
+
 ---
 
 ## Gate labels — set by a human only, never by an agent

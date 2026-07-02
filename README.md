@@ -117,6 +117,12 @@ cadence doctor
 Existing root `.env` installs still work, but new project profiles should use
 `cadence/.env`.
 
+**Prefer a guided setup?** Once `cadence` is on your `PATH`, ask your AI agent
+(Claude, Codex, or any agent that can run a shell) to **"set up this project with
+Cadence"**. It runs the `cadence-setup` skill, which interviews you for the
+folders and choices, finds your Linear ids for you, picks the Linear or task-file
+backend, detects Grove/Clio, writes `cadence/.env`, and validates it.
+
 After `cadence doctor` passes, create the required Linear labels in one step:
 
 ```bash
@@ -168,7 +174,10 @@ loops, read [docs/INSTALL.md](docs/INSTALL.md).
 
 Start with [docs/README.md](docs/README.md), or jump directly to:
 
-- [Installation](docs/INSTALL.md) - step-by-step setup for a new machine.
+- [Installation](docs/INSTALL.md) - step-by-step setup for a new machine (guided
+  or manual), including finding Linear IDs.
+- [Running multiple projects](docs/OPERATING.md#running-multiple-projects) - one
+  scheduler, one config per project, and the project registry.
 - [Current Capabilities](docs/CAPABILITIES.md) - what Cadence can do now and
   where config, state, tasks, and worktrees live.
 - [Configuration](docs/CONFIGURATION.md) - every config value explained.

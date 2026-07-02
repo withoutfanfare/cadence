@@ -134,6 +134,38 @@ class TestTasksCli(unittest.TestCase):
         self.assertIn("status: 200 for success", task["description"])
         self.assertIn("status: 404 when missing", task["description"])
         self.assertIn("labels: none required", task["description"])
+    def test_validate_passes_a_well_formed_file(self):
+        result, _updated = self._run(["validate"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr, "")
+
+    def test_validate_flags_a_malformed_header(self):
+        text = "# Cadence Tasks\n\n## TASK-1 no colon\nstatus: open\nlabels: Bug\n\nBody.\n"
+        result, _updated = self._run(["validate"], tasks_text=text)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("malformed task header", result.stderr)
+
+    def test_validate_flags_metadata_stranded_in_the_body(self):
+        # A blank line before `status:` pushes it into the body, where the parser
+        # ignores it — the task silently loses its status.
+        text = "# Cadence Tasks\n\n## TASK-1: Title\n\nstatus: open\nlabels: Bug\n"
+        result, _updated = self._run(["validate"], tasks_text=text)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("body of task 'TASK-1'", result.stderr)
+
+    def test_validate_flags_duplicate_ids(self):
+        text = ("# Cadence Tasks\n\n## TASK-1: One\nstatus: open\nlabels:\n\nA.\n\n"
+                "## TASK-1: Two\nstatus: open\nlabels:\n\nB.\n")
+        result, _updated = self._run(["validate"], tasks_text=text)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("duplicate task id 'TASK-1'", result.stderr)
+
+    def test_validate_allows_status_lines_deeper_in_the_body(self):
+        # `status: 200` as ordinary spec prose (not the first body line) is fine.
+        text = ("# Cadence Tasks\n\n## TASK-1: Title\nstatus: open\nlabels: Bug\n\n"
+                "The endpoint returns:\nstatus: 200 for success\n")
+        result, _updated = self._run(["validate"], tasks_text=text)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":

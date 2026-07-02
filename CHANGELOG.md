@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Guided project setup: the `cadence-setup` skill lets any agent (Claude, Codex, or
+  other) set up a project interactively — "set up this project with Cadence". It
+  interviews the user for folders and choices, discovers Linear ids, picks the Linear
+  or task-file backend, detects Grove/Clio, writes `cadence/.env`, and validates with
+  `cadence doctor`.
+- `cadence linear me` (the API key's own user, for `LINEAR_ASSIGNEE_ID`) and
+  `cadence linear projects` (the configured team's projects, for `LINEAR_PROJECT_ID`),
+  so setup no longer needs the Linear API explorer.
+- `cadence schedule register [path]` adds a project to the scheduler registry
+  (idempotent; defaults to the current directory), replacing the manual edit of
+  `projects.txt`.
 - Per-project state-dir guard: `cadence schedule status` and each scheduler tick now
   warn when two registered projects resolve to the same `CADENCE_STATE_DIR`, which would
   otherwise make them collide on the pause flag, logs, and scheduler run-markers (one
@@ -62,8 +73,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Linear adapter: transient failures (429, 5xx, network) retry up to three times with
-  exponential backoff, honouring a numeric `Retry-After`, instead of failing the whole
-  scheduled slot on one blip; issue pagination is capped at 100 pages as a safety stop.
+  exponential backoff, honouring a numeric `Retry-After` (capped at 60s so a hostile
+  value can't stall the slot), instead of failing the whole scheduled slot on one blip;
+  issue pagination is capped at 100 pages as a safety stop.
 - Build/revise worktree lock refreshes via a heartbeat while its holder is alive, so a
   legitimate build still running past the 2-hour mark is no longer reclaimed mid-flight;
   the rendered prompt file is now also removed on signal interruption.

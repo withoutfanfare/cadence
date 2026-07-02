@@ -5,6 +5,17 @@ This guide takes a fresh machine from clone to a working Cadence setup.
 Cadence is currently a command-line engine. Scheduled runs are macOS-specific
 because the included scheduler uses `launchd`.
 
+## Guided setup (fast path)
+
+Once `cadence` is on your `PATH` (steps 1–3 below), you don't have to fill the
+config by hand. From inside your project, ask your AI agent — Claude, Codex, or
+any agent that can run a shell — to **"set up this project with Cadence"**. It
+runs the `cadence-setup` skill, which interviews you for the folders and choices,
+discovers your Linear ids (`cadence linear teams|projects|me`), picks the Linear
+or task-file backend, detects Grove/Clio, writes `cadence/.env`, and validates it
+with `cadence doctor`. The manual steps below are the same process done by hand,
+and remain the reference.
+
 ## 1. Prerequisites
 
 Install or confirm these commands are available:
@@ -132,27 +143,17 @@ cadence linear teams
 
 Use the returned team `id` for `LINEAR_TEAM_ID`.
 
-For `LINEAR_PROJECT_ID` and `LINEAR_ASSIGNEE_ID`, use Linear's API explorer or
-GraphQL API with your personal API key. Example queries:
+Once `LINEAR_TEAM_ID` is set, Cadence can list that team's projects and your own
+user id for you — no API explorer needed:
 
-```graphql
-query {
-  projects(first: 50) {
-    nodes { id name teams { nodes { id name } } }
-  }
-}
-```
-
-```graphql
-query {
-  users(first: 100) {
-    nodes { id name email }
-  }
-}
+```bash
+cadence linear projects   # pick the id for LINEAR_PROJECT_ID
+cadence linear me         # your id, name, and email for LINEAR_ASSIGNEE_ID
 ```
 
 Set `LINEAR_ASSIGNEE_ID` to the user whose assigned issues Cadence should act
-on. Cadence will not intentionally operate on issues assigned to somebody else.
+on (usually yourself — `cadence linear me`). Cadence will not intentionally
+operate on issues assigned to somebody else.
 
 ## 5. Check the Setup
 
@@ -278,13 +279,18 @@ Set that path in the project's `cadence/.env`:
 CADENCE_STATE_DIR=$HOME/.cadence/projects/app
 ```
 
-Then add the project folder to the scheduler registry and opt the project in:
+Then register the project with the scheduler and opt it in:
 
 ```bash
-mkdir -p "$HOME/.cadence"
-printf '%s\n' "/path/to/app" >> "$HOME/.cadence/projects.txt"
+cadence schedule register /path/to/app
 printf '\nCADENCE_SCHEDULED=1\n' >> "/path/to/app/cadence/.env"
 ```
+
+`schedule register` appends the project to the registry file
+(`$CADENCE_STATE_DIR/projects.txt` by default) and is idempotent — re-running it
+reports "already registered" rather than duplicating the line. Pass a project
+directory or a config `.env` path; with no argument it registers the current
+directory.
 
 Generate and load the single scheduler job:
 

@@ -336,5 +336,40 @@ exec {sys.executable} "$@"
         os.chmod(path, os.stat(path).st_mode | stat.S_IXUSR)
 
 
+class TestRegister(unittest.TestCase):
+    def test_registers_project_dir_and_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "state", "projects.txt")
+            project = os.path.join(tmp, "app")
+            os.makedirs(project)
+            env = {"CADENCE_PROJECTS_FILE": registry}
+
+            lines = []
+            cli.register(env, [project], out=lines.append)
+            with open(registry, encoding="utf-8") as f:
+                self.assertEqual(f.read().strip(), project)
+            self.assertTrue(any("registered:" in x for x in lines))
+
+            lines2 = []
+            cli.register(env, [project], out=lines2.append)
+            self.assertTrue(any("already registered" in x for x in lines2))
+            with open(registry, encoding="utf-8") as f:
+                self.assertEqual(f.read().count(project + "\n"), 1)  # not duplicated
+
+    def test_env_path_maps_to_its_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+            config = os.path.join(tmp, "app", "cadence", ".env")
+            os.makedirs(os.path.dirname(config))
+            open(config, "w").close()
+            env = {"CADENCE_PROJECTS_FILE": registry}
+
+            lines = []
+            cli.register(env, [config], out=lines.append)
+            # read_projects should see the same project dir the config lives under.
+            projects = cli.read_projects(registry)
+            self.assertEqual(projects[0]["project"], os.path.join(tmp, "app"))
+
+
 if __name__ == "__main__":
     unittest.main()

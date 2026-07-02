@@ -78,7 +78,9 @@ Cadence always scopes issue lists to both `LINEAR_TEAM_ID` and
 
 The file backend is intentionally small. It stores human-editable tasks as
 markdown sections, exposes them through `cadence tasks list|get|update`, and is
-used by `cadence queue` and `cadence conduct` when selected:
+used by `cadence queue` and `cadence conduct` when selected. The full format
+rules — what `cadence doctor` validates, plus the label vocabulary — are in
+[TASKS.md](TASKS.md):
 
 ```markdown
 # Cadence Tasks

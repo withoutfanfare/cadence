@@ -126,7 +126,13 @@ case "$task_backend" in
       *) _task_file="${PROJECT_DIR:-$PWD}/$_task_file" ;;
     esac
     if [ -f "$_task_file" ]; then
-      pass "task backend file; task file $_task_file"
+      _task_problems="$(TASK_FILE="$_task_file" python3 "$CADENCE_HOME/engine/tasks/cli.py" validate 2>&1)"
+      if [ -z "$_task_problems" ]; then
+        pass "task backend file; task file $_task_file"
+      else
+        fail "task file $_task_file has format problems:"
+        printf '%s\n' "$_task_problems" | sed 's/^/      /'
+      fi
     else
       fail "TASK_BACKEND=file but task file missing: $_task_file"
     fi
