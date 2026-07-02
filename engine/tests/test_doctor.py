@@ -21,6 +21,8 @@ class TestDoctorProviderChecks(unittest.TestCase):
         (self.root / "engine" / "scripts").mkdir(parents=True)
         (self.root / "engine" / "lib").mkdir(parents=True)
         (self.root / "engine" / "linear").mkdir(parents=True)
+        (self.root / "engine" / "tasks").mkdir(parents=True)
+        shutil.copy(ROOT / "engine" / "tasks" / "cli.py", self.root / "engine" / "tasks" / "cli.py")
         self.home.mkdir()
         self.bin.mkdir()
         self.runner_bin.mkdir()
@@ -146,6 +148,17 @@ else:
         self.assertIn(f"task backend file; task file {task_file}", result.stdout)
         self.assertNotIn("LINEAR_API_KEY not set", result.stdout)
         self.assertNotIn("LINEAR_PROJECT_ID not set", result.stdout)
+
+    def test_file_backend_fails_on_a_malformed_task_file(self):
+        task_file = self.root / "cadence" / "tasks.md"
+        task_file.parent.mkdir()
+        task_file.write_text("# Tasks\n\n## SR-1 no colon\nstatus: open\n", encoding="utf-8")
+
+        result = self._run({"TASK_BACKEND": "file", "LINEAR_API_KEY": ""})
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("has format problems", result.stdout)
+        self.assertIn("malformed task header", result.stdout)
 
     def test_requires_default_claude_implementer_on_runner_path(self):
         (self.runner_bin / "claude").unlink()

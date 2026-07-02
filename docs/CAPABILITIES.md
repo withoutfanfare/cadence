@@ -75,10 +75,12 @@ Scheduling uses one launchd job: `com.cadence.scheduler`. It runs
 `cadence schedule tick`, which reads `CADENCE_PROJECTS_FILE` (default
 `$CADENCE_STATE_DIR/projects.txt`).
 
-Each line is a project folder or explicit `cadence/.env` path. A project only
-runs when its own config contains `CADENCE_SCHEDULED=1`. The global tick is capped
-by `CADENCE_SCHEDULER_MAX_RUNS`, default `1`, so adding projects does not create
-unbounded fan-out.
+Each line is a project folder or explicit `cadence/.env` path; add one with
+`cadence schedule register [path]` (idempotent). A project only runs when its own
+config contains `CADENCE_SCHEDULED=1`. The global tick is capped by
+`CADENCE_SCHEDULER_MAX_RUNS`, default `1`, so adding projects does not create
+unbounded fan-out. See
+[Running multiple projects](OPERATING.md#running-multiple-projects).
 
 ## State and Logs
 

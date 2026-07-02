@@ -191,6 +191,9 @@ def main(argv):
     if cmd == "status":
         return print_status(os.environ)
 
+    if cmd == "register":
+        return register(os.environ, argv[1:])
+
     if cmd == "tick":
         return tick(os.environ)
 
@@ -211,7 +214,7 @@ def main(argv):
             return 1
         return 0
 
-    print("usage: cadence schedule [show|status|tick|apply]", file=sys.stderr)
+    print("usage: cadence schedule [show|status|register|tick|apply]", file=sys.stderr)
     return 2
 
 
@@ -220,6 +223,36 @@ def projects_file(env):
         env.get("CADENCE_PROJECTS_FILE")
         or os.path.join(env.get("CADENCE_STATE_DIR") or os.path.expanduser("~/.cadence"), "projects.txt")
     ))
+
+
+def _project_dir_for(path):
+    """Mirror read_projects: an .env path maps to its project two levels up; any
+    other path is treated as the project directory itself."""
+    path = os.path.abspath(os.path.expanduser(os.path.expandvars(path)))
+    if os.path.basename(path) == ".env":
+        return os.path.dirname(os.path.dirname(path)), path
+    return path, os.path.join(path, "cadence", ".env")
+
+
+def register(env, args, out=print):
+    """Add a project to the scheduler registry (idempotent). `args[0]` is a project
+    directory or a config .env path; defaults to the current directory."""
+    given = args[0] if args else os.getcwd()
+    path = os.path.abspath(os.path.expanduser(os.path.expandvars(given)))
+    project, config = _project_dir_for(path)
+    reg = projects_file(env)
+    for item in read_projects(reg):
+        if item["project"] == project:
+            out(f"already registered: {project}")
+            return 0
+    os.makedirs(os.path.dirname(reg), exist_ok=True)
+    with open(reg, "a", encoding="utf-8") as f:
+        f.write(path + "\n")
+    out(f"registered: {project}")
+    out(f"  registry: {reg}")
+    out(f"  config:   {config}")
+    out("Next: set CADENCE_SCHEDULED=1 in that config, then run `cadence schedule apply`.")
+    return 0
 
 
 def read_projects(path):

@@ -237,6 +237,35 @@ exec {real_python} "$@"
             feed = f.read()
         self.assertIn("5 triaged", feed)
 
+    def test_marker_summary_without_stage_key_is_trusted(self):
+        # Triage summaries carry `mode`, not `stage`/`loop`. The marker line is
+        # authoritative for this run's stdout, so it must still be captured rather
+        # than mislabelled "no summary" (which would falsely flag a clean run).
+        real_python = sys.executable
+        linear_cli = os.path.join(self.root, "engine", "linear", "cli.py")
+        os.makedirs(os.path.join(self.root, "skills", "cadence-loop-triage"))
+        with open(os.path.join(self.root, "skills", "cadence-loop-triage", "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: cadence-loop-triage\n---\nLoop body\n")
+        shutil.copytree(os.path.join(ROOT, "engine", "prompts"),
+                        os.path.join(self.root, "engine", "prompts"))
+        self._write_exe("python3", f"""#!/bin/sh
+if [ "$1" = "{linear_cli}" ] && [ "$2" = "teams" ]; then
+  printf '[{{"id":"team-1","name":"Team"}}]\\n'
+  exit 0
+fi
+exec {real_python} "$@"
+""")
+        self._write_exe("codex", "#!/bin/sh\n"
+                        "printf 'CADENCE_SUMMARY {\"mode\":\"enrich\",\"triaged\":3,\"errors\":0}\\n'\n")
+
+        result = self._run("triage", ORCHESTRATOR_TRIAGE="codex:gpt-test")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with open(os.path.join(self.state, "runs", "activity.log"), encoding="utf-8") as f:
+            feed = f.read()
+        self.assertIn("3 triaged", feed)
+        self.assertNotIn("no summary", feed)
+
     def test_advance_no_auto_work_records_idle_without_pause_digest(self):
         real_python = sys.executable
         linear_cli = os.path.join(self.root, "engine", "linear", "cli.py")

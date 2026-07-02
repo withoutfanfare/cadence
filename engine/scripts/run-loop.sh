@@ -286,7 +286,11 @@ try:
         if s.startswith(MARKER):
             try: d = json.loads(s[len(MARKER):].strip())
             except Exception: continue
-            if d.get('stage') == stage or d.get('loop') == stage:
+            # The marker is authoritative for this run's own stdout, so accept it
+            # even when the summary carries no stage/loop key (triage uses 'mode').
+            # Only reject a marker that explicitly names a different stage.
+            st, lp = d.get('stage'), d.get('loop')
+            if (st is None and lp is None) or st == stage or lp == stage:
                 last = d
     if last is None:
         for line in lines:

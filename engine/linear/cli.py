@@ -31,19 +31,22 @@ def _require_env(env, *names):
 # Transient HTTP statuses worth a retry; anything else fails fast.
 _RETRY_CODES = {429, 500, 502, 503, 504}
 _MAX_ATTEMPTS = 3
+# Cap any single backoff so a hostile/huge Retry-After can't block a scheduled slot
+# longer than the next tick would take to come round anyway.
+_MAX_RETRY_DELAY = 60
 
 
 def _retry_delay(headers, attempt):
     """Seconds to wait before the next attempt: honour a numeric Retry-After
-    header when present, else exponential backoff (2 ** attempt)."""
+    header when present, else exponential backoff (2 ** attempt). Capped."""
     if headers is not None:
         raw = headers.get("Retry-After")
         if raw:
             try:
-                return max(0, int(raw))
+                return max(0, min(int(raw), _MAX_RETRY_DELAY))
             except (TypeError, ValueError):
                 pass
-    return 2 ** attempt
+    return min(2 ** attempt, _MAX_RETRY_DELAY)
 
 
 def graphql(query, variables, env):
@@ -100,6 +103,28 @@ _TEAMS_Q = "query { teams { nodes { id key name } } }"
 def cmd_teams(args, env, post=graphql):
     data = post(_TEAMS_Q, {}, env)
     return data["teams"]["nodes"]
+
+
+_VIEWER_Q = "query { viewer { id name email } }"
+
+
+def cmd_viewer(args, env, post=graphql):
+    """The API key's own user — the usual value for LINEAR_ASSIGNEE_ID."""
+    return post(_VIEWER_Q, {}, env)["viewer"]
+
+
+_PROJECTS_Q = """
+query($teamId: String!) {
+  team(id: $teamId) { projects(first: 250) { nodes { id name } } }
+}"""
+
+
+def cmd_projects_list(args, env, post=graphql):
+    """Projects in the configured team — pick one for LINEAR_PROJECT_ID."""
+    _require_env(env, "LINEAR_TEAM_ID")
+    data = post(_PROJECTS_Q, {"teamId": env.get("LINEAR_TEAM_ID")}, env)
+    return [{"id": n["id"], "name": n.get("name")}
+            for n in data["team"]["projects"]["nodes"]]
 
 
 _ISSUE_FIELDS = """
@@ -514,6 +539,8 @@ def _build_parser():
     p = argparse.ArgumentParser(prog="cadence linear")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("teams")
+    sub.add_parser("me")
+    sub.add_parser("projects")
     il = sub.add_parser("issues-list"); il.add_argument("--label")
     il.add_argument("--state"); il.add_argument("--assignee")
     il.add_argument("--limit", type=int)
@@ -545,7 +572,8 @@ def _build_parser():
 
 
 _DISPATCH = {
-    "teams": cmd_teams, "issues-list": cmd_issues_list, "issue-get": cmd_issue_get,
+    "teams": cmd_teams, "me": cmd_viewer, "projects": cmd_projects_list,
+    "issues-list": cmd_issues_list, "issue-get": cmd_issue_get,
     "issue-update": cmd_issue_update, "bulk-label": cmd_bulk_label,
     "issue-comment": cmd_issue_comment,
     "issue-relate": cmd_issue_relate, "label-ensure": cmd_label_ensure,

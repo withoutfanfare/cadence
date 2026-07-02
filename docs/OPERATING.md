@@ -28,6 +28,7 @@ cadence resume          # allow loops to run again
 cadence run triage      # run one stage now; live unless paused
 cadence restart         # reload launchd jobs
 cadence schedule apply  # regenerate and reload the single scheduler plist
+cadence schedule register [path]  # add a project to the scheduler registry
 ```
 
 Autonomous and maintainer commands:
@@ -296,6 +297,48 @@ build loop to `:05` each hour; `SCHED_TRIAGE=4h@0` runs triage every four hours
 without regenerating them — use it after the Cadence repo moves, or after editing a
 plist by hand.
 
+## Running Multiple Projects
+
+One Cadence engine runs any number of projects. There is **one** launchd job
+(`com.cadence.scheduler`); everything project-specific lives in each project's own
+`cadence/.env`. The scheduler does not get a plist per project or per stage.
+
+How it fits together:
+
+- **One config per project** — `<project>/cadence/.env`, holding that project's
+  Linear/task ids, repo, gates, providers, and `SCHED_*` timings. Set these up by
+  hand ([Installation](INSTALL.md#4-create-the-project-config)) or ask your agent
+  to run the `cadence-setup` skill ("set up this project with Cadence").
+- **A registry** lists which projects the scheduler should visit — one line per
+  project, `$CADENCE_STATE_DIR/projects.txt` by default (override with
+  `CADENCE_PROJECTS_FILE`). Add a project with:
+
+  ```bash
+  cadence schedule register /path/to/app     # or a config .env path; defaults to cwd
+  ```
+
+  It is idempotent and prints the registry and config paths it resolved.
+- **Opt each project in** with `CADENCE_SCHEDULED=1` in its config. A registered
+  project without that flag is listed but skipped.
+- **Give each project its own `CADENCE_STATE_DIR`.** Projects that share one
+  collide on the pause flag, logs, and scheduler run-markers — one can silently
+  skip another's slot. `cadence schedule status` and every scheduler tick warn
+  when two registered projects resolve to the same state directory.
+- **Apply once, globally** — `cadence schedule apply` (re)writes the single
+  scheduler job. You only re-apply when the launchd job itself must change, not
+  when you add a project; the scheduler re-reads the registry every tick.
+
+Check what is registered and whether each project is enabled:
+
+```bash
+cadence schedule status
+```
+
+Each tick runs at most `CADENCE_SCHEDULER_MAX_RUNS` stages across all projects
+(default 1), so many projects share the scheduler fairly rather than one project
+starving the rest. `cadence pause` is per state directory — pausing one project
+does not pause the others.
+
 ## Maintenance Helpers
 
 ### Inspect
@@ -327,10 +370,13 @@ schedule, inspect, labels list, conduct --dry-run
 Commands with live side effects:
 
 ```text
-run, schedule apply, autonomous on|off, labels init, labels ensure,
-linear issue-update, linear bulk-label without --dry-run, worktree add/remove,
-bakeoff
+run, schedule apply, schedule register, autonomous on|off, labels init,
+labels ensure, linear issue-update, linear bulk-label without --dry-run,
+worktree add/remove, bakeoff
 ```
+
+`schedule register` only edits the local scheduler registry file; `linear teams`,
+`linear me`, and `linear projects` are read-only lookups.
 
 ## Troubleshooting
 

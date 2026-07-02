@@ -109,6 +109,24 @@ class TestReadVerbs(unittest.TestCase):
         with self.assertRaises(cli.LinearError):
             cli.cmd_issue_get(types.SimpleNamespace(id="i1"), ENV, post=post)
 
+    def test_viewer_returns_current_user(self):
+        cap = {"response": {"viewer": {"id": "user-1", "name": "Dee", "email": "d@x"}}}
+        out = cli.cmd_viewer(types.SimpleNamespace(), ENV, post=fake_post(cap))
+        self.assertEqual(out, {"id": "user-1", "name": "Dee", "email": "d@x"})
+
+    def test_projects_list_scopes_to_team(self):
+        cap = {"response": {"team": {"projects": {"nodes": [
+            {"id": "proj-1", "name": "Alpha"}, {"id": "proj-2", "name": "Beta"}]}}}}
+        out = cli.cmd_projects_list(types.SimpleNamespace(), ENV, post=fake_post(cap))
+        self.assertEqual(out, [{"id": "proj-1", "name": "Alpha"},
+                               {"id": "proj-2", "name": "Beta"}])
+        self.assertEqual(cap["variables"]["teamId"], "team-1")
+
+    def test_projects_list_requires_team_id(self):
+        env = dict(ENV); env["LINEAR_TEAM_ID"] = ""
+        with self.assertRaises(cli.LinearError):
+            cli.cmd_projects_list(types.SimpleNamespace(), env, post=lambda *a: {})
+
     def test_cycles_list_shapes(self):
         cap = {"response": {"cycles": {"nodes": [
             {"id": "c1", "number": 5, "name": "C5",
@@ -375,6 +393,20 @@ class TestGraphqlRetry(unittest.TestCase):
             cli.graphql("{ x }", {}, ENV)
         self.assertEqual(len(calls), 1)
         self.assertEqual(self.slept, [])
+
+    def test_retry_after_is_capped(self):
+        calls = []
+
+        def fake(req, timeout=None):
+            calls.append(1)
+            if len(calls) == 1:
+                raise cli.urllib.error.HTTPError(
+                    "u", 429, "rate", {"Retry-After": "9999"}, io.BytesIO(b""))
+            return _Resp(json.dumps({"data": {"ok": True}}))
+
+        cli.urllib.request.urlopen = fake
+        cli.graphql("{ x }", {}, ENV)
+        self.assertEqual(self.slept, [cli._MAX_RETRY_DELAY])  # not 9999
 
     def test_network_error_retries_then_raises(self):
         calls = []

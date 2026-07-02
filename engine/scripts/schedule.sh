@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# cadence schedule [show|status|tick|apply] — one launchd scheduler for project configs.
-#   show   print each job's configured cadence (read-only)
-#   apply  regenerate the single scheduler plist and reload it
+# cadence schedule [show|status|register|tick|apply] — one launchd scheduler for project configs.
+#   show      print each job's configured cadence (read-only)
+#   register  add a project (dir or config .env) to the scheduler registry
+#   apply     regenerate the single scheduler plist and reload it
 # Generation lives in engine/schedule/cli.py; this script orchestrates files+launchd.
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -31,6 +32,9 @@ case "${1:-show}" in
     exec python3 "$CLI" show ;;
   status)
     exec python3 "$CLI" status ;;
+  register)
+    shift 2>/dev/null || true
+    exec python3 "$CLI" register "$@" ;;
   tick)
     exec python3 "$CLI" tick ;;
   apply)
@@ -54,6 +58,6 @@ case "${1:-show}" in
     echo
     python3 "$CLI" status ;;
   *)
-    echo "usage: cadence schedule [show|status|tick|apply]" >&2
+    echo "usage: cadence schedule [show|status|register [path]|tick|apply]" >&2
     exit 2 ;;
 esac
