@@ -276,6 +276,11 @@ commands. It feeds only buildable ready slices: held, attention-needed,
 terminal, and already-auto work is skipped. Linear profiles also skip blocked
 issues and parent issues with children; file profiles use the local task labels,
 status, and body only, then add `agent:auto` through `cadence tasks update`.
+Every candidate must also carry **acceptance criteria** — a recognised
+`Acceptance Criteria` section in the body with at least one checklist item.
+Criteria-less work is skipped, so triage must add a stub before an item can
+advance autonomously; a triaged task without criteria will sit at its gate
+forever under autonomous mode.
 
 Get the date/timestamp from the shell (`date -u +%FT%TZ`), never invent one.
 

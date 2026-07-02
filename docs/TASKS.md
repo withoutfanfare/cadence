@@ -19,8 +19,12 @@ status, PRs are always drafts.
 status: open
 labels: agent:triaged, Bug
 
-Free-form body: context, acceptance criteria, notes. Markdown is fine.
+Free-form body: context, notes. Markdown is fine.
 Use `###` or deeper for any sub-headings inside a body.
+
+### Acceptance Criteria
+- [ ] What "done" looks like, one checkable item per line
+- [ ] Another criterion
 
 ## TASK-2: Another task
 status: open
@@ -28,6 +32,12 @@ labels:
 
 Body for the second task.
 ```
+
+**Acceptance criteria gate autonomous advance.** Under autonomous mode the
+conductor only queues a task whose body has an `### Acceptance Criteria` section
+with at least one `- [ ]` item — a triaged task without it sits at its gate
+forever. Triage adds a stub automatically; use `###` (not `##`, which is
+reserved for task headers).
 
 ## The rules (what `doctor` checks)
 
