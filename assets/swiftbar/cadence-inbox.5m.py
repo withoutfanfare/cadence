@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 # <xbar.title>Cadence gate inbox</xbar.title>
-# <xbar.desc>Issues/tasks awaiting your move across every project, with one-click gate grants.</xbar.desc>
+# <xbar.desc>Tasks awaiting your move across every project, each with one-click stage controls.</xbar.desc>
 # <xbar.author>Cadence</xbar.author>
 #
 # SwiftBar/xbar plugin. Refresh interval is the .5m. in the filename. It
-# enumerates registered projects via `cadence overview --json`, then reads each
-# project's task backend — `cadence linear issues-list` for Linear projects, or
-# `cadence tasks list` for file-backed ones — bucketed by gate label. File
-# projects also get an "Open tasks" backlog of ungated open tasks so the whole
-# task file is visible. The badge counts only the time-sensitive set (PRs +
-# escalations) across all projects. Grants ADD the next-gate label, scoped to
-# the project's config and backend. ponytail: GATES mirrors docs/LABELS.md.
+# enumerates registered projects via `cadence overview --json`, reads each
+# project's task backend (`cadence linear issues-list` or `cadence tasks list`),
+# and groups every task under its single canonical stage (the `stage` field the
+# adapters now emit — furthest breadcrumb wins, so a task shows in exactly one
+# place). Each task gets a submenu: Advance (grant next gate), Set stage (any
+# stage), Hold/Release, and Open. Actions run through cadence-grant.sh, scoped to
+# the project config and backend. The badge counts the time-sensitive set (PRs +
+# escalations). ponytail: SECTIONS/SET_STAGE mirror docs/LABELS.md.
 
 import json
 import os
 import re
 import shutil
 import subprocess
-import sys
 
 os.environ["PATH"] = os.pathsep.join([
     os.path.expanduser("~/.local/bin"),
@@ -30,19 +30,35 @@ GRANT = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "cadence-grant.sh")
 )
 BOARD = "https://linear.app/"
-CAP = 12  # max issues expanded per gate/backlog; the rest collapse to a "+N more" line
+CAP = 12  # max tasks expanded per section; the rest collapse to a "+N more" line
 
-# (gate label, heading, next-gate label to add, counts_toward_badge)
-GATES = [
-    ("agent:needs-human", "Needs a human decision", "agent:spec", True),
-    ("agent:pr-open", "PR open · review or merge", "agent:revise", True),
-    ("agent:revised", "Revised · re-review", "agent:revise", True),
-    ("agent:specced", "Specced · grant build", "agent:build", False),
-    ("agent:triaged", "Triaged · grant spec", "agent:spec", False),
+# (stage key, heading, counts_toward_badge). Order = display order.
+SECTIONS = [
+    ("needs-human",     "Needs a human decision",       True),
+    ("needs-attention", "Run failed · needs attention", False),
+    ("pr-open",         "PR open · review or merge",    True),
+    ("revised",         "Revised · re-review",          True),
+    ("specced",         "Specced · grant build",        False),
+    ("triaged",         "Triaged · grant spec",         False),
+    ("backlog",         "Open · backlog",               False),
 ]
-GATE_LABELS = {label for label, _, _, _ in GATES}
-# Labels that mean an ungated task is not idle backlog (parked, in flight, failed).
-NON_BACKLOG = {"agent:hold", "agent:superseded", "agent:claimed", "agent:needs-attention", "Stale"}
+SECTION_KEYS = [k for k, _, _ in SECTIONS]
+BADGE_KEYS = {k for k, _, counts in SECTIONS if counts}
+
+ALL_GATES = ["agent:spec", "agent:build", "agent:revise"]
+STAGE_TITLE = {"agent:spec": "Spec", "agent:build": "Build", "agent:revise": "Revise"}
+
+# Set stage -> (labels to add, labels to remove). The menu writes only gate
+# labels; "Triage" is the one sanctioned breadcrumb clear (force re-triage).
+SET_STAGE = [
+    ("Triage", [],                ["agent:triaged"] + ALL_GATES),
+    ("Spec",   ["agent:spec"],    ["agent:build", "agent:revise"]),
+    ("Build",  ["agent:build"],   ["agent:spec", "agent:revise"]),
+    ("Revise", ["agent:revise"],  ["agent:spec", "agent:build"]),
+]
+
+CLOSED_STATUS = {"done", "cancelled", "canceled", "closed"}
+CLOSED_STATE_TYPE = {"completed", "canceled", "cancelled"}
 
 
 def emit(line=""):
@@ -50,7 +66,6 @@ def emit(line=""):
 
 
 def run_json(args, timeout=30):
-    """Run a cadence subcommand and parse JSON, returning (data, error)."""
     try:
         out = subprocess.run([CADENCE, *args], capture_output=True, text=True, timeout=timeout)
     except Exception as e:
@@ -64,8 +79,16 @@ def run_json(args, timeout=30):
         return None, f"bad JSON: {e}"
 
 
+def run_text(config, *args, timeout=15):
+    cfg = (["--config", config] if config else [])
+    try:
+        out = subprocess.run([CADENCE, *cfg, *args], capture_output=True, text=True, timeout=timeout)
+    except Exception:
+        return None
+    return out.stdout.strip() if out.returncode == 0 else None
+
+
 def projects():
-    """Registered projects as (name, config, backend). Falls back to default."""
     data, err = run_json(["overview", "--json"])
     if not data or not data.get("projects"):
         return [(None, None, "linear")]
@@ -87,42 +110,83 @@ def items_for(config, backend):
     return run_json(cfg + ["linear", "issues-list"])
 
 
-def backlog_of(issues):
-    """Ungated, open, not-parked tasks — visible so the file backlog isn't hidden."""
-    out = []
-    for it in issues:
-        labels = set(it.get("labels") or [])
-        if labels & GATE_LABELS or labels & NON_BACKLOG:
-            continue
-        if (it.get("status") or "open").lower() in ("done", "cancelled", "closed"):
-            continue
-        out.append(it)
-    return out
+def is_closed(it):
+    if (it.get("status") or "").lower() in CLOSED_STATUS:
+        return True
+    return (it.get("state_type") or "").lower() in CLOSED_STATE_TYPE
+
+
+def section_of(it):
+    st = it.get("stage") or {}
+    if st.get("exception") == "superseded":
+        return None
+    return st.get("exception") or st.get("name") or "backlog"
+
+
+def action(pre, title, add, remove, config, ident, backend):
+    return (
+        f'{pre}{title} | bash="{GRANT}" param1={backend} param2="{config or ""}" '
+        f'param3="{ident}" param4="{",".join(add)}" param5="{",".join(remove)}" '
+        f"terminal=false refresh=true"
+    )
+
+
+def render_task(pre, it, config, backend, task_path):
+    ident = it["identifier"]
+    st = it.get("stage") or {}
+    title = (it.get("title") or "").replace("|", "│")
+    disp = (title[:48] + "…") if len(title) > 49 else title
+    bits = []
+    if st.get("gate"):
+        bits.append(f"{st['gate']} queued")
+    if st.get("hold"):
+        bits.append("on hold")
+    marker = ("   · " + ", ".join(bits)) if bits else ""
+    emit(f"{pre}--{ident}  {disp}{marker}")
+
+    sub = pre + "----"
+    adv = st.get("advance")
+    if adv:
+        emit(action(sub, f"▶ Advance to {STAGE_TITLE.get(adv, adv)}",
+                    [adv], [g for g in ALL_GATES if g != adv], config, ident, backend))
+    emit(f"{sub}Set stage: | size=11 color=#888888")
+    for label, add, remove in SET_STAGE:
+        emit(action(sub, f"  {label}", add, remove, config, ident, backend))
+    if st.get("hold"):
+        emit(action(sub, "Release hold", [], ["agent:hold"], config, ident, backend))
+    else:
+        emit(action(sub, "Hold", ["agent:hold"], [], config, ident, backend))
+    url = it.get("url")
+    if backend == "file" and task_path:
+        emit(f'{sub}Open tasks.md | bash="/usr/bin/open" param1="{task_path}" terminal=false')
+    elif url:
+        emit(f"{sub}Open in Linear | href={url}")
 
 
 # Gather every project first so the badge can total across projects.
-sections = []   # (name, config, backend, buckets, backlog, board, err)
+sections = []  # (name, config, backend, grouped, board, err, task_path)
 badge = 0
 for name, config, backend in projects():
-    issues, err = items_for(config, backend)
-    if issues is None:
-        sections.append((name, config, backend, None, None, BOARD, err))
+    items, err = items_for(config, backend)
+    if items is None:
+        sections.append((name, config, backend, None, BOARD, err, None))
         continue
-    buckets = {label: [] for label, _, _, _ in GATES}
-    for it in issues:
-        labels = it.get("labels", [])
-        for label in buckets:
-            if label in labels:
-                buckets[label].append(it)
-    badge += sum(len(buckets[l]) for l, _, _, counts in GATES if counts)
-    backlog = backlog_of(issues) if backend == "file" else []
-    sections.append((name, config, backend, buckets, backlog, workspace_url(issues), None))
+    grouped = {k: [] for k in SECTION_KEYS}
+    for it in items:
+        if is_closed(it):
+            continue
+        key = section_of(it)
+        if key in grouped:
+            grouped[key].append(it)
+    badge += sum(len(grouped[k]) for k in BADGE_KEYS)
+    task_path = run_text(config, "tasks", "path") if backend == "file" else None
+    sections.append((name, config, backend, grouped, workspace_url(items), None, task_path))
 
 emit(f"\U0001F4E5 {badge}" if badge else "\U0001F4E5")
 emit("---")
 
 multi = len(sections) > 1
-for name, config, backend, buckets, backlog, board, err in sections:
+for name, config, backend, grouped, board, err, task_path in sections:
     if multi or name:
         tag = " · file" if backend == "file" else ""
         emit(f"{name or 'default'}{tag} | size=12 color=#888888")
@@ -131,40 +195,17 @@ for name, config, backend, buckets, backlog, board, err in sections:
         emit(f"{pre}inbox unavailable: {err} | size=11 color=#d0021b font=Menlo")
         continue
 
-    gated = any(buckets.values())
-    if not gated and not backlog:
+    if not any(grouped.values()):
         emit(f"{pre}Nothing awaiting your move | color=#888888")
-    for label, heading, nxt, _ in GATES:
-        items = buckets[label]
-        if not items:
+    for key, heading, _ in SECTIONS:
+        tasks = grouped[key]
+        if not tasks:
             continue
-        emit(f"{pre}{heading} ({len(items)}) | size=12")
-        for it in items[:CAP]:
-            ident = it["identifier"]
-            title = it.get("title", "").replace("|", "│")
-            disp = (title[:48] + "…") if len(title) > 49 else title
-            url = it.get("url")
-            href = f" | href={url}" if url else ""
-            emit(f"{pre}--{ident}  {disp}{href}")
-            if url:
-                emit(f"{pre}----Open in Linear | href={url}")
-            emit(
-                f'{pre}----Grant {nxt} | bash="{GRANT}" param1={ident} param2={nxt} '
-                f'param3="{config or ""}" param4={backend} terminal=false refresh=true'
-            )
-        if len(items) > CAP:
-            emit(f"{pre}--+{len(items) - CAP} more | href={board}")
-
-    # File projects: show the ungated open backlog so the task file is visible.
-    if backend == "file" and backlog:
-        emit(f"{pre}Open tasks · backlog ({len(backlog)}) | size=12 color=#888888")
-        for it in backlog[:CAP]:
-            ident = it["identifier"]
-            title = it.get("title", "").replace("|", "│")
-            disp = (title[:48] + "…") if len(title) > 49 else title
-            emit(f"{pre}--{ident}  {disp} | font=Menlo size=12")
-        if len(backlog) > CAP:
-            emit(f"{pre}--+{len(backlog) - CAP} more in {name or 'tasks.md'} | size=11 color=#888888")
+        emit(f"{pre}{heading} ({len(tasks)}) | size=12")
+        for it in tasks[:CAP]:
+            render_task(pre, it, config, backend, task_path)
+        if len(tasks) > CAP:
+            emit(f"{pre}--+{len(tasks) - CAP} more | href={board}")
 
     if backend != "file":
         emit(f"{pre}Open board | href={board}")
