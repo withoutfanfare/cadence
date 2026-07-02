@@ -19,6 +19,26 @@ LOGDIR="$CADENCE_STATE_DIR/logs"
 RUNS="$CADENCE_STATE_DIR/runs"
 mkdir -p "$LOGDIR" "$RUNS"
 
+# --- Crash surfacing ---------------------------------------------------------
+# A script error after this point (or any early exit before the normal run
+# logging) used to die silently: nothing in the stage log or activity feed,
+# evidence only in launchd stderr — so the pipeline looked healthy while dead.
+# Record any non-zero exit that never reached its normal logging. Failures
+# before this line (e.g. lib-env refusing a bad profile) still surface only on
+# stderr.
+_CADENCE_DONE=0
+# shellcheck disable=SC2329  # invoked via the EXIT trap strings below
+_crash_log() {
+  local _rc=$?
+  [ "$_rc" -eq 0 ] && return 0
+  [ "${_CADENCE_DONE:-0}" = 1 ] && return 0
+  local _ts
+  _ts="$(date -u +%FT%TZ)"
+  echo "[$_ts] $STAGE — CRASHED (exit $_rc)" >> "$RUNS/activity.log" 2>/dev/null || true
+  echo "[$_ts] cadence $STAGE CRASHED (exit $_rc) — see scheduler/launchd stderr" >> "$LOGDIR/$STAGE.log" 2>/dev/null || true
+}
+trap _crash_log EXIT
+
 # --- Single-instance lock (macOS has no flock) -------------------------------
 # Two code-writing runs must never overlap: they'd work issues concurrently and race
 # on the shared worktree pool. build + revise share ONE lock so they are mutually
@@ -69,7 +89,7 @@ _HB=$!
 # PROMPT_FILE is removed on the normal path too; the trap covers signal interruption
 # (SIGTERM mid-orchestrator) so an orphan prompt is never left in $RUNS.
 PROMPT_FILE=""
-trap 'kill "$_HB" 2>/dev/null; rm -f "$PROMPT_FILE"; rm -rf "$LOCKDIR"' EXIT
+trap '_crash_log; kill "$_HB" 2>/dev/null; rm -f "$PROMPT_FILE"; rm -rf "$LOCKDIR"' EXIT
 
 pause_before_launch() {
   reason="$1"
@@ -390,4 +410,5 @@ if [ "$FLAG" != "0" ] && [ "$NOTIFY" = "on" ]; then
   fi
   osascript -e "display notification \"$MSG\" with title \"$TITLE\" sound name \"$SOUND\"" 2>/dev/null || true
 fi
+_CADENCE_DONE=1   # run reached its normal logging; a non-zero RC here is already surfaced
 exit $RC

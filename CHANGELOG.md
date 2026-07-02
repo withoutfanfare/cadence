@@ -104,6 +104,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Loop-runner crashes are no longer silent. Any non-zero exit that happens
+  before a run's normal logging (a script error, an early failure after the
+  pause/backend guards) now appends a `CRASHED (exit N)` line to both the stage
+  log and the activity feed, so a dead pipeline shows up in `cadence
+  status`/`cadence feed` instead of only in launchd stderr.
 - `run-loop.sh` no longer crashes on macOS's `/bin/bash` 3.2 when a stage has no
   extra prompt arguments: expanding the empty `CMD_ARGS` array under `set -u` was a
   fatal "unbound variable" error, so every scheduled spec/revise/live-advance run
