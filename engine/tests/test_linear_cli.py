@@ -526,5 +526,11 @@ class TestGraphqlRetry(unittest.TestCase):
         self.assertEqual(len(calls), 3)
 
 
+class TestAgentLabelVocabulary(unittest.TestCase):
+    def test_roadmap_labels_are_in_the_init_set(self):
+        self.assertIn("agent:proposed", cli.AGENT_LABELS)
+        self.assertIn("agent:later", cli.AGENT_LABELS)
+
+
 if __name__ == "__main__":
     unittest.main()

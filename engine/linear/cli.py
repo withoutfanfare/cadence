@@ -314,6 +314,7 @@ AGENT_LABELS = [
     "agent:claimed", "agent:triaged", "agent:needs-human",  # agent status
     "agent:dupe-candidate", "agent:specced", "agent:pr-open",
     "agent:revised", "agent:superseded", "agent:needs-attention",
+    "agent:proposed", "agent:later",                        # roadmap proposals
     "agent:hold", "Stale",
 ]
 
