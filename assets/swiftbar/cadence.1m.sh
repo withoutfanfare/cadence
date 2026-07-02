@@ -1,57 +1,85 @@
 #!/usr/bin/env bash
 # <xbar.title>Cadence loop monitor</xbar.title>
-# <xbar.desc>Ambient menu-bar status for the Cadence agent loops.</xbar.desc>
+# <xbar.desc>Ambient menu-bar status for the Cadence agent loops, across every registered project.</xbar.desc>
 # <xbar.author>Cadence</xbar.author>
 #
 # SwiftBar/xbar plugin. The refresh interval lives in the filename (.1m.).
-# Health dot is read from launchd directly; the dropdown shows `cadence status`
-# verbatim. ponytail: dropdown body is coupled to status.sh output formatting.
+# The menu-bar glyph aggregates health across all registered projects; the
+# dropdown shows one section per project from `cadence overview --json`, with
+# per-project pause/run/logs actions scoped by --config.
 
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 CADENCE="$(command -v cadence || echo "$HOME/.local/bin/cadence")"
-STATE="${CADENCE_STATE_DIR:-$HOME/.cadence}"
-PAUSED="$STATE/runs/PAUSED"
 
-# Health from launchd: column 2 is each job's last exit code (- = never run).
-jobs="$(launchctl list 2>/dev/null | grep com.cadence)"
-failed="$(printf '%s\n' "$jobs" | awk '$2 != 0 && $2 != "-" {print}')"
+json="$("$CADENCE" overview --json 2>/dev/null)"
 
-# Menu-bar glyph: an SF Symbol (vector, crisp, tintable) chosen by health.
-# The cadence loop motif normally; a loud warning when a stage failed.
-if [ -f "$PAUSED" ]; then
-  echo " | sfimage=pause.circle.fill color=#e0a000"           # paused
-elif [ -z "$jobs" ]; then
-  echo " | sfimage=arrow.triangle.2.circlepath color=#9aa0a6" # jobs not loaded
-elif [ -n "$failed" ]; then
-  echo " | sfimage=exclamationmark.triangle.fill color=#d0021b" # a stage failed
-else
-  echo " | sfimage=arrow.triangle.2.circlepath color=#2e7d32" # healthy loop
-fi
+# Pass JSON via env (not a pipe): `python3 -` already consumes stdin for the script.
+CADENCE_OVERVIEW_JSON="$json" python3 - "$CADENCE" <<'PY'
+import json, os, sys
 
-echo "---"
+CAD = sys.argv[1]
+GLYPH = {"ok": "✅", "failed": "❌", "paused": "⏸", "idle": "·"}
+STAGES = ["triage", "spec", "build", "revise", "advance", "conduct"]
 
-# Full status verbatim, monospaced so the columns line up.
-"$CADENCE" status 2>&1 | while IFS= read -r line; do
-  echo "${line} | font=Menlo size=11 trim=false"
-done
+try:
+    data = json.loads(os.environ.get("CADENCE_OVERVIEW_JSON") or "null")
+except Exception:
+    data = None
 
-echo "---"
+projects = (data or {}).get("projects") or []
 
-if [ -f "$PAUSED" ]; then
-  echo "▶ Resume loops | bash=\"$CADENCE\" param1=resume terminal=false refresh=true"
-else
-  echo "⏸ Pause loops | bash=\"$CADENCE\" param1=pause terminal=false refresh=true"
-fi
+# Menu-bar glyph: worst state wins (failed > paused > ok > idle).
+healths = [p["health"] for p in projects]
+if not projects:
+    print(" | sfimage=arrow.triangle.2.circlepath color=#9aa0a6")
+elif "failed" in healths:
+    n = healths.count("failed")
+    print(" %d | sfimage=exclamationmark.triangle.fill color=#d0021b" % n)
+elif "paused" in healths:
+    print(" | sfimage=pause.circle.fill color=#e0a000")
+elif "ok" in healths:
+    print(" | sfimage=arrow.triangle.2.circlepath color=#2e7d32")
+else:
+    print(" | sfimage=arrow.triangle.2.circlepath color=#9aa0a6")
 
-echo "Run a stage now"
-for s in triage spec build revise; do
-  echo "--$s | bash=\"$CADENCE\" param1=run param2=$s terminal=true"
-done
+print("---")
 
-echo "View logs"
-for s in triage spec build revise; do
-  echo "--$s | bash=\"$CADENCE\" param1=logs param2=$s terminal=true"
-done
+if not projects:
+    print("No registered projects | color=#888888")
+    print("Register one: | size=11 color=#888888")
+    print("cadence schedule register <path> | font=Menlo size=11 color=#888888")
+    print("Refresh now | refresh=true")
+    sys.exit()
 
-echo "Open Linear board | href=https://linear.app/"
-echo "Refresh now | refresh=true"
+for p in projects:
+    glyph = GLYPH.get(p["health"], "?")
+    flags = []
+    if not p["scheduled"]:
+        flags.append("not scheduled")
+    if p["paused"]:
+        flags.append("PAUSED")
+    team = ("  · " + p["team_name"]) if p.get("team_name") else ""
+    suffix = ("   [" + ", ".join(flags) + "]") if flags else ""
+    print("%s %s%s%s | font=Menlo size=13" % (glyph, p["name"], team, suffix))
+
+    cells = []
+    for s in STAGES:
+        st = p["stages"].get(s)
+        cells.append("%s=%s" % (s, st["result"] if st else "—"))
+    print("--%s | font=Menlo size=11 trim=false" % "  ".join(cells))
+    if p.get("last_activity"):
+        print("--%s | font=Menlo size=11 trim=false" % p["last_activity"].replace("|", "│"))
+
+    cfg = p["config"]
+    if p["paused"]:
+        print('--▶ Resume | bash="%s" param1=--config param2="%s" param3=resume terminal=false refresh=true' % (CAD, cfg))
+    else:
+        print('--⏸ Pause | bash="%s" param1=--config param2="%s" param3=pause terminal=false refresh=true' % (CAD, cfg))
+    for s in ("triage", "spec", "build", "revise"):
+        print('--Run %s now | bash="%s" param1=--config param2="%s" param3=run param4=%s terminal=true' % (s, CAD, cfg, s))
+    print('--View logs | bash="%s" param1=--config param2="%s" param3=logs terminal=true' % (CAD, cfg))
+
+print("---")
+print("Open Linear | href=https://linear.app/")
+print("Refresh now | refresh=true")
+PY

@@ -7,8 +7,10 @@ This guide covers the commands you use after installation.
 Daily read-only commands:
 
 ```bash
-cadence status          # live/paused state, launchd jobs, recent runs
-cadence doctor          # verify local setup
+cadence status          # live/paused state, launchd jobs, recent runs (one project)
+cadence overview        # cross-project glance: health + last run per stage, all projects
+cadence overview --json # same, machine-readable (used by the menu-bar plugin)
+cadence doctor          # verify local setup (providers, models, key, labels)
 cadence doctor --labels # verify the Linear label vocabulary exists
 cadence logs triage     # tail one stage log; conduct is supported too
 cadence feed 30         # recent activity lines
@@ -334,10 +336,49 @@ Check what is registered and whether each project is enabled:
 cadence schedule status
 ```
 
+For a live cross-project glance — health, per-stage last run, and recent activity
+for every registered project in one view — use:
+
+```bash
+cadence overview          # human table
+cadence overview --json   # machine-readable (the menu-bar plugin consumes this)
+```
+
+`overview` is read-only and reads each project's own state directory; a project
+shows as `paused`, `failed` (a recent run reported errors), `ok`, or `idle`.
+
 Each tick runs at most `CADENCE_SCHEDULER_MAX_RUNS` stages across all projects
 (default 1), so many projects share the scheduler fairly rather than one project
 starving the rest. `cadence pause` is per state directory — pausing one project
 does not pause the others.
+
+## Menu bar (SwiftBar)
+
+Two optional [SwiftBar](https://swiftbar.app) plugins in `assets/swiftbar/` give an
+ambient, multi-project view — both cover **every registered project**, not just one:
+
+- `cadence.1m.sh` — **loop monitor**. The menu-bar glyph aggregates health across
+  projects (worst state wins: failed → paused → ok → idle). The dropdown shows one
+  section per project — per-stage last result and recent activity — with
+  pause/resume, run-a-stage, and view-logs actions scoped to that project. Backed
+  by `cadence overview --json`.
+- `cadence-inbox.5m.py` — **gate inbox**. One section per project of items awaiting
+  your move, with one-click gate grants (via `assets/cadence-grant.sh`, scoped to
+  that project's config and backend). It follows each project's `TASK_BACKEND`:
+  Linear projects list `linear issues-list`; **file projects** (`TASK_BACKEND=file`)
+  list `tasks list` and also show an **Open tasks · backlog** section of ungated,
+  open tasks, so the whole `tasks.md` is visible before anything is gated. The badge
+  counts only the time-sensitive set (PRs + escalations) across all projects.
+
+Install by symlinking both into your SwiftBar plugin folder, for example:
+
+```bash
+ln -s "$PWD/assets/swiftbar/cadence.1m.sh" "$HOME/path/to/SwiftBar/Plugins/"
+ln -s "$PWD/assets/swiftbar/cadence-inbox.5m.py" "$HOME/path/to/SwiftBar/Plugins/"
+```
+
+The refresh interval is in each filename (`.1m.`, `.5m.`); the inbox polls less
+often because it calls the Linear API.
 
 ## Maintenance Helpers
 
@@ -363,8 +404,8 @@ budget. Keep it for maintainer experiments, not normal issue flow.
 Read-only or local-reporting commands:
 
 ```text
-status, doctor, doctor --labels, logs, feed, queue, digest, throughput,
-schedule, inspect, labels list, conduct --dry-run
+status, overview, doctor, doctor --labels, logs, feed, queue, digest, throughput,
+schedule, schedule status, inspect, labels list, conduct --dry-run
 ```
 
 Commands with live side effects:

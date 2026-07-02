@@ -51,6 +51,7 @@ cadence — control the Cadence agent loops
 Usage: cadence [--config path|--profile name] <command> [args]
 
   status            Live/paused state, launchd jobs, last run per stage, activity
+  overview [--json] Cross-project status for every registered project
   doctor [--labels] Verify the setup (active config, API key, labels, provider CLIs, schedule)
   pause | resume    Stop / resume all loops (PAUSED flag)
   run <stage>       Run one loop NOW (triage|spec|build|revise)
@@ -84,6 +85,7 @@ EOF
 cmd="${1:-help}"; shift 2>/dev/null || true
 case "$cmd" in
   status)  exec bash "$CADENCE_HOME/engine/scripts/status.sh" ;;
+  overview) exec python3 "$CADENCE_HOME/engine/overview/cli.py" "$@" ;;
   doctor)  exec bash "$CADENCE_HOME/engine/scripts/doctor.sh" "$@" ;;
   pause)   mkdir -p "$RUNS"; touch "$PAUSED"
            echo "⏸  Paused — every loop will skip until you resume."

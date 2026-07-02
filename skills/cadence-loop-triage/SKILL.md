@@ -244,10 +244,11 @@ and why, in one or two lines.
 
 Report a JSON summary as the final line of stdout, prefixed with the fixed marker
 `CADENCE_SUMMARY ` so the runner finds it reliably even if prose surrounds it. It
-carries mode, dry_run, and the same counts as the digest, so the schedule can log
-and meter the run. Append the bare JSON object (no marker) to
+MUST include `"stage":"triage"` so the run ledger, `cadence throughput`, and
+`cadence overview` can attribute the run; then mode, dry_run, and the same counts
+as the digest. Append the bare JSON object (no marker) to
 `$CADENCE_STATE_DIR/runs/runs.jsonl`. Example stdout line:
 
 ```text
-CADENCE_SUMMARY {"mode":"enrich","dry_run":true,"prioritised":0,"cycled":0,"labelled":0,"stubbed":0,"dupe_candidates":0,"triaged":0,"parked":0,"stale":0,"backfilled":0,"skipped":0,"errors":0}
+CADENCE_SUMMARY {"stage":"triage","mode":"enrich","dry_run":true,"prioritised":0,"cycled":0,"labelled":0,"stubbed":0,"dupe_candidates":0,"triaged":0,"parked":0,"stale":0,"backfilled":0,"skipped":0,"errors":0}
 ```

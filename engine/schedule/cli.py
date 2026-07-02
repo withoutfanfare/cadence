@@ -314,7 +314,7 @@ def _int_env(env, key, default):
         return default
 
 
-def _shared_state_warnings(projects):
+def shared_state_warnings(projects):
     """Projects resolving to the same CADENCE_STATE_DIR collide on the pause flag,
     logs, and scheduler run-markers (so one can silently skip the other's slot).
     Return one warning line per directory shared by more than one project."""
@@ -392,7 +392,7 @@ def tick(env, now=None, run=subprocess.run):
         print(f"scheduler: no projects in {projects_file(env)}")
         return 0
 
-    for w in _shared_state_warnings(projects):
+    for w in shared_state_warnings(projects):
         print(w, file=sys.stderr)
 
     for item in projects:
@@ -441,7 +441,7 @@ def print_status(env):
         values = read_env_file(item["config"])
         enabled = "yes" if (values.get("CADENCE_SCHEDULED") or "").lower() in TRUE else "no"
         print(f"  {item['project']}  scheduled={enabled}  config={item['config']}")
-    for w in _shared_state_warnings(projects):
+    for w in shared_state_warnings(projects):
         print("  " + w)
     return 0
 

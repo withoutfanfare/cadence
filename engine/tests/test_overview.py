@@ -1,0 +1,87 @@
+import importlib.util
+import json
+import os
+import tempfile
+import unittest
+
+
+def _load(name, *relpath):
+    spec = importlib.util.spec_from_file_location(
+        name, os.path.join(os.path.dirname(__file__), *relpath))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+cli = _load("cadence_overview_cli", "..", "overview", "cli.py")
+
+
+class TestOverview(unittest.TestCase):
+    def _project(self, tmp, name, *, scheduled, state, ledger=None, paused=False, activity=None):
+        proj = os.path.join(tmp, name)
+        os.makedirs(os.path.join(proj, "cadence"))
+        with open(os.path.join(proj, "cadence", ".env"), "w", encoding="utf-8") as f:
+            f.write("CADENCE_SCHEDULED=%s\n" % ("1" if scheduled else "0"))
+            f.write("CADENCE_STATE_DIR=%s\n" % state)
+            f.write('LINEAR_TEAM_NAME="Team %s"\n' % name)
+        os.makedirs(os.path.join(state, "runs"))
+        if paused:
+            open(os.path.join(state, "runs", "PAUSED"), "w").close()
+        if ledger:
+            with open(os.path.join(state, "runs", "runs.jsonl"), "w", encoding="utf-8") as f:
+                for rec in ledger:
+                    f.write(json.dumps(rec) + "\n")
+        if activity:
+            with open(os.path.join(state, "runs", "activity.log"), "w", encoding="utf-8") as f:
+                f.write(activity + "\n")
+        return proj
+
+    def test_aggregates_projects_with_health_and_stage_results(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+            p1 = self._project(
+                tmp, "app1", scheduled=True, state=os.path.join(tmp, "s1"),
+                ledger=[{"stage": "triage", "mode": "enrich", "errors": 0, "ts": "2026-07-02T08:00:00Z"}],
+                activity="[2026-07-02T08:00:00Z] triage — LIVE nothing to do")
+            p2 = self._project(
+                tmp, "app2", scheduled=False, state=os.path.join(tmp, "s2"), paused=True)
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(p1 + "\n" + p2 + "\n")
+
+            data = cli.overview({"CADENCE_PROJECTS_FILE": registry})
+            by_name = {p["name"]: p for p in data["projects"]}
+
+            self.assertEqual(set(by_name), {"app1", "app2"})
+            self.assertEqual(by_name["app1"]["health"], "ok")
+            self.assertTrue(by_name["app1"]["scheduled"])
+            self.assertEqual(by_name["app1"]["stages"]["triage"]["result"], "ok")
+            self.assertIsNone(by_name["app1"]["stages"]["spec"])
+            self.assertEqual(by_name["app1"]["last_activity"],
+                             "[2026-07-02T08:00:00Z] triage — LIVE nothing to do")
+
+            self.assertEqual(by_name["app2"]["health"], "paused")
+            self.assertTrue(by_name["app2"]["paused"])
+            self.assertFalse(by_name["app2"]["scheduled"])
+
+    def test_error_in_ledger_marks_project_failed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+            p1 = self._project(
+                tmp, "app", scheduled=True, state=os.path.join(tmp, "s"),
+                ledger=[{"loop": "build", "errors": 2, "ts": "2026-07-02T08:30:00Z"}])
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(p1 + "\n")
+            data = cli.overview({"CADENCE_PROJECTS_FILE": registry})
+            self.assertEqual(data["projects"][0]["health"], "failed")
+            self.assertEqual(data["projects"][0]["stages"]["build"]["errors"], 2)
+
+    def test_empty_registry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+            data = cli.overview({"CADENCE_PROJECTS_FILE": registry})
+            self.assertEqual(data["projects"], [])
+            self.assertIn("Cadence overview", cli.render_human(data))
+
+
+if __name__ == "__main__":
+    unittest.main()

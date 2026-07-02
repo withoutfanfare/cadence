@@ -167,6 +167,10 @@ The critical checks are:
 
 - The active config file exists, and `cadence doctor` reports which file it is using.
 - The selected orchestrator provider CLI and `python3` are on `PATH`.
+- The configured **model** is usable, not just the CLI — for `kimi`, doctor checks
+  the model exists in `~/.kimi-code/config.toml` (so a wrong name like `kimi:k2`
+  is caught at setup, not at the first scheduled run); for other providers it
+  prints the resolved `provider:model` so a typo is visible.
 - The Linear API key works.
 - The configured team is visible to that key.
 - The state directory exists.

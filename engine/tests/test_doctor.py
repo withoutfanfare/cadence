@@ -110,6 +110,34 @@ else:
         self.assertIn("advance orchestrator provider 'codex' found", result.stdout)
         self.assertIn("reviewer provider 'claude' found", result.stdout)
 
+    def _write_kimi_config(self, *models):
+        cfg = self.home / ".kimi-code" / "config.toml"
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        body = "".join(f'[models."{m}"]\nmax_context_size = 262144\n\n' for m in models)
+        cfg.write_text(body, encoding="utf-8")
+
+    def test_rejects_kimi_model_absent_from_config(self):
+        # A provider CLI on PATH is not enough: kimi:k2 must fail when kimi has no
+        # k2 model, mirroring the real run-time failure.
+        self._write_kimi_config("kimi-code/kimi-for-coding")
+        result = self._run({"ORCHESTRATOR_TRIAGE": "kimi:k2"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("triage orchestrator model 'k2' not configured in kimi", result.stdout)
+
+    def test_accepts_kimi_model_present_in_config(self):
+        self._write_kimi_config("kimi-code/kimi-for-coding")
+        result = self._run({"ORCHESTRATOR_TRIAGE": "kimi:kimi-code/kimi-for-coding"})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(
+            "triage orchestrator model 'kimi-code/kimi-for-coding' configured in kimi",
+            result.stdout)
+
+    def test_missing_kimi_config_warns_not_fails(self):
+        # No ~/.kimi-code/config.toml (fresh machine): can't validate, must not fail.
+        result = self._run({"ORCHESTRATOR_TRIAGE": "kimi:k2"})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("cannot validate", result.stdout)
+
     def test_rejects_orchestrator_provider_missing_from_runner_path(self):
         (self.runner_bin / "claude").unlink()
 
@@ -159,6 +187,20 @@ else:
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("has format problems", result.stdout)
         self.assertIn("malformed task header", result.stdout)
+
+    def test_file_backend_reports_validator_run_failure_distinctly(self):
+        # If the validator itself cannot run (exit >= 2), doctor must say so
+        # rather than blaming the task file's format.
+        task_file = self.root / "cadence" / "tasks.md"
+        task_file.parent.mkdir()
+        task_file.write_text("# Tasks\n", encoding="utf-8")
+        (self.root / "engine" / "tasks" / "cli.py").unlink()
+
+        result = self._run({"TASK_BACKEND": "file", "LINEAR_API_KEY": ""})
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("could not run task-file validator", result.stdout)
+        self.assertNotIn("has format problems", result.stdout)
 
     def test_requires_default_claude_implementer_on_runner_path(self):
         (self.runner_bin / "claude").unlink()

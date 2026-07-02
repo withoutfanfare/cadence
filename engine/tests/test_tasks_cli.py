@@ -160,6 +160,14 @@ class TestTasksCli(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("duplicate task id 'TASK-1'", result.stderr)
 
+    def test_validate_allows_a_markdown_heading_in_the_body(self):
+        # parse() tolerates a `## ` line in a body (it is not a valid header), so
+        # validate() must not flag it as malformed when it is clearly prose.
+        text = ("# Cadence Tasks\n\n## TASK-1: Title\nstatus: open\nlabels: Bug\n\n"
+                "Intro paragraph.\n## A sub-heading in the body\nMore prose.\n")
+        result, _updated = self._run(["validate"], tasks_text=text)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_validate_allows_status_lines_deeper_in_the_body(self):
         # `status: 200` as ordinary spec prose (not the first body line) is fine.
         text = ("# Cadence Tasks\n\n## TASK-1: Title\nstatus: open\nlabels: Bug\n\n"

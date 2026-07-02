@@ -76,7 +76,15 @@ def validate(text):
     in_header = False
     header_meta = set()
     awaiting_body = False
-    for n, line in enumerate(text.splitlines(), 1):
+    lines = text.splitlines()
+
+    def _next_nonempty(i):
+        for j in range(i + 1, len(lines)):
+            if lines[j].strip():
+                return lines[j]
+        return ""
+
+    for n, line in enumerate(lines, 1):
         match = HEADER_RE.match(line)
         if match:
             tid = match.group(1).strip()
@@ -92,9 +100,11 @@ def validate(text):
             header_meta = set()
             awaiting_body = True
             continue
-        # `## ` is reserved for task headers. A `## ` line that is not a valid
-        # `## <ID>: <Title>` is swallowed into the previous task's body.
-        if line.startswith("## "):
+        # `## ` is reserved for task headers, but a body line may legitimately
+        # start with it and parse() tolerates that (treats it as body). Only flag
+        # a non-matching `## ` line as a broken header when the author clearly
+        # meant one — i.e. the next non-empty line is task metadata.
+        if line.startswith("## ") and _next_nonempty(n - 1).startswith(("status:", "labels:")):
             problems.append(
                 f"line {n}: malformed task header {line.strip()!r}; expected "
                 "'## <ID>: <Title>' (the ID must not contain a colon)"
