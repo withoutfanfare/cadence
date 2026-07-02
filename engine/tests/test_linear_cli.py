@@ -145,6 +145,21 @@ class TestReadVerbs(unittest.TestCase):
         self.assertEqual(out[0]["stage"]["name"], "specced")
         self.assertEqual(out[0]["stage"]["advance"], "agent:build")
 
+class TestProjectGet(unittest.TestCase):
+    def test_reads_configured_project_description(self):
+        cap = {"response": {"project": {
+            "id": "proj-1", "name": "App", "description": "Make onboarding self-serve."}}}
+        out = cli.cmd_project_get(types.SimpleNamespace(), ENV, post=fake_post(cap))
+        self.assertEqual(cap["variables"], {"id": "proj-1"})
+        self.assertEqual(out, {"id": "proj-1", "name": "App",
+                               "description": "Make onboarding self-serve."})
+
+    def test_requires_project_id(self):
+        env = dict(ENV); env.pop("LINEAR_PROJECT_ID")
+        with self.assertRaises(cli.LinearError):
+            cli.cmd_project_get(types.SimpleNamespace(), env, post=fake_post({"response": {}}))
+
+
 class TestWriteVerbs(unittest.TestCase):
     def test_label_ensure_returns_existing(self):
         cap = {"response": {"issueLabels": {"nodes": [

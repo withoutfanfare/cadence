@@ -128,6 +128,17 @@ def cmd_projects_list(args, env, post=graphql):
             for n in data["team"]["projects"]["nodes"]]
 
 
+_PROJECT_GET_Q = """
+query($id: String!) { project(id: $id) { id name description } }"""
+
+
+def cmd_project_get(args, env, post=graphql):
+    """The configured project itself — its description is the roadmap goal."""
+    _require_env(env, "LINEAR_PROJECT_ID")
+    n = post(_PROJECT_GET_Q, {"id": env.get("LINEAR_PROJECT_ID")}, env)["project"]
+    return {"id": n["id"], "name": n.get("name"), "description": n.get("description")}
+
+
 _ISSUE_FIELDS = """
   id identifier title url description priority createdAt
   state { name type } assignee { name id }
@@ -543,6 +554,7 @@ def _build_parser():
     sub.add_parser("teams")
     sub.add_parser("me")
     sub.add_parser("projects")
+    sub.add_parser("project-get")
     il = sub.add_parser("issues-list"); il.add_argument("--label")
     il.add_argument("--state"); il.add_argument("--assignee")
     il.add_argument("--limit", type=int)
@@ -575,6 +587,7 @@ def _build_parser():
 
 _DISPATCH = {
     "teams": cmd_teams, "me": cmd_viewer, "projects": cmd_projects_list,
+    "project-get": cmd_project_get,
     "issues-list": cmd_issues_list, "issue-get": cmd_issue_get,
     "issue-update": cmd_issue_update, "bulk-label": cmd_bulk_label,
     "issue-comment": cmd_issue_comment,
