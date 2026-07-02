@@ -7,6 +7,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+from stages import stage_of  # noqa: E402
+
 
 HEADER_RE = re.compile(r"^##\s+([^:\n]+):\s*(.+)$")
 
@@ -173,6 +176,8 @@ def cmd_list(args, env=None):
         tasks = [task for task in tasks if args.label in (task.get("labels") or [])]
     if args.status:
         tasks = [task for task in tasks if task.get("status") == args.status]
+    for task in tasks:
+        task["stage"] = stage_of(task.get("labels") or [])
     return tasks
 
 
@@ -212,6 +217,7 @@ def build_parser():
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("validate")
+    sub.add_parser("path")
 
     list_p = sub.add_parser("list")
     list_p.add_argument("--label")
@@ -232,6 +238,9 @@ def build_parser():
 def main(argv=None, env=None):
     args = build_parser().parse_args(argv)
     try:
+        if args.cmd == "path":
+            print(task_path(env))
+            return 0
         if args.cmd == "validate":
             problems = cmd_validate(args, env)
             for problem in problems:
