@@ -384,8 +384,9 @@ often because it calls the Linear API.
 
 Every task in the gate inbox — Linear or file-backed alike — carries a submenu:
 
-- **▶ Advance to <stage>** — grants the next gate (triaged → spec, specced →
-  build, pr-open/revised → revise). Shown only when a forward move exists.
+- **▶ Advance to <stage>** — grants the next gate (backlog/triaged → spec,
+  specced → build, pr-open/revised → revise). Shown only when a forward move
+  exists.
 - **Set stage** — jump the task to any stage (Triage, Spec, Build, Revise),
   forwards or backwards. Setting a stage grants that gate and clears the others,
   so only one "go" is ever pending. "Triage" clears `agent:triaged` to force a
