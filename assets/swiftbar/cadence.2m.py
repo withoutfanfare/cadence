@@ -107,6 +107,21 @@ def rel(ts, now=None):
     return "%dd ago" % (hours / 24)
 
 
+def until(ts, now=None):
+    """ISO timestamp -> 'due now' / 'in 8m' / 'in 3h' (None if unparseable/past-ish)."""
+    dt = parse_iso(ts) if isinstance(ts, str) else ts
+    if not dt:
+        return None
+    now = now or datetime.now(timezone.utc)
+    secs = (dt - now).total_seconds()
+    if secs < 60:
+        return "due now"
+    mins = secs / 60
+    if mins < 60:
+        return "in %dm" % round(mins)
+    return "in %dh" % round(mins / 60)
+
+
 def last_active_ts(p):
     """Freshest timestamp for a project: from last_activity's [stamp] or any stage."""
     cands = []
@@ -255,6 +270,7 @@ def render_stages_and_controls(pre, p, board, backend, task_path, now=None):
     emit("%s▸ Stages & controls" % pre)
     sub = pre + "--"
     stages = p.get("stages") or {}
+    schedule = p.get("schedule") or {}
     for s in WORK_STAGES:
         st = stages.get(s)
         if st:
@@ -264,6 +280,9 @@ def render_stages_and_controls(pre, p, board, backend, task_path, now=None):
                 detail += " · " + ra
         else:
             detail = "idle"
+        nxt = until(schedule.get(s), now=now)
+        if nxt:
+            detail += "  · next %s" % nxt
         emit("%s%-8s %s | font=Menlo size=12" % (sub, s, detail))
     auto = "on" if p.get("autonomous") else "off"
     emit("%sAutonomous  %s | font=Menlo size=12 color=#888888" % (sub, auto))
@@ -384,6 +403,12 @@ def _selftest():
     assert rel("2026-07-02T09:00:00Z", now) == "3h ago"
     assert rel("2026-06-30T12:00:00Z", now) == "2d ago"
     assert rel(None, now) is None and rel("garbage", now) is None
+
+    # until(): countdown to the next scheduled run
+    assert until("2026-07-02T12:08:00Z", now) == "in 8m"
+    assert until("2026-07-02T14:00:00Z", now) == "in 2h"
+    assert until("2026-07-02T12:00:20Z", now) == "due now"
+    assert until(None, now) is None and until("garbage", now) is None
 
     base = {"health": "ok", "scheduled": True, "stages": {},
             "last_activity": "[2026-07-02T10:00:00Z] build — nothing to do"}

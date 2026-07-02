@@ -11,7 +11,7 @@ Format (value of each SCHED_<STAGE>):
   Nh        every N hours, at minute 0   (e.g. 4h  -> 00:00, 04:00, 08:00, ...)
   Nh@MM     every N hours, at minute MM  (e.g. 4h@30 -> 00:30, 04:30, 08:30, ...)
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import importlib.util
 import os
 import re
@@ -90,6 +90,30 @@ def describe(spec):
 def spec_for(stage, env=None):
     env = os.environ if env is None else env
     return (env.get("SCHED_" + stage.upper()) or "").strip() or JOBS[stage][3]
+
+
+def next_run(spec, now):
+    """Next datetime at or after `now` when this spec fires, or None if off/invalid.
+    Works in whatever timezone `now` carries; the scheduler ticks in UTC."""
+    if is_off(spec):
+        return None
+    try:
+        kind, val = parse_spec(spec)
+    except ValueError:
+        return None
+    now = now.replace(second=0, microsecond=0)
+    minute = val if kind == "minute" else val[1]
+    cand = now.replace(minute=minute)
+    if cand <= now:
+        cand += timedelta(hours=1)
+    if kind == "minute":
+        return cand
+    every = val[0]
+    for _ in range(24):  # at most 24 hourly steps to land on an every-N hour
+        if cand.hour % every == 0:
+            return cand
+        cand += timedelta(hours=1)
+    return None
 
 
 def _schedule_xml(spec):

@@ -34,6 +34,27 @@ class TestParseSpec(unittest.TestCase):
             with self.assertRaises(ValueError):
                 cli.parse_spec(bad)
 
+
+class TestNextRun(unittest.TestCase):
+    def _at(self, h, m):
+        return datetime(2026, 7, 2, h, m, tzinfo=timezone.utc)
+
+    def test_hourly_next_this_hour(self):
+        # 14:00 with ':05' -> 14:05 same hour
+        self.assertEqual(cli.next_run(":05", self._at(14, 0)), self._at(14, 5))
+
+    def test_hourly_rolls_to_next_hour_when_past(self):
+        # 14:10 with ':05' -> 15:05
+        self.assertEqual(cli.next_run(":05", self._at(14, 10)), self._at(15, 5))
+
+    def test_every_n_hours_lands_on_multiple(self):
+        # 14:00 with '4h@30' -> next 4h-boundary hour at :30 is 16:30
+        self.assertEqual(cli.next_run("4h@30", self._at(14, 0)), self._at(16, 30))
+
+    def test_off_or_invalid_returns_none(self):
+        self.assertIsNone(cli.next_run("off", self._at(14, 0)))
+        self.assertIsNone(cli.next_run("garbage", self._at(14, 0)))
+
     def test_hours_out_of_range_rejected(self):
         for bad in ("0h", "25h"):
             with self.assertRaises(ValueError):

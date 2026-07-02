@@ -13,6 +13,7 @@ import importlib.util
 import json
 import os
 import sys
+from datetime import datetime, timezone
 
 ENGINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STAGES = ["triage", "spec", "build", "revise", "advance", "conduct"]
@@ -78,7 +79,8 @@ def _tail(path, n=1):
         return []
 
 
-def _project_overview(item):
+def _project_overview(item, now=None):
+    now = now or datetime.now(timezone.utc)
     config = item["config"]
     values = _schedule.read_env_file(config)
     state_dir = _resolve(values.get("CADENCE_STATE_DIR"), os.path.expanduser("~/.cadence"))
@@ -107,6 +109,15 @@ def _project_overview(item):
     else:
         health = "idle"
 
+    # Next scheduled run per stage (UTC ISO). Only when the project is actually
+    # scheduled and not paused — a paused loop would fire and exit doing nothing,
+    # so advertising a next-run then would mislead.
+    schedule = {}
+    for stage in STAGES:
+        nr = _schedule.next_run(_schedule.spec_for(stage, values), now) \
+            if (scheduled and not paused) else None
+        schedule[stage] = nr.isoformat().replace("+00:00", "Z") if nr else None
+
     activity = _tail(os.path.join(state_dir, "runs", "activity.log"), 1)
     return {
         "name": os.path.basename(item["project"]),
@@ -120,6 +131,7 @@ def _project_overview(item):
         "paused": paused,
         "health": health,
         "stages": stages,
+        "schedule": schedule,
         "last_activity": activity[0] if activity else None,
     }
 

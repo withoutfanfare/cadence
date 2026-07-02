@@ -374,7 +374,8 @@ lets you act.
   show an **Open · backlog** section of ungated open tasks, so the whole `tasks.md`
   is visible before anything is gated.
 - **Stages & controls** — a submenu per project holding the technical detail kept
-  out of the main view: each work stage's last result with its relative time, a
+  out of the main view: each work stage's last result with its relative time and
+  its next scheduled run (`next in 12m`, from the project's `SCHED_*` config), a
   single grey `Autonomous  off/on` line (read straight from the project's
   `AUTONOMOUS` config value, not inferred from the last run), then pause/resume,
   run-a-stage, view-logs, and open-board/tasks actions. Backed by

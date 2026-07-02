@@ -58,6 +58,9 @@ class TestOverview(unittest.TestCase):
             self.assertTrue(by_name["app1"]["scheduled"])
             self.assertTrue(by_name["app1"]["autonomous"])
             self.assertFalse(by_name["app2"]["autonomous"])
+            # scheduled project advertises a next run per stage; paused one does not
+            self.assertIsNotNone(by_name["app1"]["schedule"]["triage"])
+            self.assertIsNone(by_name["app2"]["schedule"]["triage"])
             self.assertEqual(by_name["app1"]["stages"]["triage"]["result"], "ok")
             self.assertIsNone(by_name["app1"]["stages"]["spec"])
             self.assertEqual(by_name["app1"]["last_activity"],
