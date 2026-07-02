@@ -94,6 +94,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `run-loop.sh` no longer crashes on macOS's `/bin/bash` 3.2 when a stage has no
+  extra prompt arguments: expanding the empty `CMD_ARGS` array under `set -u` was a
+  fatal "unbound variable" error, so every scheduled spec/revise/live-advance run
+  with real work exited 1 before rendering the prompt — silently, with the failure
+  visible only in the scheduler's launchd stderr. The expansion now uses the
+  bash-3.2-safe `${arr[@]+"${arr[@]}"}` idiom. (`--dry-run` runs passed the arg and
+  masked the bug.)
 - Run-summary marker is now authoritative: a `CADENCE_SUMMARY` line from a run's own
   stdout is accepted even when the summary has no `stage`/`loop` key (triage carries
   `mode`), so a clean triage run is no longer mislabelled "no summary". The triage

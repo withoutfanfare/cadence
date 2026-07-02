@@ -248,7 +248,8 @@ fi
 LOG="$LOGDIR/$STAGE.log"
 _LOG_START=$(wc -c < "$LOG" 2>/dev/null || echo 0)   # scan only THIS run's output for a summary
 PROMPT_FILE="$RUNS/prompt-$STAGE-$(date -u +%Y%m%dT%H%M%SZ)-$$.md"
-python3 "$CADENCE_HOME/engine/prompts/render.py" "$STAGE" "${CMD_ARGS[@]}" --output "$PROMPT_FILE" >> "$LOG" 2>&1
+# ${arr[@]+…} guard: macOS /bin/bash 3.2 treats an empty array as unbound under set -u
+python3 "$CADENCE_HOME/engine/prompts/render.py" "$STAGE" ${CMD_ARGS[@]+"${CMD_ARGS[@]}"} --output "$PROMPT_FILE" >> "$LOG" 2>&1
 RC=$?
 if [ "$RC" -ne 0 ]; then
   echo "[$(date -u +%FT%TZ)] failed to render cadence $STAGE prompt (exit $RC)" >> "$LOG"
