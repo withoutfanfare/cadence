@@ -69,6 +69,25 @@ class TestPromptRender(unittest.TestCase):
         # criteria filter rejects every task and autonomous mode never advances.
         self.assertIn("Acceptance Criteria", text)
 
+    def test_file_backend_roadmap_prompt_reads_goal_and_uses_tasks_add(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = pathlib.Path(tmp) / "prompt.md"
+            env = os.environ.copy()
+            env["TASK_BACKEND"] = "file"
+            env["TASK_FILE"] = "/tmp/tasks.md"
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "engine" / "prompts" / "render.py"),
+                 "roadmap", "--output", str(out)],
+                cwd=ROOT, env=env, text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            text = out.read_text(encoding="utf-8")
+
+        self.assertIn("GOAL_FILE", text)
+        self.assertIn("cadence tasks add", text)
+        self.assertIn("agent:proposed", text)
+        self.assertIn("agent:later", text)
+        self.assertNotIn("cadence linear", text)
+
     def test_unknown_stage_fails_before_writing_output(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = pathlib.Path(tmp) / "prompt.md"

@@ -28,7 +28,7 @@ parse_criteria = _advance.parse_criteria
 
 _TERMINAL = {"completed", "canceled"}
 _BLOCK_OUT = {"agent:hold", "agent:superseded", "agent:needs-human",
-              "agent:needs-attention", "agent:auto"}
+              "agent:needs-attention", "agent:auto", "agent:proposed"}
 # Linear priority: 1=urgent … 4=low, 0=none. Map so urgent ranks highest and
 # none ranks lowest, then sort priority-descending (most urgent first).
 _PRIORITY_RANK = {1: 4, 2: 3, 3: 2, 4: 1}

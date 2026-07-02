@@ -135,6 +135,7 @@ the skills themselves stay tool-agnostic. The generated worktree path is
 | `ORCHESTRATOR_BUILD` | `claude:opus` | Provider and model for the build loop orchestrator. |
 | `ORCHESTRATOR_REVISE` | `claude:sonnet` | Provider and model for the revise loop orchestrator. |
 | `ORCHESTRATOR_ADVANCE` | `claude:sonnet` | Provider and model for the advancer orchestrator. |
+| `ORCHESTRATOR_ROADMAP` | `claude:opus` | Provider and model for the roadmap loop. Judgement-heavy stage — elect a high-reasoning model. |
 | `REVIEW_PROVIDER` | `claude` | Provider used by folded PR/diff reviews. |
 | `REVIEW_MODEL` | `opus` | Model used by folded PR/diff reviews. |
 | `BUILD_IMPLEMENTER` | `claude` | Coding agent used by the build loop: `claude`, `kimi`, `opencode`, or `codex`. |
@@ -148,8 +149,8 @@ the `cadence providers` command reference.
 
 Legacy fallback aliases from older profiles remain supported for compatibility
 with `.env.example`: `MODEL_TRIAGE`, `MODEL_SPEC`, `MODEL_BUILD`,
-`MODEL_REVISE`, and `MODEL_ADVANCE`. Treat them as aliases only; prefer the
-`ORCHESTRATOR_*` variables above.
+`MODEL_REVISE`, `MODEL_ADVANCE`, and `MODEL_ROADMAP`. Treat them as aliases
+only; prefer the `ORCHESTRATOR_*` variables above.
 
 Important: `MODEL_*` values are model names only. Do not put `provider:model`
 values there. For example, `MODEL_BUILD=codex:gpt-5.4` expands through the
@@ -256,6 +257,14 @@ BUILD_IMPLEMENTER=codex:gpt-5.4
 Autonomous mode is independent of `PAUSED` — if `PAUSED` is set, all loops halt
 regardless of `AUTONOMOUS`. Setting `AUTONOMOUS=1` only enables the advancer;
 it does not override the pause flag or any other gate.
+
+## Roadmapper mode
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `ROADMAP_MAX_OPEN` | `5` | Top-up cap: the roadmap loop keeps at most this many open `agent:proposed` issues on the board. Enforced by the create verbs, not just the prompt. |
+| `GOAL_FILE` | `cadence/goal.md` | File-backend goal location, relative to `PROJECT_DIR`. Linear profiles read the Linear project description instead. |
+| `SCHED_ROADMAP` | `24h@20` | Schedule slot for the roadmap loop (same `:MM`/`Nh@MM` format as the other stages). |
 
 ## Schedule
 

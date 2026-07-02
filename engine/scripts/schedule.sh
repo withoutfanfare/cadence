@@ -20,7 +20,7 @@ plist_path() { # stage -> file
 }
 
 unload_legacy_jobs() {
-  for j in triage spec build revise advance conduct; do
+  for j in triage spec build revise advance roadmap conduct; do
     f="$(plist_path "$j")"
     launchctl bootout "$GUI" "$f" 2>/dev/null || true
     rm -f "$f"

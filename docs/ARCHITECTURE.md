@@ -86,6 +86,7 @@ and write labels to record what they did. Full label vocabulary:
 | `agent:specced` | spec | spec written — your move: review, then set `agent:build` |
 | `agent:pr-open` | build | draft PR opened + reviewed — your move: review |
 | `agent:revised` | revise | revise loop pushed — your move: re-review |
+| `agent:proposed` | roadmap | advisory proposal — your move: accept (gate it or remove the label) or dismiss (cancel; add `agent:later` for "not now") |
 | `agent:superseded` | spec | confirmed duplicate, collapsed into canonical |
 | `agent:needs-attention` | any loop | a run failed — see the run log / digest |
 | `Stale` | triage | no update in 30 days; flagged, not closed |
@@ -94,11 +95,16 @@ and write labels to record what they did. Full label vocabulary:
 
 `agent:hold` — human override; every loop skips the issue regardless of other labels.
 
+`agent:later` — human "not now" marker on a cancelled proposal; the roadmap loop may re-propose after a 30-day cool-off from cancellation (Linear only — the file backend has no timestamps; see `docs/LABELS.md`).
+
 ---
 
 ## 3. The lifecycle
 
 ```bash
+   ROADMAP loop (optional; goal stated on the project) — files proposals
+        │  as new issues carrying agent:proposed (capped; conductor-fenced)
+        ▼
    NEW issue (no agent label)
         │
         │  TRIAGE loop — no gate; any in-scope, non-terminal issue
@@ -199,6 +205,26 @@ not a pause: there is no safety fault, just no autonomous work to advance.
 
 ---
 
+## 5b. Roadmap loop (optional) — advisory scout
+
+An optional fifth loop, `roadmap`, runs on `SCHED_ROADMAP` and files proposal
+issues based on a human-stated goal — the Linear project description, or
+`GOAL_FILE` (default `cadence/goal.md`) on the file backend. No goal → the
+runner exits idle (`reason: no-goal`) before any model launch, so the mode is
+off until a goal is written.
+
+Proposals are real backlog issues carrying `agent:proposed`, capped at
+`ROADMAP_MAX_OPEN` open at once — the cap and the marker label are enforced by
+the create verbs (`cadence linear issue-create`, `cadence tasks add`), not by
+the prompt. The loop never grants gates; the conductor never queues an issue
+carrying `agent:proposed`. Accepting a proposal = gating it (the spec loop then
+strips the marker) or removing the marker; dismissing = cancelling the issue,
+optionally adding `agent:later` to allow re-proposal after 30 days (Linear
+only; file-backend tasks carry no timestamps — such proposals may be
+reconsidered whenever they still serve the goal).
+
+---
+
 ## 6. Engine vs profile
 
 **Engine** — the generic control-flow code, scripts, and skills in this repo.
@@ -273,7 +299,8 @@ The deterministic conductor is not model-backed, but it still appends a compact
 summary to `runs/runs.jsonl`, `runs/activity.log`, `runs/YYYY-MM-DD.md`, and
 `logs/conduct.log`, so autonomous queue decisions show up in the normal operator
 commands. It feeds only buildable ready slices: held, attention-needed,
-terminal, and already-auto work is skipped. Linear profiles also skip blocked
+terminal, already-auto, and unaccepted roadmap proposals (`agent:proposed`)
+work is skipped. Linear profiles also skip blocked
 issues and parent issues with children; file profiles use the local task labels,
 status, and body only, then add `agent:auto` through `cadence tasks update`.
 Every candidate must also carry **acceptance criteria** — a recognised

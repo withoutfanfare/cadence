@@ -23,6 +23,7 @@ provider CLIs are visible on the same runner `PATH` used by scheduled loops.
 | Build orchestrator | `ORCHESTRATOR_BUILD` | `provider:model` | Lead model for the build loop. |
 | Revise orchestrator | `ORCHESTRATOR_REVISE` | `provider:model` | Lead model for the revise loop. |
 | Advance orchestrator | `ORCHESTRATOR_ADVANCE` | `provider:model` | Lead model for the autonomous advancer. |
+| Roadmap orchestrator | `ORCHESTRATOR_ROADMAP` | `provider:model` | Lead model for the roadmap loop. Judgement-heavy stage — defaults to `claude:opus`. |
 | Folded reviewer | `REVIEW_PROVIDER` + `REVIEW_MODEL` | `provider` + `model` | Provider/model used for folded PR and diff review. |
 | Build implementer | `BUILD_IMPLEMENTER` | `provider` | Coding agent provider used inside the build worktree. |
 

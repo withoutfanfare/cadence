@@ -259,6 +259,29 @@ acceptance criteria is never queued, so triage stubs them in.
   up or slow down; `cadence pause` or `AUTONOMOUS=0` stops it. It never starts an
   issue whose blockers are not done.
 
+## Roadmapper mode (opt-in)
+
+An advisory scout: on its schedule (default daily), a high-reasoning model
+reads your stated goal, scans the codebase read-only, and files at most
+`ROADMAP_MAX_OPEN` proposal issues carrying `agent:proposed`. It never gates
+anything, and autonomous mode never picks a proposal up until you accept it.
+
+1. **State the goal.** Linear backend: write it in the Linear project
+   description. File backend: write `cadence/goal.md` (or `GOAL_FILE`) in the
+   project. No goal → every roadmap run idles and files nothing.
+2. **Let it run** (`SCHED_ROADMAP`, default `24h@20`), or run one now:
+   `cadence run roadmap` (`--dry-run` to see what it would propose).
+3. **Review proposals** on the board:
+   - **Accept** — set `agent:spec` (the spec loop strips `agent:proposed`), or
+     just remove `agent:proposed` to leave it as normal backlog.
+   - **Dismiss for good** — cancel the issue (file backend:
+     `status: dismissed`). It will never be re-proposed.
+   - **Not now** — cancel **and** add `agent:later`; it may return after 30
+     days if it still serves the goal.
+
+Ignore it and it goes quiet: once `ROADMAP_MAX_OPEN` open proposals sit
+unreviewed, runs report "at cap" and file nothing.
+
 ## Reclaiming a Stuck Issue
 
 `agent:claimed` means a loop is working on an issue. A claim older than two hours

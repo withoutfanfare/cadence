@@ -1,13 +1,28 @@
+import importlib.util
 import os
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 import json
 
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 TASKS_CLI = os.path.join(ROOT, "engine", "tasks", "cli.py")
+
+
+def _load(name, *relpath):
+    spec = importlib.util.spec_from_file_location(
+        name, os.path.join(os.path.dirname(__file__), *relpath))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+# Load by unique module name so discovery doesn't collide with other
+# identically-named `cli` modules loaded elsewhere in the suite.
+cli = _load("cadence_tasks_cli", "..", "tasks", "cli.py")
 
 
 TASKS_MD = """# Cadence Tasks
@@ -197,6 +212,59 @@ class TestTasksCli(unittest.TestCase):
                 cwd=ROOT, env=env, text=True, capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), task_file)
+
+
+class TestAdd(unittest.TestCase):
+    def _board(self, text, cap="2"):
+        tmp = tempfile.NamedTemporaryFile("w", suffix=".md", delete=False)
+        tmp.write(text); tmp.close()
+        self.addCleanup(os.unlink, tmp.name)
+        return {"TASK_FILE": tmp.name, "ROADMAP_MAX_OPEN": cap}
+
+    def test_appends_proposal_with_generated_id_and_forced_label(self):
+        env = self._board("# Cadence Tasks\n\n## TASK-1: First\nstatus: open\n"
+                          "labels: agent:triaged\n\nBody.\n")
+        args = types.SimpleNamespace(title="Improve onboarding",
+                                     add_label=["Feature"], body_file=None)
+        out = cli.cmd_add(args, env)
+        self.assertEqual(out["identifier"], "TASK-2")
+        added = [t for t in cli.load(env) if t["identifier"] == "TASK-2"][0]
+        self.assertEqual(added["status"], "open")
+        self.assertEqual(added["title"], "Improve onboarding")
+        self.assertIn("agent:proposed", added["labels"])
+        self.assertIn("Feature", added["labels"])
+        with open(env["TASK_FILE"], encoding="utf-8") as f:
+            self.assertEqual(cli.validate(f.read()), [])
+
+    def test_body_file_becomes_description(self):
+        env = self._board("# Cadence Tasks\n\n## TASK-1: First\nstatus: open\n"
+                          "labels:\n\nBody.\n")
+        body = tempfile.NamedTemporaryFile("w", suffix=".md", delete=False)
+        body.write("Problem, location, Goal fit: x.\n\n### Acceptance Criteria\n- [ ] done\n")
+        body.close()
+        self.addCleanup(os.unlink, body.name)
+        args = types.SimpleNamespace(title="T", add_label=None, body_file=body.name)
+        out = cli.cmd_add(args, env)
+        self.assertIn("Goal fit", out["description"])
+        self.assertIn("Acceptance Criteria", out["description"])
+
+    def test_refuses_when_open_proposals_reach_cap(self):
+        env = self._board(
+            "# Cadence Tasks\n\n"
+            "## TASK-1: A\nstatus: open\nlabels: agent:proposed\n\nx\n\n"
+            "## TASK-2: B\nstatus: open\nlabels: agent:proposed\n\nx\n")
+        args = types.SimpleNamespace(title="C", add_label=None, body_file=None)
+        with self.assertRaises(ValueError):
+            cli.cmd_add(args, env)
+
+    def test_dismissed_proposals_do_not_count_toward_cap(self):
+        env = self._board(
+            "# Cadence Tasks\n\n"
+            "## TASK-1: A\nstatus: dismissed\nlabels: agent:proposed\n\nx\n\n"
+            "## TASK-2: B\nstatus: dismissed\nlabels: agent:proposed, agent:later\n\nx\n")
+        args = types.SimpleNamespace(title="C", add_label=None, body_file=None)
+        out = cli.cmd_add(args, env)
+        self.assertEqual(out["identifier"], "TASK-3")
 
 
 if __name__ == "__main__":

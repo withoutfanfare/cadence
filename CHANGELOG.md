@@ -72,6 +72,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   canonical stage and a per-task submenu to advance, set any stage, hold/release,
   and open it. New `cadence tasks path` verb; the `stage` field is emitted by
   `cadence tasks list` and `cadence linear issues-list`.
+- An optional fifth loop, `roadmap`: a goal-driven advisory scout — `cadence run
+  roadmap [--dry-run]` and the `SCHED_ROADMAP`, `ROADMAP_MAX_OPEN`, and
+  `GOAL_FILE` settings. Reads a human-stated goal (the Linear project
+  description, or `GOAL_FILE` on the file backend) and files proposal issues
+  carrying `agent:proposed`, capped at `ROADMAP_MAX_OPEN` open at once by the
+  create verbs, not just the prompt. It never grants a gate, and the conductor
+  fences `agent:proposed` out of the autonomous queue until a human accepts it.
+  Dismissal has two flavours: cancel for good, or cancel and add `agent:later`
+  for "not now", which allows re-proposal after a 30-day cool-off. No goal
+  written → every run idles before any model launch.
 
 ### Changed
 
@@ -94,6 +104,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `run-loop.sh` no longer crashes on macOS's `/bin/bash` 3.2 when a stage has no
+  extra prompt arguments: expanding the empty `CMD_ARGS` array under `set -u` was a
+  fatal "unbound variable" error, so every scheduled spec/revise/live-advance run
+  with real work exited 1 before rendering the prompt — silently, with the failure
+  visible only in the scheduler's launchd stderr. The expansion now uses the
+  bash-3.2-safe `${arr[@]+"${arr[@]}"}` idiom. (`--dry-run` runs passed the arg and
+  masked the bug.)
 - Run-summary marker is now authoritative: a `CADENCE_SUMMARY` line from a run's own
   stdout is accepted even when the summary has no `stage`/`loop` key (triage carries
   `mode`), so a clean triage run is no longer mislabelled "no summary". The triage
