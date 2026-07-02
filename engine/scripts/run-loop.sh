@@ -1,6 +1,6 @@
 #!/bin/bash
 # Cadence agent loop runner — invoked by the scheduler or manually.
-# Usage: run-loop.sh <triage|spec|build|revise>
+# Usage: run-loop.sh <triage|spec|build|revise|advance|roadmap>
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck disable=SC1091
@@ -11,7 +11,7 @@ source "$DIR/../lib/lib-env.sh"
 _pp="${RUNNER_PATH_PREPEND:-}"
 [ -z "$_pp" ] && [ -d "$HOME/Library/Application Support/Herd/bin" ] && _pp="$HOME/Library/Application Support/Herd/bin"
 export PATH="${_pp:+$_pp:}$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
-STAGE="${1:?stage required (triage|spec|build|revise)}"
+STAGE="${1:?stage required (triage|spec|build|revise|advance|roadmap)}"
 # Default so a config that legitimately omits PROJECT_DIR (triage/spec-only setups)
 # reaches the `cd "$WORKTREE" || ...` handler below rather than crashing on `set -u`.
 WORKTREE="${PROJECT_DIR:-}"
@@ -182,6 +182,24 @@ if [ "$STAGE" = "advance" ]; then
   [ "$_n" = "0" ] && idle_before_launch "no-auto-work" "no agent:auto issues in scope"
 fi
 
+# Roadmap loop is goal-driven: no stated goal means the project has opted out,
+# and the run must not pay for a model launch. (The backend guard above already
+# proved the API/file reachable, so a failure here reads as "no goal".)
+if [ "$STAGE" = "roadmap" ]; then
+  case "$_task_backend" in
+    file)
+      _goal="${GOAL_FILE:-cadence/goal.md}"
+      case "$_goal" in /*) : ;; *) _goal="${PROJECT_DIR:-$PWD}/$_goal" ;; esac
+      [ -s "$_goal" ] || idle_before_launch "no-goal" "goal file missing or empty: $_goal"
+      ;;
+    *)
+      _desc="$(python3 "$CADENCE_HOME/engine/linear/cli.py" project-get 2>/dev/null \
+        | python3 -c 'import json,sys; print((json.load(sys.stdin).get("description") or "").strip())' 2>/dev/null || echo '')"
+      [ -n "$_desc" ] || idle_before_launch "no-goal" "Linear project description empty"
+      ;;
+  esac
+fi
+
 cd "$WORKTREE" || { echo "project dir missing: $WORKTREE" >&2; exit 1; }
 
 provider_from_pair() {
@@ -210,6 +228,9 @@ case "$STAGE" in
   advance)
     CMD_ARGS=(); [ "${2:-}" = "--dry-run" ] && CMD_ARGS=("--dry-run")
     PAIR="$ORCHESTRATOR_ADVANCE" ;;
+  roadmap)
+    CMD_ARGS=(); [ "${2:-}" = "--dry-run" ] && CMD_ARGS=("--dry-run")
+    PAIR="$ORCHESTRATOR_ROADMAP" ;;
   *) echo "unknown stage: $STAGE" >&2; exit 2 ;;
 esac
 PROVIDER="$(provider_from_pair "$PAIR")"
@@ -341,11 +362,13 @@ elif stage == 'advance':
     for k, l in [('advanced','advanced'),('accepted','accepted'),
                  ('repaired','repaired'),('escalated','escalated')]:
         add(k, l)
+elif stage == 'roadmap':
+    add('proposed', 'proposed')
 body = ", ".join(parts) if parts else "nothing to do"
 prefix = ("LIVE " if not dry else "dry ")
 if err: body += f" · {err} ERROR(S)"
 if rc != 0: body += f" · exit {rc}"
-your_move = stage in ('spec', 'build', 'revise') and bool(parts)
+your_move = stage in ('spec', 'build', 'revise', 'roadmap') and bool(parts)
 failed = rc != 0 or err > 0
 # 2 = failure (alert), 1 = notable activity (your move), 0 = quiet
 flag = 2 if failed else (1 if ((not dry and parts) or your_move) else 0)
@@ -363,7 +386,7 @@ if [ "$FLAG" != "0" ] && [ "$NOTIFY" = "on" ]; then
     TITLE="Cadence $STAGE — FAILED"; SOUND="Basso"
   else
     TITLE="Cadence $STAGE"; SOUND="Glass"
-    case "$STAGE" in spec) TITLE="Cadence spec — your move";; build) TITLE="Cadence build — review PR";; revise) TITLE="Cadence revise — re-review";; esac
+    case "$STAGE" in spec) TITLE="Cadence spec — your move";; build) TITLE="Cadence build — review PR";; revise) TITLE="Cadence revise — re-review";; roadmap) TITLE="Cadence roadmap — review proposals";; esac
   fi
   osascript -e "display notification \"$MSG\" with title \"$TITLE\" sound name \"$SOUND\"" 2>/dev/null || true
 fi

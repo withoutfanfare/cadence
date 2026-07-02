@@ -335,6 +335,37 @@ exec {real_python} "$@"
             log = f.read()
         self.assertIn("starting cadence advance (codex:gpt-test)", log)
 
+    def test_roadmap_without_goal_records_idle_not_pause(self):
+        os.makedirs(os.path.join(self.project, "cadence"))
+        with open(os.path.join(self.project, "cadence", "tasks.md"), "w", encoding="utf-8") as f:
+            f.write("# Cadence Tasks\n")
+
+        result = self._run("roadmap", TASK_BACKEND="file")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["stage"], "roadmap")
+        self.assertTrue(payload["idle"])
+        self.assertEqual(payload["reason"], "no-goal")
+
+    def test_file_backend_roadmap_launches_when_goal_exists(self):
+        os.makedirs(os.path.join(self.project, "cadence"))
+        with open(os.path.join(self.project, "cadence", "tasks.md"), "w", encoding="utf-8") as f:
+            f.write("# Cadence Tasks\n")
+        with open(os.path.join(self.project, "cadence", "goal.md"), "w", encoding="utf-8") as f:
+            f.write("Make onboarding self-serve.\n")
+        shutil.copytree(os.path.join(ROOT, "engine", "prompts"),
+                        os.path.join(self.root, "engine", "prompts"))
+        self._write_exe("codex", "#!/bin/sh\nprintf '{\"stage\":\"roadmap\",\"proposed\":0,\"errors\":0}\\n'\n")
+
+        result = self._run("roadmap", TASK_BACKEND="file",
+                           ORCHESTRATOR_ROADMAP="codex:gpt-test")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with open(os.path.join(self.state, "logs", "roadmap.log"), encoding="utf-8") as f:
+            log = f.read()
+        self.assertIn("starting cadence roadmap (codex:gpt-test)", log)
+
     def _read_today_digest(self):
         files = [x for x in os.listdir(os.path.join(self.state, "runs"))
                  if x.endswith(".md")]
