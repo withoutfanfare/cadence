@@ -252,6 +252,11 @@ def read_env_file(path):
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, val = line.split("=", 1)
+            # bash does not treat `KEY = value` (whitespace before `=`) as an
+            # assignment, so neither should we — otherwise the scheduler's parsed
+            # view of a value can diverge from what lib-env.sh actually sources.
+            if key != key.rstrip():
+                continue
             key = key.strip()
             if key.startswith("export "):
                 key = key.split(None, 1)[1]
@@ -261,6 +266,39 @@ def read_env_file(path):
 
 def _path_value(value, default):
     return os.path.expanduser(os.path.expandvars(value or default))
+
+
+def _int_env(env, key, default):
+    """Read an integer setting, degrading to the default on a non-numeric value
+    instead of crashing the whole tick (mirrors the SCHED_* graceful handling)."""
+    raw = env.get(key)
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        print(f"scheduler: {key}={raw!r} is not an integer; using {default}", file=sys.stderr)
+        return default
+
+
+def _shared_state_warnings(projects):
+    """Projects resolving to the same CADENCE_STATE_DIR collide on the pause flag,
+    logs, and scheduler run-markers (so one can silently skip the other's slot).
+    Return one warning line per directory shared by more than one project."""
+    seen = {}
+    for item in projects:
+        values = read_env_file(item["config"])
+        state = _path_value(values.get("CADENCE_STATE_DIR"), os.path.expanduser("~/.cadence"))
+        seen.setdefault(state, []).append(item["project"])
+    lines = []
+    for state, projs in seen.items():
+        if len(projs) > 1:
+            lines.append(
+                "warning: %d projects share CADENCE_STATE_DIR %s — pause flag, logs, "
+                "and scheduler markers will collide; give each its own state dir: %s"
+                % (len(projs), state, ", ".join(projs))
+            )
+    return lines
 
 
 def _slot_key(stage, spec, now, window):
@@ -280,10 +318,6 @@ def _slot_key(stage, spec, now, window):
 
 def _marker(state, stage):
     return os.path.join(state, "scheduler", f"{stage}.last")
-
-
-def _project_key(now, window):
-    return f"project:{now:%Y%m%dT%H}:{now.minute // window}"
 
 
 def _already_ran(state, stage, key):
@@ -315,8 +349,8 @@ def _run_stage(home, project, config, stage, run):
 def tick(env, now=None, run=subprocess.run):
     home = env.get("CADENCE_HOME") or HOME
     now = now or datetime.now(timezone.utc)
-    window = max(1, int(env.get("CADENCE_SCHEDULER_WINDOW_MINUTES") or 5))
-    max_runs = int(env.get("CADENCE_SCHEDULER_MAX_RUNS") or 1)
+    window = max(1, _int_env(env, "CADENCE_SCHEDULER_WINDOW_MINUTES", 5))
+    max_runs = _int_env(env, "CADENCE_SCHEDULER_MAX_RUNS", 1)
     projects = read_projects(projects_file(env))
     ran = 0
     failed = 0
@@ -324,6 +358,9 @@ def tick(env, now=None, run=subprocess.run):
     if not projects:
         print(f"scheduler: no projects in {projects_file(env)}")
         return 0
+
+    for w in _shared_state_warnings(projects):
+        print(w, file=sys.stderr)
 
     for item in projects:
         if ran >= max_runs:
@@ -334,9 +371,9 @@ def tick(env, now=None, run=subprocess.run):
             print(f"{project}: skipped (CADENCE_SCHEDULED not enabled)")
             continue
         state = _path_value(values.get("CADENCE_STATE_DIR"), os.path.expanduser("~/.cadence"))
-        project_key = _project_key(now, window)
-        if _already_ran(state, "project", project_key):
-            continue
+        # Dedup is per (stage, slot) only — a project is never excluded as a whole,
+        # so two stages due in the same window each get their turn (across ticks),
+        # rather than the first one silently starving the rest.
         for stage in JOBS:
             spec = (values.get("SCHED_" + stage.upper()) or JOBS[stage][3]).strip()
             try:
@@ -348,7 +385,6 @@ def tick(env, now=None, run=subprocess.run):
             if not key or _already_ran(state, stage, key):
                 continue
             proc = _run_stage(home, project, config, stage, run)
-            _mark_ran(state, "project", project_key)
             _mark_ran(state, stage, key)
             ran += 1
             print(f"{project}: {stage} exit {proc.returncode}")
@@ -372,6 +408,8 @@ def print_status(env):
         values = read_env_file(item["config"])
         enabled = "yes" if (values.get("CADENCE_SCHEDULED") or "").lower() in TRUE else "no"
         print(f"  {item['project']}  scheduled={enabled}  config={item['config']}")
+    for w in _shared_state_warnings(projects):
+        print("  " + w)
     return 0
 
 

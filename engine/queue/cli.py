@@ -50,6 +50,19 @@ def bucket(issues):
     return out
 
 
+def conflicts(issues):
+    """Issues carrying more than one bucket label — a sign of a crashed loop
+    leaving inconsistent board state. Precedence still decides the bucket; this
+    just surfaces the inconsistency. Returns [(identifier, [labels]), ...]."""
+    out = []
+    for issue in issues:
+        labels = set(issue.get("labels") or [])
+        matched = [_LABEL[bid] for bid in ASSIGN_ORDER if _LABEL[bid] in labels]
+        if len(matched) > 1:
+            out.append((issue.get("identifier", "?"), matched))
+    return out
+
+
 def _keys(issues, cap=15):
     if not issues:
         return "—"
@@ -81,7 +94,7 @@ def _verbose_lines(issues):
     return lines
 
 
-def render(buckets, team_name=None, verbose=False):
+def render(buckets, team_name=None, verbose=False, conflict_list=None):
     head = "── Cadence queue%s ──────────────" % (" · " + team_name if team_name else "")
     if sum(len(v) for v in buckets.values()) == 0:
         return head + "\n  Nothing waiting on you."
@@ -109,6 +122,11 @@ def render(buckets, team_name=None, verbose=False):
     parked = ["%s %d" % (disp, len(buckets[bid])) for bid, disp, _lbl in PARKED if buckets[bid]]
     out += ["", "PARKED  (counts only)",
             "  " + (" · ".join(parked) if parked else "nothing parked")]
+
+    if conflict_list:
+        out.append("")
+        for ident, labels in conflict_list:
+            out.append("⚠ inconsistent labels: %s (%s)" % (ident, " + ".join(labels)))
     return "\n".join(out)
 
 
@@ -150,7 +168,8 @@ def main(argv=None):
                     help="expand each actionable issue to title, priority, cycle and URL")
     args = ap.parse_args(argv)
     issues = fetch_issues()
-    print(render(bucket(issues), os.environ.get("LINEAR_TEAM_NAME"), args.verbose))
+    print(render(bucket(issues), os.environ.get("LINEAR_TEAM_NAME"), args.verbose,
+                 conflicts(issues)))
 
 
 if __name__ == "__main__":

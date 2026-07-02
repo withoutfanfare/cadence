@@ -12,7 +12,9 @@ _pp="${RUNNER_PATH_PREPEND:-}"
 [ -z "$_pp" ] && [ -d "$HOME/Library/Application Support/Herd/bin" ] && _pp="$HOME/Library/Application Support/Herd/bin"
 export PATH="${_pp:+$_pp:}$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 STAGE="${1:?stage required (triage|spec|build|revise)}"
-WORKTREE="$PROJECT_DIR"
+# Default so a config that legitimately omits PROJECT_DIR (triage/spec-only setups)
+# reaches the `cd "$WORKTREE" || ...` handler below rather than crashing on `set -u`.
+WORKTREE="${PROJECT_DIR:-}"
 LOGDIR="$CADENCE_STATE_DIR/logs"
 RUNS="$CADENCE_STATE_DIR/runs"
 mkdir -p "$LOGDIR" "$RUNS"
@@ -30,17 +32,44 @@ case "$STAGE" in
   *)            _LOCK="$STAGE" ;;    # triage/spec/advance → only self-exclusive
 esac
 LOCKDIR="$LOGDIR/$_LOCK.lock.d"
-if ! mkdir "$LOCKDIR" 2>/dev/null; then
-  _holder="$(cat "$LOCKDIR/pid" 2>/dev/null || echo '')"
-  if [ -n "$_holder" ] && kill -0 "$_holder" 2>/dev/null; then
-    echo "[$(date -u +%FT%TZ)] $STAGE — skipped (run $_holder already in flight)" >> "$LOGDIR/$STAGE.log"
-    exit 0
-  fi
-  rm -rf "$LOCKDIR"   # stale lock — holder is dead
-  mkdir "$LOCKDIR" 2>/dev/null || { echo "[$(date -u +%FT%TZ)] $STAGE — skipped (lock race)" >> "$LOGDIR/$STAGE.log"; exit 0; }
+# A lock older than this is treated as abandoned even if its recorded PID is alive
+# again (macOS recycles PIDs), matching the 2h agent:claimed reclaim window.
+_LOCK_MAX_AGE="${CADENCE_LOCK_MAX_AGE_SECONDS:-7200}"
+_lock_alive() {   # true only if the holder PID is live AND the lock is young enough
+  local holder now mtime
+  holder="$(cat "$LOCKDIR/pid" 2>/dev/null || echo '')"
+  [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null || return 1
+  now="$(date +%s)"
+  mtime="$(stat -f %m "$LOCKDIR/pid" 2>/dev/null || stat -c %Y "$LOCKDIR/pid" 2>/dev/null || echo "$now")"
+  [ "$(( now - mtime ))" -lt "$_LOCK_MAX_AGE" ]
+}
+if mkdir "$LOCKDIR" 2>/dev/null; then
+  :   # acquired cleanly
+elif _lock_alive; then
+  echo "[$(date -u +%FT%TZ)] $STAGE — skipped (run $(cat "$LOCKDIR/pid" 2>/dev/null) already in flight)" >> "$LOGDIR/$STAGE.log"
+  exit 0
+elif mkdir "$LOCKDIR.reclaim" 2>/dev/null; then
+  # Won the right to reclaim a stale lock. Doing rm+mkdir under this second atomic
+  # lock stops two racers both recreating LOCKDIR and each thinking they hold it.
+  # ponytail: .reclaim is held only across the adjacent rm+mkdir (µs, no I/O); a hard
+  # kill in that gap is vanishingly unlikely and an operator clears it like any lock.
+  rm -rf "$LOCKDIR"
+  mkdir "$LOCKDIR" 2>/dev/null
+  rmdir "$LOCKDIR.reclaim" 2>/dev/null || true
+  [ -d "$LOCKDIR" ] || { echo "[$(date -u +%FT%TZ)] $STAGE — skipped (lock race)" >> "$LOGDIR/$STAGE.log"; exit 0; }
+else
+  echo "[$(date -u +%FT%TZ)] $STAGE — skipped (lock reclaim in progress)" >> "$LOGDIR/$STAGE.log"
+  exit 0
 fi
 echo "$$" > "$LOCKDIR/pid"
-trap 'rm -rf "$LOCKDIR"' EXIT
+# Keep a live holder's lock fresh so the 2h reclaim only ever fires on a genuinely
+# dead/wedged run — a legitimate build past the max-age must not be stolen mid-flight.
+( while :; do sleep 600; touch "$LOCKDIR/pid" 2>/dev/null || exit; done ) >/dev/null 2>&1 &
+_HB=$!
+# PROMPT_FILE is removed on the normal path too; the trap covers signal interruption
+# (SIGTERM mid-orchestrator) so an orphan prompt is never left in $RUNS.
+PROMPT_FILE=""
+trap 'kill "$_HB" 2>/dev/null; rm -f "$PROMPT_FILE"; rm -rf "$LOCKDIR"' EXIT
 
 pause_before_launch() {
   reason="$1"
@@ -148,7 +177,7 @@ if [ "$STAGE" = "advance" ]; then
   esac
   case "$_task_backend" in
     file) _n="$(python3 "$CADENCE_HOME/engine/tasks/cli.py" list --label agent:auto 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)" ;;
-    *)    _n="$(python3 "$CADENCE_HOME/engine/linear/cli.py" issues-list --label agent:auto --assignee me 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)" ;;
+    *)    _n="$(python3 "$CADENCE_HOME/engine/linear/cli.py" issues-list --label agent:auto --assignee me --limit 1 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)" ;;
   esac
   [ "$_n" = "0" ] && idle_before_launch "no-auto-work" "no agent:auto issues in scope"
 fi
@@ -217,6 +246,7 @@ if [ "$STAGE" = "build" ] || [ "$STAGE" = "revise" ]; then
 fi
 
 LOG="$LOGDIR/$STAGE.log"
+_LOG_START=$(wc -c < "$LOG" 2>/dev/null || echo 0)   # scan only THIS run's output for a summary
 PROMPT_FILE="$RUNS/prompt-$STAGE-$(date -u +%Y%m%dT%H%M%SZ)-$$.md"
 python3 "$CADENCE_HOME/engine/prompts/render.py" "$STAGE" "${CMD_ARGS[@]}" --output "$PROMPT_FILE" >> "$LOG" 2>&1
 RC=$?
@@ -234,26 +264,50 @@ rm -f "$PROMPT_FILE"
 # Parse this run's JSON summary (triage uses "stage", others use "loop"), build a plain
 # one-liner, append it to a single chronological activity feed, and fire a macOS
 # notification only when a LIVE run actually did something (or paused / errored).
-SUM=$(python3 - "$STAGE" "$LOG" "$RC" <<'PY'
+SUM=$(python3 - "$STAGE" "$LOG" "$RC" "$_LOG_START" <<'PY'
 import sys, json
 stage, logpath, rc = sys.argv[1], sys.argv[2], int(sys.argv[3])
-last = None
 try:
-    for line in open(logpath, encoding='utf-8', errors='replace'):
+    start = int(sys.argv[4])
+except (IndexError, ValueError):
+    start = 0
+MARKER = 'CADENCE_SUMMARY '   # skills print the summary on its own marked line
+last = None
+read_err = None
+try:
+    with open(logpath, 'rb') as f:
+        f.seek(start)          # skip prior runs' output so a no-summary run isn't
+        chunk = f.read()       # mislabelled with the previous run's stale counts
+    lines = chunk.decode('utf-8', 'replace').splitlines()
+    # Prefer the explicit marker (robust against prose around the JSON); fall back
+    # to the bare-JSON heuristic for older skill output.
+    for line in lines:
         s = line.strip()
-        if s.startswith('{') and ('"stage"' in s or '"loop"' in s):
-            try: d = json.loads(s)
+        if s.startswith(MARKER):
+            try: d = json.loads(s[len(MARKER):].strip())
             except Exception: continue
             if d.get('stage') == stage or d.get('loop') == stage:
                 last = d
-except Exception:
-    pass
+    if last is None:
+        for line in lines:
+            s = line.strip()
+            if s.startswith('{') and ('"stage"' in s or '"loop"' in s):
+                try: d = json.loads(s)
+                except Exception: continue
+                if d.get('stage') == stage or d.get('loop') == stage:
+                    last = d
+except Exception as e:
+    read_err = str(e)
 if last is None:
-    # No parseable summary. A non-zero exit means the loop crashed — alert (flag 2).
-    if rc != 0:
+    # A log-read failure is itself a failure to surface, not something to swallow.
+    if read_err is not None:
+        print(f"2|FAILED — could not read log: {read_err}")
+    elif rc != 0:
         print(f"2|FAILED — exit {rc}, no summary")
     else:
-        print(f"0|exit {rc}, no summary")
+        # Exit 0 but nothing parseable = a silently-degraded run. Flag 1 (notable)
+        # so the lost activity surfaces in the feed rather than passing as quiet.
+        print(f"1|exit {rc}, no summary")
     sys.exit()
 d = last
 if d.get('paused'):

@@ -4,6 +4,11 @@
 Pure logic only: no Linear access, no gate writes, no agent judgement. The
 advancer skill (Plan 2) gathers the facts, calls these helpers, and acts on the
 result. Subcommands: decide, criteria, repairs.
+
+`decide()` trusts the state blob it is handed. The `repairs` field MUST be the
+persisted count from `cadence advance repairs get <issue>` — if it is omitted the
+repair cap cannot bound the loop. `decide()` stays pure (no file reads); coercing
+the counts here just stops a missing/blank/stringy value from disabling the cap.
 """
 import argparse
 import json
@@ -33,6 +38,13 @@ def _act(action, reason, bump_repairs=False, reset_repairs=False):
             "bump_repairs": bump_repairs, "reset_repairs": reset_repairs}
 
 
+def _coerce_int(value):
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def decide(state):
     """Map an auto issue's state to one action. See module/plan for the contract."""
     if state.get("hold") or not state.get("auto"):
@@ -57,9 +69,16 @@ def decide(state):
         full = bool(bar.get("gates") and bar.get("criteria_met") and bar.get("review_clean"))
         if full:
             return _act("accept", "full bar clear — ready for human merge", reset_repairs=True)
-        if state.get("repairs", 0) < state.get("max_repairs", 3):
-            return _act("repair", "bar not met — repairing", bump_repairs=True)
-        return _act("escalate", "still failing after max repairs")
+        # `repairs` must be the count from `cadence advance repairs get <issue>`;
+        # coerce defensively so a missing/blank/stringy value can't silently reset
+        # the count and let the repair cap never fire (unbounded model spend).
+        # `max_repairs: 0` therefore means "escalate immediately" — that is intended.
+        repairs = _coerce_int(state.get("repairs"))
+        max_repairs = _coerce_int(state.get("max_repairs"))
+        if repairs < max_repairs:
+            return _act("repair", f"bar not met — repairing ({repairs}/{max_repairs})",
+                        bump_repairs=True)
+        return _act("escalate", f"still failing after {repairs}/{max_repairs} repairs")
 
     return _act("skip", "not at an advanceable resting label")
 

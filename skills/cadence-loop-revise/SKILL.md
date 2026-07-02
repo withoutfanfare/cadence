@@ -162,8 +162,10 @@ Record the run in the dated files in `$PROJECT_DIR`, per `docs/ARCHITECTURE.md` 
 Get the date via `date -u +%F` and the timestamp via `date -u +%FT%TZ` — never
 invent one.
 
-Emit a JSON summary to stdout:
+Emit the JSON summary as the final line of stdout, prefixed with the fixed marker
+`CADENCE_SUMMARY ` so the runner finds it reliably even if prose surrounds it.
+Append the bare JSON object (no marker) to `runs.jsonl`:
 
-```json
-{"loop":"revise","dry_run":false,"revised":0,"skipped":0,"errors":0}
+```text
+CADENCE_SUMMARY {"loop":"revise","dry_run":false,"revised":0,"skipped":0,"errors":0}
 ```

@@ -90,8 +90,13 @@ Runtime state lives under `CADENCE_STATE_DIR`, default `$HOME/.cadence`:
 - `runs/YYYY-MM-DD.md` is the human digest.
 - `logs/<stage>.log` stores stage output.
 
-Use a separate `CADENCE_STATE_DIR` per project profile if you want pausing and
-logs isolated by project.
+**Give every project profile its own `CADENCE_STATE_DIR`.** Projects that share
+one state dir (for example by both leaving it blank, which defaults to
+`$HOME/.cadence`) share the same pause flag, logs, digests, and scheduler
+run-markers — so pausing one pauses the other and their activity records collide.
+Use a unique path per project, such as `$HOME/.cadence/projects/<name>`, and
+create it with `chmod 700` so the loop can make its own `logs/` and `runs/`
+subdirectories.
 
 ## Safety Boundaries
 

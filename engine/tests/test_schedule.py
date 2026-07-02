@@ -158,6 +158,104 @@ class TestSchedulerTick(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(cli.tick(env, now=now, run=fake_run), 0)
 
+    def test_status_warns_only_when_projects_share_state_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+
+            def make(name, state):
+                config_dir = os.path.join(tmp, name, "cadence")
+                os.makedirs(config_dir)
+                with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                    f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n" % state)
+                return os.path.join(tmp, name)
+
+            shared = os.path.join(tmp, "shared")
+            own = os.path.join(tmp, "own")
+            p1 = make("app1", shared)
+            p2 = make("app2", shared)
+            p3 = make("app3", own)
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(p1 + "\n" + p2 + "\n" + p3 + "\n")
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                cli.print_status({"CADENCE_PROJECTS_FILE": registry})
+            out = buf.getvalue()
+
+            self.assertIn("share CADENCE_STATE_DIR", out)
+            self.assertIn(shared, out)
+            self.assertIn(p1, out)
+            self.assertIn(p2, out)
+            # The isolated project's state dir is never flagged.
+            self.assertNotIn(own, out)
+
+    def test_tick_survives_non_numeric_scheduler_ints(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "app")
+            config_dir = os.path.join(project, "cadence")
+            state = os.path.join(tmp, "state")
+            registry = os.path.join(tmp, "projects.txt")
+            os.makedirs(config_dir)
+            with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n" % state)
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(project + "\n")
+
+            def fake_run(cmd, cwd=None, env=None):
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {
+                "CADENCE_HOME": "/cadence",
+                "CADENCE_PROJECTS_FILE": registry,
+                "CADENCE_SCHEDULER_MAX_RUNS": "banana",
+                "CADENCE_SCHEDULER_WINDOW_MINUTES": "oops",
+            }
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+            # A typo in either int must not crash the whole tick (it degrades).
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                rc = cli.tick(env, now=now, run=fake_run)
+            self.assertEqual(rc, 0)
+
+    def test_two_stages_due_same_window_both_run_across_ticks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "app")
+            config_dir = os.path.join(project, "cadence")
+            state = os.path.join(tmp, "state")
+            registry = os.path.join(tmp, "projects.txt")
+            os.makedirs(config_dir)
+            with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                # spec shares triage's :00 slot — both are due in the same window.
+                f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\nSCHED_SPEC=:00\n" % state)
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(project + "\n")
+
+            calls = []
+
+            def fake_run(cmd, cwd=None, env=None):
+                calls.append(cmd)
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "10"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+            with contextlib.redirect_stdout(io.StringIO()):
+                cli.tick(env, now=now, run=fake_run)
+                cli.tick(env, now=now, run=fake_run)
+
+        # Both due stages run (one per tick); neither starves the other.
+        self.assertEqual(sorted(c[-1] for c in calls), ["spec", "triage"])
+
+    def test_read_env_file_ignores_spaced_assignment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = os.path.join(tmp, ".env")
+            with open(cfg, "w", encoding="utf-8") as f:
+                f.write("GOOD=ok\nCADENCE_STATE_DIR = /custom/path\nexport EXPORTED=yes\n")
+            values = cli.read_env_file(cfg)
+        self.assertEqual(values.get("GOOD"), "ok")
+        self.assertEqual(values.get("EXPORTED"), "yes")
+        # `KEY = value` is not a bash assignment, so the scheduler must skip it too.
+        self.assertNotIn("CADENCE_STATE_DIR", values)
+
 
 class TestScheduleApplyScript(unittest.TestCase):
     def test_apply_rejects_project_local_config_until_launchd_supports_it(self):

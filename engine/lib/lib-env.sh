@@ -18,6 +18,7 @@ if [ -n "${CADENCE_PROFILE:-}" ]; then
   fi
   CADENCE_CONFIG=""
   while IFS= read -r _CADENCE_PROFILE_LINE || [ -n "$_CADENCE_PROFILE_LINE" ]; do
+    _CADENCE_PROFILE_LINE="${_CADENCE_PROFILE_LINE%$'\r'}"   # tolerate CRLF profile files
     case "$_CADENCE_PROFILE_LINE" in ""|\#*) continue ;; esac
     CADENCE_CONFIG="$_CADENCE_PROFILE_LINE"
     break
@@ -26,6 +27,11 @@ if [ -n "${CADENCE_PROFILE:-}" ]; then
     echo "empty profile: $CADENCE_PROFILE" >&2
     exit 2
   fi
+  if [ "$CADENCE_CONFIG" = "~" ]; then
+    CADENCE_CONFIG="$HOME"
+  elif [ "${CADENCE_CONFIG%%/*}" = "~" ]; then   # leading ~/ → expand
+    CADENCE_CONFIG="$HOME/${CADENCE_CONFIG:2}"
+  fi
   if [ ! -f "$CADENCE_CONFIG" ] && [ ! -L "$CADENCE_CONFIG" ]; then
     echo "profile config missing: $CADENCE_CONFIG" >&2
     exit 2
@@ -33,6 +39,11 @@ if [ -n "${CADENCE_PROFILE:-}" ]; then
 fi
 
 if [ -n "${CADENCE_CONFIG:-}" ]; then
+  if [ "$CADENCE_CONFIG" = "~" ]; then
+    CADENCE_CONFIG="$HOME"
+  elif [ "${CADENCE_CONFIG%%/*}" = "~" ]; then   # leading ~/ → expand
+    CADENCE_CONFIG="$HOME/${CADENCE_CONFIG:2}"
+  fi
   if [ -f "$CADENCE_CONFIG" ] || [ -L "$CADENCE_CONFIG" ]; then
     CADENCE_CONFIG="$(cd "$(dirname "$CADENCE_CONFIG")" && pwd)/$(basename "$CADENCE_CONFIG")"
   elif [ "${CADENCE_CONFIG#/}" = "$CADENCE_CONFIG" ]; then
@@ -45,16 +56,32 @@ else
 fi
 export CADENCE_CONFIG
 _CADENCE_RESOLVED_CONFIG="$CADENCE_CONFIG"
+_CADENCE_RESOLVED_HOME="$CADENCE_HOME"
 
 if [ -f "$CADENCE_CONFIG" ]; then
   set -a
-  # shellcheck disable=SC1090
-  . "$CADENCE_CONFIG"
+  if LC_ALL=C grep -q $'\r' "$CADENCE_CONFIG" 2>/dev/null; then
+    # CRLF .env: source a CR-stripped copy so a trailing \r doesn't ride on every
+    # value (which silently misfires the backend guard and pauses every loop).
+    _CADENCE_ENV_TMP="$(mktemp)"
+    tr -d '\r' < "$CADENCE_CONFIG" > "$_CADENCE_ENV_TMP"
+    # shellcheck disable=SC1090
+    . "$_CADENCE_ENV_TMP"
+    rm -f "$_CADENCE_ENV_TMP"
+    unset _CADENCE_ENV_TMP
+  else
+    # shellcheck disable=SC1090
+    . "$CADENCE_CONFIG"
+  fi
   set +a
 fi
+# Restore engine-resolved values that `set -a` sourcing must not let a config
+# override — a stray CADENCE_HOME/CADENCE_CONFIG line would otherwise repoint the
+# whole install and crash every downstream `$CADENCE_HOME/engine/...` lookup.
 CADENCE_CONFIG="$_CADENCE_RESOLVED_CONFIG"
-export CADENCE_CONFIG
-unset _CADENCE_RESOLVED_CONFIG
+CADENCE_HOME="$_CADENCE_RESOLVED_HOME"
+export CADENCE_CONFIG CADENCE_HOME
+unset _CADENCE_RESOLVED_CONFIG _CADENCE_RESOLVED_HOME
 unset _CADENCE_PROFILE_FILE _CADENCE_PROFILE_LINE
 
 : "${BASE_BRANCH:=develop}"

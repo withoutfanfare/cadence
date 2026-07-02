@@ -93,6 +93,31 @@ class TestDecide(unittest.TestCase):
     def test_skip_when_resting_unknown(self):
         self.assertEqual(cli.decide(st(resting="needs-human"))["action"], "skip")
 
+    def test_missing_repairs_key_treated_as_zero_and_still_repairs(self):
+        s = st(resting="pr-open", max_repairs=3,
+               bar={"gates": False, "criteria_met": True, "review_clean": True})
+        del s["repairs"]  # skill omitted the count — must not disable the cap
+        out = cli.decide(s)
+        self.assertEqual(out["action"], "repair")
+        self.assertIn("0/3", out["reason"])
+
+    def test_max_repairs_zero_escalates_immediately(self):
+        out = cli.decide(st(resting="pr-open", repairs=0, max_repairs=0,
+                            bar={"gates": False, "criteria_met": True, "review_clean": True}))
+        self.assertEqual(out["action"], "escalate")
+
+    def test_string_counts_are_coerced(self):
+        out = cli.decide(st(resting="pr-open", repairs="1", max_repairs="3",
+                            bar={"gates": False, "criteria_met": True, "review_clean": True}))
+        self.assertEqual(out["action"], "repair")
+        self.assertIn("1/3", out["reason"])
+
+    def test_string_counts_at_limit_escalate(self):
+        out = cli.decide(st(resting="pr-open", repairs="3", max_repairs="3",
+                            bar={"gates": False, "criteria_met": True, "review_clean": True}))
+        self.assertEqual(out["action"], "escalate")
+        self.assertIn("3/3", out["reason"])
+
 
 if __name__ == "__main__":
     unittest.main()

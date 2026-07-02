@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Per-project state-dir guard: `cadence schedule status` and each scheduler tick now
+  warn when two registered projects resolve to the same `CADENCE_STATE_DIR`, which would
+  otherwise make them collide on the pause flag, logs, and scheduler run-markers (one
+  project silently skipping the other's slot). Give each project its own state dir.
 - Autonomous mode (Layer 1 — the advancer): the `advance` loop, the `agent:auto`
   opt-in label, `cadence run advance [--dry-run]`, and the `AUTONOMOUS`,
   `AUTO_MAX_ISSUES_PER_RUN`, `AUTO_MAX_REPAIRS`, and `MODEL_ADVANCE` settings. On
@@ -50,6 +54,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   investigation, PR creation, and PR back-fill instead of hardcoding `develop`.
 - Loop skill prompts keep Step 0 as a short defence-in-depth check and defer the
   detailed pause-recording mechanics to `docs/ARCHITECTURE.md`.
+- Run summaries are now located on stdout via an explicit `CADENCE_SUMMARY ` marker
+  (the old bare-JSON heuristic is kept as a fallback); the ledger line stays the bare
+  object. A run that exits cleanly but emits no locatable summary is recorded as
+  notable rather than passing silently as quiet.
+
+### Fixed
+
+- Linear adapter: transient failures (429, 5xx, network) retry up to three times with
+  exponential backoff, honouring a numeric `Retry-After`, instead of failing the whole
+  scheduled slot on one blip; issue pagination is capped at 100 pages as a safety stop.
+- Build/revise worktree lock refreshes via a heartbeat while its holder is alive, so a
+  legitimate build still running past the 2-hour mark is no longer reclaimed mid-flight;
+  the rendered prompt file is now also removed on signal interruption.
+- Autonomous advancer coerces its repair counts, so a missing or malformed count can no
+  longer silently disable the repair cap; the escalation reason now shows the count.
+- Skill frontmatter parsing tolerates CRLF and trailing spaces on the `---` delimiters,
+  and warns instead of silently leaking the frontmatter when the closing delimiter is
+  missing.
+- Config loader warns (naming the key) when a quoted `.env` value is unterminated or
+  contains a backslash-escaped quote it cannot mirror from bash.
+- `cadence queue` warns when an issue carries conflicting `agent:*` state labels.
+- Memory adapter tolerates CRLF-authored rule files and normalises a multi-line title so
+  it cannot corrupt the `description` frontmatter it writes.
+- Advance idle probe fetches a single issue rather than full issue nodes.
+
+- Local task file: a body line starting `status:` or `labels:` (e.g. `status: 200`
+  in a spec) is kept as body text instead of being silently absorbed into the
+  task's metadata on the next read.
+- Scheduler: a non-numeric `CADENCE_SCHEDULER_MAX_RUNS` or
+  `CADENCE_SCHEDULER_WINDOW_MINUTES` now degrades to the default instead of
+  crashing every tick; two stages due in the same window each run rather than the
+  first starving the rest; and `KEY = value` (space before `=`) is ignored, matching
+  bash, so the scheduler's view can't diverge from the loaded config.
+- `cadence conduct` now records a FAILED entry in the ledger when a Linear/tasks
+  adapter fails, so a scheduled feeder run no longer stops without a trace.
+- Config loading tolerates CRLF (`.env` and profile files) and expands a leading
+  `~/` in `--config`/profile paths; a stray `CADENCE_HOME=` line can no longer
+  repoint the install, and triage/spec-only configs without `PROJECT_DIR` no longer
+  crash under `set -u`.
+- Build/revise worktree lock reclaims by age (survives macOS PID reuse) and reclaims
+  stale locks atomically so two racers can't both acquire it; a timed-out run with no
+  summary no longer reports the previous run's counts.
+- Registered projects that share a `CADENCE_STATE_DIR` are flagged by
+  `cadence schedule status` and each tick.
+- Linear adapter: a non-JSON API response surfaces as a clean error, not a traceback.
 
 ### Added (engine extraction)
 

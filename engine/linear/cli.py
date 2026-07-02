@@ -8,6 +8,7 @@ import argparse
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -27,6 +28,24 @@ def _require_env(env, *names):
         raise LinearError(f"missing required env value(s): {', '.join(missing)}")
 
 
+# Transient HTTP statuses worth a retry; anything else fails fast.
+_RETRY_CODES = {429, 500, 502, 503, 504}
+_MAX_ATTEMPTS = 3
+
+
+def _retry_delay(headers, attempt):
+    """Seconds to wait before the next attempt: honour a numeric Retry-After
+    header when present, else exponential backoff (2 ** attempt)."""
+    if headers is not None:
+        raw = headers.get("Retry-After")
+        if raw:
+            try:
+                return max(0, int(raw))
+            except (TypeError, ValueError):
+                pass
+    return 2 ** attempt
+
+
 def graphql(query, variables, env):
     key = env.get("LINEAR_API_KEY")
     if not key:
@@ -36,13 +55,38 @@ def graphql(query, variables, env):
         API_URL, data=body,
         headers={"Authorization": key, "Content-Type": "application/json"},
     )
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        raise LinearError(f"HTTP {e.code}: {e.read().decode('utf-8', 'replace')}")
-    except urllib.error.URLError as e:
-        raise LinearError(f"network error: {e.reason}")
+    # A single transient blip (rate limit, 5xx, network) otherwise wastes the whole
+    # scheduled slot, so retry with backoff. stderr lands in logs/<stage>.log.
+    payload = None
+    for attempt in range(_MAX_ATTEMPTS):
+        last = attempt == _MAX_ATTEMPTS - 1
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+            break
+        except urllib.error.HTTPError as e:
+            if e.code in _RETRY_CODES and not last:
+                delay = _retry_delay(getattr(e, "headers", None), attempt)
+                sys.stderr.write(
+                    f"linear: HTTP {e.code}, retry {attempt + 2}/{_MAX_ATTEMPTS} in {delay}s\n")
+                time.sleep(delay)
+                continue
+            try:
+                detail = e.read().decode("utf-8", "replace")
+            except Exception:
+                detail = "<unreadable body>"
+            raise LinearError(f"HTTP {e.code}: {detail}")
+        except urllib.error.URLError as e:
+            if not last:
+                delay = 2 ** attempt
+                sys.stderr.write(
+                    f"linear: network error ({e.reason}), "
+                    f"retry {attempt + 2}/{_MAX_ATTEMPTS} in {delay}s\n")
+                time.sleep(delay)
+                continue
+            raise LinearError(f"network error: {e.reason}")
+        except json.JSONDecodeError as e:
+            raise LinearError(f"invalid JSON response from Linear: {e}")
     if payload.get("errors"):
         raise LinearError(json.dumps(payload["errors"]))
     return payload["data"]
@@ -114,7 +158,11 @@ def _issue_nodes(f, env, post=graphql, limit=None):
     remaining = int(limit) if limit else None
     after = None
     nodes = []
+    pages = 0
     while True:
+        pages += 1
+        if pages > 100:  # cheap insurance against an API bug where endCursor never advances
+            raise LinearError("issue pagination exceeded 100 pages — endCursor not advancing?")
         first = min(100, remaining) if remaining is not None else 100
         data = post(_ISSUES_Q, {"filter": f, "first": first, "after": after}, env)
         page = data["issues"]

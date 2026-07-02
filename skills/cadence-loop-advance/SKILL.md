@@ -158,10 +158,12 @@ padding. No "Claude"/"AI" mention in any comment.
 
 ## On finishing
 
-Emit a JSON summary to stdout — the same object appended to `runs.jsonl`:
+Emit the JSON summary as the final line of stdout, prefixed with the fixed marker
+`CADENCE_SUMMARY ` so the runner finds it reliably even if prose surrounds it.
+Append the bare JSON object (no marker) to `runs.jsonl`:
 
-```json
-{"loop":"advance","dry_run":false,"advanced":0,"accepted":0,"repaired":0,"escalated":0,"skipped":0,"errors":0,"cost":""}
+```text
+CADENCE_SUMMARY {"loop":"advance","dry_run":false,"advanced":0,"accepted":0,"repaired":0,"escalated":0,"skipped":0,"errors":0,"cost":""}
 ```
 
 `advanced` counts grant-spec + grant-build; `accepted` counts accept; `repaired`

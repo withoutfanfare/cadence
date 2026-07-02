@@ -262,7 +262,12 @@ Followed by the counts line and the per-issue list. Each entry:
 `⚠️ … · skipped — reason`. Dry-run sections are titled `(dry run — nothing written)`.
 
 **Machine ledger** (`runs/runs.jsonl`): append the same JSON object printed to
-stdout — one line per run, one object per line. No pretty-printing.
+stdout — one line per run, one object per line. No pretty-printing. On stdout the
+object is printed on its own line prefixed with the fixed marker
+`CADENCE_SUMMARY ` so the runner can locate it reliably even amid prose; the
+ledger line itself is the bare object with no marker. A run that exits 0 but emits
+no locatable summary is recorded as notable (not quiet), so silently-degraded runs
+still surface in the activity feed.
 
 The deterministic conductor is not model-backed, but it still appends a compact
 summary to `runs/runs.jsonl`, `runs/activity.log`, `runs/YYYY-MM-DD.md`, and

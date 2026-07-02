@@ -27,6 +27,7 @@ def parse(text):
     tasks = []
     current = None
     body = []
+    in_header = False
     for line in text.splitlines():
         match = HEADER_RE.match(line)
         if match:
@@ -42,14 +43,19 @@ def parse(text):
                 "description": "",
             }
             body = []
+            in_header = True
             continue
         if current is None:
             continue
-        if line.startswith("status:"):
+        # `status:`/`labels:` are metadata only in the header block that render()
+        # emits right after the `## ID: Title` line. Once body text begins, an
+        # identical prefix (e.g. "status: 200" in a spec) is body, not metadata.
+        if in_header and line.startswith("status:"):
             current["status"] = line.split(":", 1)[1].strip()
-        elif line.startswith("labels:"):
+        elif in_header and line.startswith("labels:"):
             current["labels"] = _split_list(line.split(":", 1)[1])
         else:
+            in_header = False
             body.append(line)
     if current:
         current["description"] = "\n".join(body).strip()

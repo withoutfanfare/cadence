@@ -102,6 +102,39 @@ class TestTasksCli(unittest.TestCase):
         self.assertIn("New spec body.", updated)
         self.assertNotIn("Acceptance criteria here.", updated)
 
+    def test_body_lines_starting_with_status_or_labels_survive_round_trip(self):
+        # A spec body can legitimately contain lines like "status: 200"; these
+        # must stay in the body, not be swallowed into the task's metadata.
+        with tempfile.TemporaryDirectory() as tmp:
+            task_file = os.path.join(tmp, "cadence", "tasks.md")
+            body_file = os.path.join(tmp, "body.md")
+            os.makedirs(os.path.dirname(task_file))
+            with open(task_file, "w", encoding="utf-8") as f:
+                f.write(TASKS_MD)
+            with open(body_file, "w", encoding="utf-8") as f:
+                f.write("The endpoint returns:\nstatus: 200 for success\n"
+                        "status: 404 when missing\n\nlabels: none required\n")
+            env = os.environ.copy()
+            env["TASK_FILE"] = task_file
+
+            up = subprocess.run(
+                [sys.executable, TASKS_CLI, "update", "TASK-1", "--body-file", body_file],
+                cwd=ROOT, env=env, text=True, capture_output=True, timeout=10)
+            self.assertEqual(up.returncode, 0, up.stderr)
+            # Re-read from disk to force a fresh parse of what save() rendered.
+            got = subprocess.run(
+                [sys.executable, TASKS_CLI, "get", "TASK-1"],
+                cwd=ROOT, env=env, text=True, capture_output=True, timeout=10)
+            self.assertEqual(got.returncode, 0, got.stderr)
+            task = json.loads(got.stdout)
+
+        # Metadata untouched; every body line preserved.
+        self.assertEqual(task["status"], "open")
+        self.assertEqual(task["labels"], ["agent:triaged", "Bug"])
+        self.assertIn("status: 200 for success", task["description"])
+        self.assertIn("status: 404 when missing", task["description"])
+        self.assertIn("labels: none required", task["description"])
+
 
 if __name__ == "__main__":
     unittest.main()

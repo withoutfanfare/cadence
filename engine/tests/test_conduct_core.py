@@ -103,7 +103,13 @@ class TestConduct(unittest.TestCase):
         old = cli._linear
         try:
             cli._linear = fake_linear
-            out = cli.conduct({"AUTONOMOUS": "on", "CONDUCT_WIP": "1"}, dry_run=False)
+            # Point at a temp state dir so the pass does not read a real
+            # ~/.cadence/runs/PAUSED flag on the developer's machine.
+            with tempfile.TemporaryDirectory() as tmp:
+                out = cli.conduct(
+                    {"AUTONOMOUS": "on", "CONDUCT_WIP": "1", "CADENCE_STATE_DIR": tmp},
+                    dry_run=False,
+                )
         finally:
             cli._linear = old
 
@@ -200,6 +206,34 @@ class TestLedger(unittest.TestCase):
                 digest = f.read()
             self.assertIn("## conduct · dry-run · 2026-06-30T10:00:00Z", digest)
             self.assertIn("1 tagged, 1 blocked, 1 parent", digest)
+
+    def test_main_records_failed_conduct_when_adapter_exits(self):
+        # An adapter sys.exit mid-run must still leave a FAILED trace in the ledger.
+        with tempfile.TemporaryDirectory() as tmp:
+            old_linear = cli._linear
+            old_load = cli._cadence_env.load_env
+            try:
+                cli._cadence_env.load_env = lambda *a, **k: {
+                    "CADENCE_STATE_DIR": tmp, "AUTONOMOUS": "on",
+                    "TASK_BACKEND": "linear", "CONDUCT_WIP": "1",
+                }
+
+                def boom(*_args):
+                    raise SystemExit(1)
+
+                cli._linear = boom
+                with self.assertRaises(SystemExit):
+                    cli.main([])
+            finally:
+                cli._linear = old_linear
+                cli._cadence_env.load_env = old_load
+
+            # Check inside the with-block, before the temp dir is cleaned up.
+            jsonl = os.path.join(tmp, "runs", "runs.jsonl")
+            self.assertTrue(os.path.exists(jsonl), "a failed conduct must still write a ledger")
+            record = json.loads(open(jsonl, encoding="utf-8").read().strip().splitlines()[-1])
+            self.assertEqual(record["loop"], "conduct")
+            self.assertIn("error", record)
 
 
 if __name__ == "__main__":

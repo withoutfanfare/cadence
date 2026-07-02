@@ -170,8 +170,10 @@ UK English. Plain and specific. Name files, lines, models. No hype, no padding.
 
 ## On finishing
 
-Emit a JSON summary to stdout — the same object you append to `runs.jsonl`:
+Emit the JSON summary as the final line of stdout, prefixed with the fixed marker
+`CADENCE_SUMMARY ` so the runner finds it reliably even if prose surrounds it.
+Append the bare JSON object (no marker) to `runs.jsonl`:
 
-```json
-{"loop":"spec","dry_run":false,"specced":0,"superseded":0,"skipped":0,"errors":0}
+```text
+CADENCE_SUMMARY {"loop":"spec","dry_run":false,"specced":0,"superseded":0,"skipped":0,"errors":0}
 ```
