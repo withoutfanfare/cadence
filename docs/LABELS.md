@@ -37,7 +37,7 @@ creation step. See [TASKS.md](TASKS.md) for that format.
 | `agent:needs-attention` | Any loop | Human | A run failed; human must investigate the run log before proceeding |
 | `agent:claimed` | Any loop (at run start) | Same loop (at run end or failure) | Concurrency lock; a claim older than 2 hours may be reclaimed |
 | `agent:proposed` | Roadmap loop | Human (accept: remove it or set `agent:spec`; the spec loop also strips it on accept) or human dismissal (cancel the issue) | Advisory proposal awaiting a human verdict. The conductor never auto-queues an issue carrying this label |
-| `agent:later` | Human | Human | "Not now" dismissal marker on a **cancelled** proposal: the roadmap loop may re-propose the idea after a 30-day cool-off from cancellation if it still serves the goal. Without it, a cancelled proposal is never re-proposed |
+| `agent:later` | Human | Nobody — it stays on the cancelled issue as the roadmap loop's memory | "Not now" dismissal marker on a **cancelled** proposal: the roadmap loop may re-propose the idea after a 30-day cool-off from cancellation if it still serves the goal. Without it, a cancelled proposal is never re-proposed |
 
 ---
 

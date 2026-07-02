@@ -32,11 +32,12 @@ Cadence can read task state from either:
   `conduct`, and model loop prompts without requiring Linear credentials.
 
 The same labels drive both backends: `agent:triaged`, `agent:specced`,
-`agent:pr-open`, `agent:revised`, `agent:auto`, and the hold/failure labels.
+`agent:pr-open`, `agent:revised`, `agent:auto`, `agent:proposed`/`agent:later`
+for roadmap proposals, and the hold/failure labels.
 
 ## Agent Loops
 
-Cadence runs four human-gated loops:
+Cadence runs four human-gated loops, plus an optional goal-gated roadmap loop:
 
 - `triage` fills blanks and leaves `agent:triaged` or `agent:needs-human`.
 - `spec` runs only after a human adds `agent:spec`, then leaves `agent:specced`.
@@ -44,6 +45,11 @@ Cadence runs four human-gated loops:
   runs gates, and opens a draft PR.
 - `revise` runs only after a human adds `agent:revise`, then updates the same
   draft PR and leaves `agent:revised`.
+- `roadmap` (optional) runs only when a goal is written on the project — the
+  Linear project description, or `GOAL_FILE` on the file backend. It scouts the
+  codebase read-only against that goal and files at most `ROADMAP_MAX_OPEN`
+  proposal issues carrying `agent:proposed` for a human verdict. Without a goal
+  it idles before any model launch.
 
 Autonomous mode is opt-in. With `AUTONOMOUS=on`, the advancer can grant gates for
 items carrying `agent:auto`, and the conductor can top up that queue. Work still

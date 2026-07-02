@@ -190,7 +190,7 @@ To keep Claude on planning stages but use Codex as the build orchestrator and
 Kimi as the coding implementer:
 
 ```bash
-cadence providers set --triage claude:sonnet --spec claude:opus --build codex:gpt-5.4 --revise claude:sonnet --advance claude:sonnet --review claude:opus --implementer kimi
+cadence providers set --triage claude:sonnet --spec claude:opus --build codex:gpt-5.4 --revise claude:sonnet --advance claude:sonnet --roadmap claude:opus --review claude:opus --implementer kimi
 ```
 
 To try Kimi as the lead loop provider while keeping Claude as the folded PR
