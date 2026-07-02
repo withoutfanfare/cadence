@@ -204,6 +204,53 @@ def cmd_update(args, env=None):
     return task
 
 
+def _next_id(tasks):
+    """Next id in the board's dominant PREFIX-N convention (default TASK)."""
+    pattern = re.compile(r"^([A-Za-z]+)-(\d+)$")
+    counts, highest = {}, {}
+    for task in tasks:
+        m = pattern.match(task["identifier"])
+        if not m:
+            continue
+        prefix, num = m.group(1), int(m.group(2))
+        counts[prefix] = counts.get(prefix, 0) + 1
+        highest[prefix] = max(highest.get(prefix, 0), num)
+    prefix = max(counts, key=lambda p: counts[p]) if counts else "TASK"
+    return "%s-%d" % (prefix, highest.get(prefix, 0) + 1)
+
+
+def cmd_add(args, env=None):
+    """Append a roadmap proposal. Always status: open with agent:proposed;
+    refuses to exceed ROADMAP_MAX_OPEN open proposals (engine-enforced cap)."""
+    environ = env or os.environ
+    tasks = load(env)
+    try:
+        max_open = int(environ.get("ROADMAP_MAX_OPEN") or 5)
+    except ValueError:
+        max_open = 5
+    open_proposed = [t for t in tasks
+                     if "agent:proposed" in (t.get("labels") or [])
+                     and (t.get("status") or "") == "open"]
+    if len(open_proposed) >= max_open:
+        raise ValueError(
+            "roadmap cap reached: %d open proposal(s) (ROADMAP_MAX_OPEN=%d)"
+            % (len(open_proposed), max_open))
+    labels = ["agent:proposed"]
+    for label in args.add_label or []:
+        if label not in labels:
+            labels.append(label)
+    description = ""
+    if args.body_file:
+        with open(args.body_file, encoding="utf-8") as f:
+            description = f.read().strip()
+    identifier = _next_id(tasks)
+    task = {"id": identifier, "identifier": identifier, "title": args.title,
+            "status": "open", "labels": labels, "description": description}
+    tasks.append(task)
+    save(tasks, env)
+    return task
+
+
 def cmd_validate(args, env=None):
     path = task_path(env)
     if not os.path.exists(path):
@@ -232,6 +279,11 @@ def build_parser():
     update_p.add_argument("--add-label", action="append")
     update_p.add_argument("--remove-label", action="append")
     update_p.add_argument("--body-file")
+
+    add_p = sub.add_parser("add")
+    add_p.add_argument("--title", required=True)
+    add_p.add_argument("--add-label", action="append")
+    add_p.add_argument("--body-file")
     return parser
 
 
@@ -250,9 +302,11 @@ def main(argv=None, env=None):
             out = cmd_list(args, env)
         elif args.cmd == "get":
             out = cmd_get(args, env)
+        elif args.cmd == "add":
+            out = cmd_add(args, env)
         else:
             out = cmd_update(args, env)
-    except (FileNotFoundError, KeyError) as exc:
+    except (FileNotFoundError, KeyError, ValueError) as exc:
         print(json.dumps({"error": str(exc)}), file=sys.stderr)
         return 1
     print(json.dumps(out, ensure_ascii=False, indent=2))
