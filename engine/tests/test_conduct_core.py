@@ -37,6 +37,10 @@ class TestEligible(unittest.TestCase):
     def test_drops_not_triaged(self):
         self.assertEqual(cli.eligible([issue("A-3", ["Bug"])]), [])
 
+    def test_drops_roadmap_proposals_until_a_human_accepts(self):
+        self.assertEqual(
+            cli.eligible([issue("A-9", ["agent:triaged", "agent:proposed"])]), [])
+
     def test_drops_completed_or_canceled_state(self):
         self.assertEqual(cli.eligible([issue("A-4", ["agent:triaged"], state_type="completed")]), [])
         self.assertEqual(cli.eligible([issue("A-5", ["agent:triaged"], state_type="canceled")]), [])
