@@ -354,31 +354,40 @@ does not pause the others.
 
 ## Menu bar (SwiftBar)
 
-Two optional [SwiftBar](https://swiftbar.app) plugins in `assets/swiftbar/` give an
-ambient, multi-project view — both cover **every registered project**, not just one:
+One optional [SwiftBar](https://swiftbar.app) plugin, `assets/swiftbar/cadence.2m.py`,
+gives an ambient, multi-project view covering **every registered project** in a
+single menu. It answers one question first — *do I need to do anything?* — then
+lets you act.
 
-- `cadence.1m.sh` — **loop monitor**. The menu-bar glyph aggregates health across
-  projects (worst state wins: failed → paused → ok → idle). The dropdown shows one
-  section per project — per-stage last result and recent activity — with
-  pause/resume, run-a-stage, and view-logs actions scoped to that project. Backed
-  by `cadence overview --json`.
-- `cadence-inbox.5m.py` — **gate inbox**. One section per project of items awaiting
-  your move, with one-click gate grants (via `assets/cadence-grant.sh`, scoped to
-  that project's config and backend). It follows each project's `TASK_BACKEND`:
-  Linear projects list `linear issues-list`; **file projects** (`TASK_BACKEND=file`)
-  list `tasks list` and also show an **Open tasks · backlog** section of ungated,
-  open tasks, so the whole `tasks.md` is visible before anything is gated. The badge
-  counts only the time-sensitive set (PRs + escalations) across all projects.
+- **Menu-bar glyph** — the worst state across all projects, in priority order:
+  ⚠️ a run failed → 📥 *N* tasks awaiting your move → ⏸ paused → a calm green tick
+  when nothing is broken and nothing is waiting. The number is the count of
+  time-sensitive tasks (PRs + escalations) across every project.
+- **Per project** — an honest one-line status rather than a blanket tick: a glyph
+  (⚠️ needs attention · 🔴 *N* awaiting you · ⏸ paused · 🟢 active · ⚪ idle), the
+  plain-English state, and a **relative** timestamp ("2h ago", never raw UTC) so you
+  can see at a glance whether the status is fresh. Underneath sit the tasks awaiting
+  your move (one-click gate grants via `assets/cadence-grant.sh`, scoped to that
+  project's config and backend), following each project's `TASK_BACKEND`: Linear
+  projects list `linear issues-list`; **file projects** (`TASK_BACKEND=file`) also
+  show an **Open · backlog** section of ungated open tasks, so the whole `tasks.md`
+  is visible before anything is gated.
+- **Stages & controls** — a submenu per project holding the technical detail kept
+  out of the main view: each work stage's last result with its relative time, a
+  single grey `Autonomous  off/on` line (advance + conduct collapsed, since off is
+  the default and shouldn't shout), then pause/resume, run-a-stage, view-logs, and
+  open-board/tasks actions. Backed by `cadence overview --json`.
 
-Install by symlinking both into your SwiftBar plugin folder, for example:
+Install by symlinking it into your SwiftBar plugin folder:
 
 ```bash
-ln -s "$PWD/assets/swiftbar/cadence.1m.sh" "$HOME/path/to/SwiftBar/Plugins/"
-ln -s "$PWD/assets/swiftbar/cadence-inbox.5m.py" "$HOME/path/to/SwiftBar/Plugins/"
+ln -s "$PWD/assets/swiftbar/cadence.2m.py" "$HOME/path/to/SwiftBar/Plugins/"
 ```
 
-The refresh interval is in each filename (`.1m.`, `.5m.`); the inbox polls less
-often because it calls the Linear API.
+The refresh interval is in the filename (`.2m.`); it polls every two minutes
+because it calls the Linear API once per project. Run
+`assets/swiftbar/cadence.2m.py selftest` to check the status and relative-time
+logic without touching cadence.
 
 ### Controlling a task from the menu bar
 

@@ -11,13 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `cadence overview [--json]`: a cross-project status view — health, last run per
   stage, and recent activity for every registered project in one glance. Read-only.
-- Multi-project menu bar: both SwiftBar plugins (`assets/swiftbar/`) now cover every
-  registered project. The loop monitor aggregates health and gives per-project
-  pause/run/logs actions (via `cadence overview --json`); the gate inbox lists each
-  project's issues awaiting a move with config-scoped one-click grants. The inbox is
-  **backend-aware** — file projects (`TASK_BACKEND=file`) are read via `tasks list`
-  and also show an "Open tasks" backlog of ungated tasks so the whole `tasks.md` is
-  visible; grants route through `tasks update` rather than `linear bulk-label`.
+- Multi-project menu bar: a single SwiftBar plugin (`assets/swiftbar/cadence.2m.py`)
+  covers every registered project in one menu. The menu-bar glyph answers "do I need
+  to do anything?" first (⚠️ a run failed → 📥 *N* awaiting your move → ⏸ paused →
+  calm tick). Each project shows an honest one-line status — a glyph, plain-English
+  state, and a **relative** timestamp ("2h ago", not raw UTC) — with the tasks
+  awaiting your move underneath (config-scoped one-click grants) and the technical
+  detail (per-stage results, autonomous line, pause/run/logs) tucked into a
+  **Stages & controls** submenu. Backend-aware: file projects (`TASK_BACKEND=file`)
+  are read via `tasks list` and also show an "Open · backlog" of ungated tasks so the
+  whole `tasks.md` is visible; grants route through `tasks update`. Backed by
+  `cadence overview --json`. (Replaces the earlier split loop-monitor / gate-inbox
+  pair.)
 - `cadence doctor` now validates the configured **model**, not just the provider
   CLI — for `kimi` it checks the model exists in `~/.kimi-code/config.toml` (so a
   wrong name like `kimi:k2` is caught at setup rather than at the first run), and it
