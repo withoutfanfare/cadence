@@ -95,7 +95,7 @@ and write labels to record what they did. Full label vocabulary:
 
 `agent:hold` — human override; every loop skips the issue regardless of other labels.
 
-`agent:later` — human "not now" marker on a cancelled proposal; the roadmap loop may re-propose after a 30-day cool-off from cancellation.
+`agent:later` — human "not now" marker on a cancelled proposal; the roadmap loop may re-propose after a 30-day cool-off from cancellation (Linear only — the file backend has no timestamps; see `docs/LABELS.md`).
 
 ---
 
@@ -219,7 +219,9 @@ the create verbs (`cadence linear issue-create`, `cadence tasks add`), not by
 the prompt. The loop never grants gates; the conductor never queues an issue
 carrying `agent:proposed`. Accepting a proposal = gating it (the spec loop then
 strips the marker) or removing the marker; dismissing = cancelling the issue,
-optionally adding `agent:later` to allow re-proposal after 30 days.
+optionally adding `agent:later` to allow re-proposal after 30 days (Linear
+only; file-backend tasks carry no timestamps — such proposals may be
+reconsidered whenever they still serve the goal).
 
 ---
 
