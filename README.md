@@ -29,7 +29,7 @@ the configured project.
 | `spec` | Human adds `agent:spec` | Writes a spec document and validates duplicate candidates | `agent:specced` |
 | `build` | Human adds `agent:build` | Creates an isolated worktree, delegates code changes, runs gates, opens a draft PR | `agent:pr-open` |
 | `revise` | Human adds `agent:revise` | Pushes review changes to the same draft PR | `agent:revised` |
-| `roadmap` (optional) | A goal written on the project | Scouts the codebase read-only against your stated goal and files a capped number of proposal issues | `agent:proposed` |
+| `roadmap` (optional) | Enabled per project via `SCHED_ROADMAP` | Scouts the codebase read-only (steered by an optional goal, else a standing quality rubric) and files a capped number of proposal issues | `agent:proposed` |
 
 Each loop consumes its trigger and leaves a "your move" label. A human decides
 when to move an issue through the next gate.
@@ -72,14 +72,17 @@ rollout guidance is in
 
 ## Roadmapper mode (opt-in)
 
-Cadence can also *suggest* work, not just execute it. Write a goal on the project
-(the Linear project description, or `cadence/goal.md` on the file backend) and the
-optional `roadmap` loop scouts the codebase against it on a schedule, filing at
-most a handful of proposal issues tagged `agent:proposed`. You accept a proposal
-by gating it (or removing the tag), or dismiss it by cancelling the issue —
-add `agent:later` to allow it back after a cool-off. Proposals never enter
-autonomous mode until a human accepts them, and with no goal written the loop
-idles without cost. See
+Cadence can also *suggest* work, not just execute it. Enable the optional
+`roadmap` loop on a project (set `SCHED_ROADMAP` to a cadence in its
+`cadence/.env`) and it scouts the codebase on a schedule, filing at most a
+handful of proposal issues tagged `agent:proposed`. It looks for whatever most
+serves an optional goal (the Linear project description, or `cadence/goal.md`);
+with no goal it works against a standing quality rubric — real bugs,
+performance, accessibility, security, dead code, consistency. You accept a
+proposal by gating it (or removing the tag), or dismiss it by cancelling the
+issue — add `agent:later` to allow it back after a cool-off. Proposals never
+enter autonomous mode until a human accepts them, and the loop stays off until
+you enable its schedule. See
 [docs/OPERATING.md](docs/OPERATING.md#roadmapper-mode-opt-in).
 
 ## Requirements

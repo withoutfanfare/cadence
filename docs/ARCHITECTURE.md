@@ -102,7 +102,7 @@ and write labels to record what they did. Full label vocabulary:
 ## 3. The lifecycle
 
 ```bash
-   ROADMAP loop (optional; goal stated on the project) — files proposals
+   ROADMAP loop (optional; opt-in via SCHED_ROADMAP) — files proposals
         │  as new issues carrying agent:proposed (capped; conductor-fenced)
         ▼
    NEW issue (no agent label)
@@ -207,11 +207,14 @@ not a pause: there is no safety fault, just no autonomous work to advance.
 
 ## 5b. Roadmap loop (optional) — advisory scout
 
-An optional fifth loop, `roadmap`, runs on `SCHED_ROADMAP` and files proposal
-issues based on a human-stated goal — the Linear project description, or
-`GOAL_FILE` (default `cadence/goal.md`) on the file backend. No goal → the
-runner exits idle (`reason: no-goal`) before any model launch, so the mode is
-off until a goal is written.
+An optional fifth loop, `roadmap`, scans the codebase read-only and files
+proposal issues for improvements it finds. It is **opt-in per project via
+`SCHED_ROADMAP`** (default `off`) — enabling the schedule is what turns it on,
+not a stated goal. A goal, when present — the Linear project description, or
+`GOAL_FILE` (default `cadence/goal.md`) on the file backend — *steers* what it
+looks for; with no goal it works against a standing engineering-quality rubric
+(real bugs, performance, accessibility, security, dead code, consistency). A
+manual `cadence run roadmap` is an explicit opt-in and always runs.
 
 Proposals are real backlog issues carrying `agent:proposed`, capped at
 `ROADMAP_MAX_OPEN` open at once — the cap and the marker label are enforced by

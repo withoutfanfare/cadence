@@ -31,7 +31,7 @@ JOBS = {
     "build":   ("com.cadence.loop-build",   "run-loop", "build",   ":30"),
     "revise":  ("com.cadence.loop-revise",  "run-loop", "revise",  ":45"),
     "advance": ("com.cadence.loop-advance", "run-loop", "advance", ":55"),
-    "roadmap": ("com.cadence.loop-roadmap", "run-loop", "roadmap", "24h@20"),
+    "roadmap": ("com.cadence.loop-roadmap", "run-loop", "roadmap", "off"),
     "conduct": ("com.cadence.conduct",      "cadence",  "conduct", "3h@50"),
 }
 

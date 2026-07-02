@@ -335,18 +335,24 @@ exec {real_python} "$@"
             log = f.read()
         self.assertIn("starting cadence advance (codex:gpt-test)", log)
 
-    def test_roadmap_without_goal_records_idle_not_pause(self):
+    def test_roadmap_without_goal_launches_on_the_rubric(self):
+        # No goal is no longer an opt-out — the loop runs against the standing
+        # quality rubric. The per-project opt-in is SCHED_ROADMAP, not a goal
+        # file, so a manual `run roadmap` proceeds even with no goal present.
         os.makedirs(os.path.join(self.project, "cadence"))
         with open(os.path.join(self.project, "cadence", "tasks.md"), "w", encoding="utf-8") as f:
             f.write("# Cadence Tasks\n")
+        shutil.copytree(os.path.join(ROOT, "engine", "prompts"),
+                        os.path.join(self.root, "engine", "prompts"))
+        self._write_exe("codex", "#!/bin/sh\nprintf '{\"stage\":\"roadmap\",\"proposed\":0,\"errors\":0}\\n'\n")
 
-        result = self._run("roadmap", TASK_BACKEND="file")
+        result = self._run("roadmap", TASK_BACKEND="file",
+                           ORCHESTRATOR_ROADMAP="codex:gpt-test")
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        payload = json.loads(result.stdout)
-        self.assertEqual(payload["stage"], "roadmap")
-        self.assertTrue(payload["idle"])
-        self.assertEqual(payload["reason"], "no-goal")
+        with open(os.path.join(self.state, "logs", "roadmap.log"), encoding="utf-8") as f:
+            log = f.read()
+        self.assertIn("starting cadence roadmap (codex:gpt-test)", log)
 
     def test_file_backend_roadmap_launches_when_goal_exists(self):
         os.makedirs(os.path.join(self.project, "cadence"))

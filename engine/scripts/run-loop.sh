@@ -202,23 +202,11 @@ if [ "$STAGE" = "advance" ]; then
   [ "$_n" = "0" ] && idle_before_launch "no-auto-work" "no agent:auto issues in scope"
 fi
 
-# Roadmap loop is goal-driven: no stated goal means the project has opted out,
-# and the run must not pay for a model launch. (The backend guard above already
-# proved the API/file reachable, so a failure here reads as "no goal".)
-if [ "$STAGE" = "roadmap" ]; then
-  case "$_task_backend" in
-    file)
-      _goal="${GOAL_FILE:-cadence/goal.md}"
-      case "$_goal" in /*) : ;; *) _goal="${PROJECT_DIR:-$PWD}/$_goal" ;; esac
-      [ -s "$_goal" ] || idle_before_launch "no-goal" "goal file missing or empty: $_goal"
-      ;;
-    *)
-      _desc="$(python3 "$CADENCE_HOME/engine/linear/cli.py" project-get 2>/dev/null \
-        | python3 -c 'import json,sys; print((json.load(sys.stdin).get("description") or "").strip())' 2>/dev/null || echo '')"
-      [ -n "$_desc" ] || idle_before_launch "no-goal" "Linear project description empty"
-      ;;
-  esac
-fi
+# The roadmap loop is opt-in per project via SCHED_ROADMAP (default off), not via
+# a stated goal: a goal only steers it, and its absence is normal (the loop falls
+# back to a standing quality rubric). So there is no no-goal idle gate here — a
+# scheduled run only fires where the operator enabled the schedule, and a manual
+# `run roadmap` is an explicit opt-in by definition.
 
 cd "$WORKTREE" || { echo "project dir missing: $WORKTREE" >&2; exit 1; }
 

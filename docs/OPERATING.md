@@ -261,23 +261,27 @@ acceptance criteria is never queued, so triage stubs them in.
 
 ## Roadmapper mode (opt-in)
 
-An advisory scout: on its schedule (default daily), a high-reasoning model
-reads your stated goal, scans the codebase read-only, and files at most
-`ROADMAP_MAX_OPEN` proposal issues carrying `agent:proposed`. It never gates
-anything, and autonomous mode never picks a proposal up until you accept it.
+An advisory scout: on its schedule, a high-reasoning model scans the codebase
+read-only and files at most `ROADMAP_MAX_OPEN` proposal issues carrying
+`agent:proposed`. It never gates anything, and autonomous mode never picks a
+proposal up until you accept it.
 
-1. **State the goal.** Linear backend: write it in the Linear project
-   description. File backend: write `cadence/goal.md` (or `GOAL_FILE`) in the
-   project. No goal → every roadmap run idles and files nothing.
-2. **Let it run** (`SCHED_ROADMAP`, default `24h@20`), or run one now:
-   `cadence run roadmap` (`--dry-run` to see what it would propose).
-3. **Review proposals** on the board:
+1. **Turn it on for a project.** It is opt-in: set `SCHED_ROADMAP` to a cadence
+   (e.g. `SCHED_ROADMAP=24h@20` for daily at 00:20) in that project's
+   `cadence/.env`. Default is `off`, so no project runs it until you enable it.
+2. **Optionally steer it.** Write a goal — the Linear project description, or
+   `cadence/goal.md` (or `GOAL_FILE`) on the file backend — and it looks for work
+   that serves that goal. With no goal it works against a standing quality rubric
+   (real bugs, performance, accessibility, security, dead code, consistency).
+3. **Let it run**, or run one now: `cadence run roadmap` (`--dry-run` to see what
+   it would propose without filing anything).
+4. **Review proposals** on the board:
    - **Accept** — set `agent:spec` (the spec loop strips `agent:proposed`), or
      just remove `agent:proposed` to leave it as normal backlog.
    - **Dismiss for good** — cancel the issue (file backend:
      `status: dismissed`). It will never be re-proposed.
    - **Not now** — cancel **and** add `agent:later`; it may return after 30
-     days if it still serves the goal.
+     days if it still serves the goal or rubric.
 
 Ignore it and it goes quiet: once `ROADMAP_MAX_OPEN` open proposals sit
 unreviewed, runs report "at cap" and file nothing.

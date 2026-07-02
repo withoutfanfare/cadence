@@ -45,11 +45,12 @@ Cadence runs four human-gated loops, plus an optional goal-gated roadmap loop:
   runs gates, and opens a draft PR.
 - `revise` runs only after a human adds `agent:revise`, then updates the same
   draft PR and leaves `agent:revised`.
-- `roadmap` (optional) runs only when a goal is written on the project — the
-  Linear project description, or `GOAL_FILE` on the file backend. It scouts the
-  codebase read-only against that goal and files at most `ROADMAP_MAX_OPEN`
-  proposal issues carrying `agent:proposed` for a human verdict. Without a goal
-  it idles before any model launch.
+- `roadmap` (optional) is opt-in per project via `SCHED_ROADMAP` (default
+  `off`). When enabled it scouts the codebase read-only and files at most
+  `ROADMAP_MAX_OPEN` proposal issues carrying `agent:proposed` for a human
+  verdict. An optional goal — the Linear project description, or `GOAL_FILE` on
+  the file backend — steers it; with no goal it works against a standing
+  engineering-quality rubric.
 
 Autonomous mode is opt-in. With `AUTONOMOUS=on`, the advancer can grant gates for
 items carrying `agent:auto`, and the conductor can top up that queue. Work still

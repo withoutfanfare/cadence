@@ -72,16 +72,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   canonical stage and a per-task submenu to advance, set any stage, hold/release,
   and open it. New `cadence tasks path` verb; the `stage` field is emitted by
   `cadence tasks list` and `cadence linear issues-list`.
-- An optional fifth loop, `roadmap`: a goal-driven advisory scout — `cadence run
-  roadmap [--dry-run]` and the `SCHED_ROADMAP`, `ROADMAP_MAX_OPEN`, and
-  `GOAL_FILE` settings. Reads a human-stated goal (the Linear project
-  description, or `GOAL_FILE` on the file backend) and files proposal issues
-  carrying `agent:proposed`, capped at `ROADMAP_MAX_OPEN` open at once by the
-  create verbs, not just the prompt. It never grants a gate, and the conductor
-  fences `agent:proposed` out of the autonomous queue until a human accepts it.
+- An optional fifth loop, `roadmap`: an advisory scout — `cadence run roadmap
+  [--dry-run]` and the `SCHED_ROADMAP`, `ROADMAP_MAX_OPEN`, and `GOAL_FILE`
+  settings. It scans the codebase read-only and files proposal issues carrying
+  `agent:proposed`, capped at `ROADMAP_MAX_OPEN` open at once by the create
+  verbs, not just the prompt. It is opt-in per project via `SCHED_ROADMAP`
+  (default `off`) — enabling the schedule turns it on, not a stated goal. A
+  goal (the Linear project description, or `GOAL_FILE` on the file backend)
+  *steers* what it looks for; with none it works against a standing
+  engineering-quality rubric (real bugs, performance, accessibility, security,
+  dead code, consistency). It never grants a gate, and the conductor fences
+  `agent:proposed` out of the autonomous queue until a human accepts it.
   Dismissal has two flavours: cancel for good, or cancel and add `agent:later`
-  for "not now", which allows re-proposal after a 30-day cool-off. No goal
-  written → every run idles before any model launch.
+  for "not now", which allows re-proposal after a 30-day cool-off.
 
 ### Changed
 

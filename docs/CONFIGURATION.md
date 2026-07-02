@@ -260,11 +260,16 @@ it does not override the pause flag or any other gate.
 
 ## Roadmapper mode
 
+The roadmap loop is opt-in per project: set `SCHED_ROADMAP` to a cadence to
+enable it. A goal only *steers* it — with none, it works against a standing
+engineering-quality rubric (real bugs, performance, accessibility, security,
+dead code, consistency).
+
 | Variable | Default | Description |
 | --- | --- | --- |
+| `SCHED_ROADMAP` | `off` | Schedule slot for the roadmap loop (same `:MM`/`Nh@MM` format as the other stages). **This is the on/off switch** — `off` means the loop never runs unattended for the project; set e.g. `24h@20` to enable it. A manual `cadence run roadmap` always runs regardless. |
 | `ROADMAP_MAX_OPEN` | `5` | Top-up cap: the roadmap loop keeps at most this many open `agent:proposed` issues on the board. Enforced by the create verbs, not just the prompt. |
-| `GOAL_FILE` | `cadence/goal.md` | File-backend goal location, relative to `PROJECT_DIR`. Linear profiles read the Linear project description instead. |
-| `SCHED_ROADMAP` | `24h@20` | Schedule slot for the roadmap loop (same `:MM`/`Nh@MM` format as the other stages). |
+| `GOAL_FILE` | `cadence/goal.md` | Optional file-backend goal location, relative to `PROJECT_DIR`. Present and non-empty → it steers the scout; absent → the standing rubric. Linear profiles read the Linear project description instead. |
 
 ## Schedule
 
