@@ -243,9 +243,10 @@ still tagged.
 With autonomous mode on, the conductor feeds the queue so you do not have to tag
 issues by hand. Every 3 hours it ranks the ready backlog (priority → current cycle
 → oldest), skips anything not buildable yet (held, needs-attention, terminal,
-already-auto, and, for Linear, blocked or parent issues with children), and tops
-up `agent:auto` to `CONDUCT_WIP` (default 1) — one issue in flight at a time
-until you raise it.
+already-auto, anything without acceptance criteria, and, for Linear, blocked or
+parent issues with children), and tops up `agent:auto` to `CONDUCT_WIP`
+(default 1) — one issue in flight at a time until you raise it. A task with no
+acceptance criteria is never queued, so triage stubs them in.
 
 - **Shadow it first:** `AUTONOMOUS=on cadence conduct --dry-run` prints which issue
   it would set loose (and, for Linear, which it skipped as blocked or parent work),
