@@ -39,7 +39,7 @@ RUNS="$CADENCE_STATE_DIR/runs"
 LOGDIR="$CADENCE_STATE_DIR/logs"
 PAUSED="$RUNS/PAUSED"
 PLISTDIR="$HOME/Library/LaunchAgents"
-STAGES="triage spec build revise advance"
+STAGES="triage spec build revise advance roadmap"
 GUI="gui/$(id -u)"
 
 is_stage() { case " $STAGES " in *" ${1:-} "*) return 0 ;; *) return 1 ;; esac; }
@@ -54,7 +54,7 @@ Usage: cadence [--config path|--profile name] <command> [args]
   overview [--json] Cross-project status for every registered project
   doctor [--labels] Verify the setup (active config, API key, labels, provider CLIs, schedule)
   pause | resume    Stop / resume all loops (PAUSED flag)
-  run <stage>       Run one loop NOW (triage|spec|build|revise)
+  run <stage>       Run one loop NOW (triage|spec|build|revise|roadmap)
   run advance [--dry-run]  Autonomous advancer (opt-in; grants gates on agent:auto)
   logs [stage]      Tail a stage log
   feed [n]          Recent activity feed (default 20 lines)
@@ -102,7 +102,7 @@ case "$cmd" in
              is_stage "$stage" || [ "$stage" = "conduct" ] || { echo "unknown stage: $stage" >&2; exit 2; }
              tail -n 40 "$LOGDIR/$stage.log" 2>/dev/null || echo "no log yet for $stage"
            else
-             for s in triage spec build revise advance conduct; do
+             for s in triage spec build revise advance roadmap conduct; do
                echo "── $s ──"
                if [ "$s" = "conduct" ]; then
                  tail -2 "$LOGDIR/$s.log" 2>/dev/null | sed 's/^/  /' || echo "  (no log)"
