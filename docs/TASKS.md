@@ -65,6 +65,7 @@ cadence tasks list [--label L] [--status S]   # read the board
 cadence tasks get <ID>                         # one task as JSON
 cadence tasks update <ID> --status S --add-label L --remove-label L [--body-file F]
 cadence tasks validate                         # check the file (what doctor runs)
+cadence tasks path                             # print the resolved tasks.md path
 ```
 
 The CLI always re-renders the file in canonical form, so round-tripping through

@@ -160,12 +160,43 @@ class TestTasksCli(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("duplicate task id 'TASK-1'", result.stderr)
 
+    def test_validate_allows_a_markdown_heading_in_the_body(self):
+        # parse() tolerates a `## ` line in a body (it is not a valid header), so
+        # validate() must not flag it as malformed when it is clearly prose.
+        text = ("# Cadence Tasks\n\n## TASK-1: Title\nstatus: open\nlabels: Bug\n\n"
+                "Intro paragraph.\n## A sub-heading in the body\nMore prose.\n")
+        result, _updated = self._run(["validate"], tasks_text=text)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_validate_allows_status_lines_deeper_in_the_body(self):
         # `status: 200` as ordinary spec prose (not the first body line) is fine.
         text = ("# Cadence Tasks\n\n## TASK-1: Title\nstatus: open\nlabels: Bug\n\n"
                 "The endpoint returns:\nstatus: 200 for success\n")
         result, _updated = self._run(["validate"], tasks_text=text)
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_list_includes_canonical_stage(self):
+        result, _ = self._run(["list"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        by_id = {t["identifier"]: t for t in json.loads(result.stdout)}
+        self.assertEqual(by_id["TASK-1"]["stage"]["name"], "triaged")
+        self.assertEqual(by_id["TASK-1"]["stage"]["advance"], "agent:spec")
+        self.assertTrue(by_id["TASK-2"]["stage"]["hold"])
+        self.assertEqual(by_id["TASK-2"]["stage"]["name"], "backlog")
+
+    def test_path_prints_resolved_task_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            task_file = os.path.join(tmp, "cadence", "tasks.md")
+            os.makedirs(os.path.dirname(task_file))
+            with open(task_file, "w", encoding="utf-8") as f:
+                f.write(TASKS_MD)
+            env = os.environ.copy()
+            env["TASK_FILE"] = task_file
+            result = subprocess.run(
+                [sys.executable, TASKS_CLI, "path"],
+                cwd=ROOT, env=env, text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), task_file)
 
 
 if __name__ == "__main__":

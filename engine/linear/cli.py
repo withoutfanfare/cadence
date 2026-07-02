@@ -14,6 +14,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from cadence_env import load_env  # noqa: E402
+from stages import stage_of  # noqa: E402
 
 API_URL = "https://api.linear.app/graphql"
 
@@ -168,6 +169,7 @@ def _shape_issue(n):
                      ("inverseRelations", "inverseRelations"), ("children", "children")):
         if n.get(rel):
             out[key] = n[rel].get("nodes", [])
+    out["stage"] = stage_of(out.get("labels") or [])
     return out
 
 

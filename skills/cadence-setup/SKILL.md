@@ -159,6 +159,11 @@ correctly. Then validate:
 cadence --config <PROJECT_DIR>/cadence/.env doctor
 ```
 
+`doctor` verifies the provider CLIs **and** the configured model names (for `kimi`
+it checks the model exists in `~/.kimi-code/config.toml`) — so a wrong model like
+`kimi:k2` is caught here rather than failing at the first run. Fix any ❌ before
+moving on.
+
 For a Linear backend, create the label vocabulary once per team and re-check:
 
 ```bash
@@ -201,3 +206,5 @@ cadence --config <PROJECT_DIR>/cadence/.env run triage   # only when they choose
 Finish with a short summary: the config path, the backend, the state dir, whether
 scheduling is on, and the next action that is theirs to take (triage first;
 gates like `agent:spec`/`agent:build` are added by a human, never by Cadence).
+Mention `cadence overview` — once more than one project is set up, it shows all of
+them (health, last run per stage) in one glance, as does the SwiftBar menu bar.

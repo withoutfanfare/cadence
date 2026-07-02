@@ -135,6 +135,16 @@ class TestReadVerbs(unittest.TestCase):
         self.assertEqual(out[0]["number"], 5)
         self.assertEqual(out[0]["starts_at"], "2026-06-01")
 
+    def test_issues_list_includes_canonical_stage(self):
+        cap = {"response": {"issues": {"nodes": [{
+            "id": "i1", "identifier": "ENG-1", "title": "T", "url": "u",
+            "labels": {"nodes": [{"name": "agent:specced"}]},
+        }]}}}
+        args = types.SimpleNamespace(label=None, state=None, assignee=None, limit=None)
+        out = cli.cmd_issues_list(args, ENV, post=fake_post(cap))
+        self.assertEqual(out[0]["stage"]["name"], "specced")
+        self.assertEqual(out[0]["stage"]["advance"], "agent:build")
+
 class TestWriteVerbs(unittest.TestCase):
     def test_label_ensure_returns_existing(self):
         cap = {"response": {"issueLabels": {"nodes": [

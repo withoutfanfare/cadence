@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `cadence overview [--json]`: a cross-project status view — health, last run per
+  stage, and recent activity for every registered project in one glance. Read-only.
+- Multi-project menu bar: both SwiftBar plugins (`assets/swiftbar/`) now cover every
+  registered project. The loop monitor aggregates health and gives per-project
+  pause/run/logs actions (via `cadence overview --json`); the gate inbox lists each
+  project's issues awaiting a move with config-scoped one-click grants. The inbox is
+  **backend-aware** — file projects (`TASK_BACKEND=file`) are read via `tasks list`
+  and also show an "Open tasks" backlog of ungated tasks so the whole `tasks.md` is
+  visible; grants route through `tasks update` rather than `linear bulk-label`.
+- `cadence doctor` now validates the configured **model**, not just the provider
+  CLI — for `kimi` it checks the model exists in `~/.kimi-code/config.toml` (so a
+  wrong name like `kimi:k2` is caught at setup rather than at the first run), and it
+  prints the resolved `provider:model` for the others.
 - Guided project setup: the `cadence-setup` skill lets any agent (Claude, Codex, or
   other) set up a project interactively — "set up this project with Cadence". It
   interviews the user for folders and choices, discovers Linear ids, picks the Linear
@@ -50,6 +63,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with `--where-label`, `--dry-run`, and `-y`. See `docs/BULK-LABEL.md`.
 - `cadence inspect`, `cadence labels init|list|ensure`, and `cadence bakeoff`
   helper commands for setup support, label maintenance, and implementer comparison.
+- SwiftBar gate inbox now gives every task — file-backed and Linear — a single
+  canonical stage and a per-task submenu to advance, set any stage, hold/release,
+  and open it. New `cadence tasks path` verb; the `stage` field is emitted by
+  `cadence tasks list` and `cadence linear issues-list`.
 
 ### Changed
 
@@ -72,6 +89,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Run-summary marker is now authoritative: a `CADENCE_SUMMARY` line from a run's own
+  stdout is accepted even when the summary has no `stage`/`loop` key (triage carries
+  `mode`), so a clean triage run is no longer mislabelled "no summary". The triage
+  summary now also includes `"stage":"triage"` so `cadence throughput` and `cadence
+  overview` can attribute it.
 - Linear adapter: transient failures (429, 5xx, network) retry up to three times with
   exponential backoff, honouring a numeric `Retry-After` (capped at 60s so a hostile
   value can't stall the slot), instead of failing the whole scheduled slot on one blip;

@@ -7,6 +7,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+from stages import stage_of  # noqa: E402
+
 
 HEADER_RE = re.compile(r"^##\s+([^:\n]+):\s*(.+)$")
 
@@ -76,7 +79,15 @@ def validate(text):
     in_header = False
     header_meta = set()
     awaiting_body = False
-    for n, line in enumerate(text.splitlines(), 1):
+    lines = text.splitlines()
+
+    def _next_nonempty(i):
+        for j in range(i + 1, len(lines)):
+            if lines[j].strip():
+                return lines[j]
+        return ""
+
+    for n, line in enumerate(lines, 1):
         match = HEADER_RE.match(line)
         if match:
             tid = match.group(1).strip()
@@ -92,9 +103,11 @@ def validate(text):
             header_meta = set()
             awaiting_body = True
             continue
-        # `## ` is reserved for task headers. A `## ` line that is not a valid
-        # `## <ID>: <Title>` is swallowed into the previous task's body.
-        if line.startswith("## "):
+        # `## ` is reserved for task headers, but a body line may legitimately
+        # start with it and parse() tolerates that (treats it as body). Only flag
+        # a non-matching `## ` line as a broken header when the author clearly
+        # meant one — i.e. the next non-empty line is task metadata.
+        if line.startswith("## ") and _next_nonempty(n - 1).startswith(("status:", "labels:")):
             problems.append(
                 f"line {n}: malformed task header {line.strip()!r}; expected "
                 "'## <ID>: <Title>' (the ID must not contain a colon)"
@@ -163,6 +176,8 @@ def cmd_list(args, env=None):
         tasks = [task for task in tasks if args.label in (task.get("labels") or [])]
     if args.status:
         tasks = [task for task in tasks if task.get("status") == args.status]
+    for task in tasks:
+        task["stage"] = stage_of(task.get("labels") or [])
     return tasks
 
 
@@ -202,6 +217,7 @@ def build_parser():
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("validate")
+    sub.add_parser("path")
 
     list_p = sub.add_parser("list")
     list_p.add_argument("--label")
@@ -222,6 +238,9 @@ def build_parser():
 def main(argv=None, env=None):
     args = build_parser().parse_args(argv)
     try:
+        if args.cmd == "path":
+            print(task_path(env))
+            return 0
         if args.cmd == "validate":
             problems = cmd_validate(args, env)
             for problem in problems:

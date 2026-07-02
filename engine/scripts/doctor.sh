@@ -23,6 +23,14 @@ provider_from_pair() {
   esac
 }
 
+model_from_pair() {
+  pair="$1"
+  case "$pair" in
+    *:*) printf '%s' "${pair#*:}" ;;
+    *) printf '%s' "$pair" ;;
+  esac
+}
+
 check_provider_cli() {
   label="$1"
   provider="$2"
@@ -38,6 +46,28 @@ check_provider_cli() {
       fail "$label provider '$provider' invalid (use claude, codex, kimi, or opencode)"
       ;;
   esac
+}
+
+# A provider CLI being on PATH does not mean the configured MODEL exists — e.g.
+# `kimi:k2` passes the CLI check but fails at run time because kimi has no `k2`
+# model. Validate what we cheaply can (kimi's config.toml lists its models); for
+# other providers, surface the resolved model so a wrong name is at least visible.
+check_model() {
+  label="$1"; pair="$2"
+  provider="$(provider_from_pair "$pair")"
+  model="$(model_from_pair "$pair")"
+  if [ "$provider" = "kimi" ]; then
+    kimi_cfg="$HOME/.kimi-code/config.toml"
+    if [ ! -f "$kimi_cfg" ]; then
+      echo "  ⚠️  $label model '$model': kimi config.toml not found, cannot validate"
+    elif grep -qF "[models.\"$model\"]" "$kimi_cfg" || grep -qF "[models.$model]" "$kimi_cfg"; then
+      pass "$label model '$model' configured in kimi"
+    else
+      fail "$label model '$model' not configured in kimi (~/.kimi-code/config.toml has no [models.\"$model\"] — fix the model name)"
+    fi
+  else
+    echo "  •  $label model: $provider:$model"
+  fi
 }
 
 labels_only=0
@@ -101,6 +131,14 @@ check_provider_cli "revise orchestrator" "$(provider_from_pair "$ORCHESTRATOR_RE
 check_provider_cli "advance orchestrator" "$(provider_from_pair "$ORCHESTRATOR_ADVANCE")"
 check_provider_cli "reviewer" "${REVIEW_PROVIDER:-claude}"
 
+# Model-name validation (not just CLI presence) for each configured role.
+check_model "triage orchestrator" "$ORCHESTRATOR_TRIAGE"
+check_model "spec orchestrator" "$ORCHESTRATOR_SPEC"
+check_model "build orchestrator" "$ORCHESTRATOR_BUILD"
+check_model "revise orchestrator" "$ORCHESTRATOR_REVISE"
+check_model "advance orchestrator" "$ORCHESTRATOR_ADVANCE"
+check_model "reviewer" "${REVIEW_PROVIDER:-claude}:${REVIEW_MODEL:-opus}"
+
 case "$task_backend" in
   linear)
     pass "task backend linear"
@@ -127,10 +165,14 @@ case "$task_backend" in
     esac
     if [ -f "$_task_file" ]; then
       _task_problems="$(TASK_FILE="$_task_file" python3 "$CADENCE_HOME/engine/tasks/cli.py" validate 2>&1)"
-      if [ -z "$_task_problems" ]; then
+      _task_rc=$?
+      if [ "$_task_rc" -eq 0 ]; then
         pass "task backend file; task file $_task_file"
-      else
+      elif [ "$_task_rc" -eq 1 ]; then
         fail "task file $_task_file has format problems:"
+        printf '%s\n' "$_task_problems" | sed 's/^/      /'
+      else
+        fail "could not run task-file validator (exit $_task_rc):"
         printf '%s\n' "$_task_problems" | sed 's/^/      /'
       fi
     else
