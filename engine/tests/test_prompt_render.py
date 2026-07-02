@@ -65,6 +65,9 @@ class TestPromptRender(unittest.TestCase):
         self.assertIn("/tmp/tasks.md", text)
         self.assertNotIn("cadence linear", text)
         self.assertNotIn("Linear project", text)
+        # File triage must stub acceptance criteria, else the conductor's
+        # criteria filter rejects every task and autonomous mode never advances.
+        self.assertIn("Acceptance Criteria", text)
 
     def test_unknown_stage_fails_before_writing_output(self):
         with tempfile.TemporaryDirectory() as tmp:

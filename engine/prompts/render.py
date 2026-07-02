@@ -21,6 +21,7 @@ FILE_STAGE_RULES = {
     "triage": [
         "Run `cadence tasks list` and inspect local tasks that do not already carry an agent terminal label.",
         "Fill only blanks that are clear from the task text. Mark settled tasks with `agent:triaged`; mark unclear tasks with `agent:needs-human`.",
+        "Before marking a task `agent:triaged`, ensure its body has an `## Acceptance Criteria` section with a `- [ ]` checklist derived from the task text; if it is missing, write it with `cadence tasks update <ID> --body-file <file>`. If you cannot state clear criteria, mark `agent:needs-human` instead — autonomous mode only advances tasks that carry acceptance criteria.",
     ],
     "spec": [
         "Run `cadence tasks list --label agent:spec`.",

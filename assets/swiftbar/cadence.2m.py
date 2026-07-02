@@ -265,8 +265,7 @@ def render_stages_and_controls(pre, p, board, backend, task_path, now=None):
         else:
             detail = "idle"
         emit("%s%-8s %s | font=Menlo size=12" % (sub, s, detail))
-    conduct = (stages.get("conduct") or {}).get("result") or ""
-    auto = "off" if ("autonomous-off" in conduct or not conduct) else "on"
+    auto = "on" if p.get("autonomous") else "off"
     emit("%sAutonomous  %s | font=Menlo size=12 color=#888888" % (sub, auto))
 
     emit("%s-----" % pre)  # separator inside the submenu (7 dashes: depth-2)
