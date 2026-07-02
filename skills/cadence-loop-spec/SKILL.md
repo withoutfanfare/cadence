@@ -134,6 +134,11 @@ check fails, emit the standard pause JSON and records described in
    Title: `Spec — <ID>: <short title>` (ID = the canonical issue).
 6. **Transition.** On the **canonical**:
    `cadence linear issue-update <ID> --remove-label agent:spec --remove-label agent:claimed --add-label agent:specced`
+
+   If the issue also carries `agent:proposed`, add `--remove-label agent:proposed`
+   to the same command — a human gating a proposal is how a proposal is
+   accepted, and the marker must not linger (it would hold the roadmap cap
+   open and keep the conductor fence up).
    (single-group labels are mutually exclusive; `agent:claimed` is standalone). If
    you re-based (canonical ≠ the gated issue), also release the gated issue's claim
    (`cadence linear issue-update <gated-ID> --remove-label agent:claimed`); it
