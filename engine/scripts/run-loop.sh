@@ -62,7 +62,14 @@ else
   exit 0
 fi
 echo "$$" > "$LOCKDIR/pid"
-trap 'rm -rf "$LOCKDIR"' EXIT
+# Keep a live holder's lock fresh so the 2h reclaim only ever fires on a genuinely
+# dead/wedged run — a legitimate build past the max-age must not be stolen mid-flight.
+( while :; do sleep 600; touch "$LOCKDIR/pid" 2>/dev/null || exit; done ) >/dev/null 2>&1 &
+_HB=$!
+# PROMPT_FILE is removed on the normal path too; the trap covers signal interruption
+# (SIGTERM mid-orchestrator) so an orphan prompt is never left in $RUNS.
+PROMPT_FILE=""
+trap 'kill "$_HB" 2>/dev/null; rm -f "$PROMPT_FILE"; rm -rf "$LOCKDIR"' EXIT
 
 pause_before_launch() {
   reason="$1"
@@ -170,7 +177,7 @@ if [ "$STAGE" = "advance" ]; then
   esac
   case "$_task_backend" in
     file) _n="$(python3 "$CADENCE_HOME/engine/tasks/cli.py" list --label agent:auto 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)" ;;
-    *)    _n="$(python3 "$CADENCE_HOME/engine/linear/cli.py" issues-list --label agent:auto --assignee me 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)" ;;
+    *)    _n="$(python3 "$CADENCE_HOME/engine/linear/cli.py" issues-list --label agent:auto --assignee me --limit 1 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)" ;;
   esac
   [ "$_n" = "0" ] && idle_before_launch "no-auto-work" "no agent:auto issues in scope"
 fi
@@ -264,26 +271,43 @@ try:
     start = int(sys.argv[4])
 except (IndexError, ValueError):
     start = 0
+MARKER = 'CADENCE_SUMMARY '   # skills print the summary on its own marked line
 last = None
+read_err = None
 try:
     with open(logpath, 'rb') as f:
         f.seek(start)          # skip prior runs' output so a no-summary run isn't
         chunk = f.read()       # mislabelled with the previous run's stale counts
-    for line in chunk.decode('utf-8', 'replace').splitlines():
+    lines = chunk.decode('utf-8', 'replace').splitlines()
+    # Prefer the explicit marker (robust against prose around the JSON); fall back
+    # to the bare-JSON heuristic for older skill output.
+    for line in lines:
         s = line.strip()
-        if s.startswith('{') and ('"stage"' in s or '"loop"' in s):
-            try: d = json.loads(s)
+        if s.startswith(MARKER):
+            try: d = json.loads(s[len(MARKER):].strip())
             except Exception: continue
             if d.get('stage') == stage or d.get('loop') == stage:
                 last = d
-except Exception:
-    pass
+    if last is None:
+        for line in lines:
+            s = line.strip()
+            if s.startswith('{') and ('"stage"' in s or '"loop"' in s):
+                try: d = json.loads(s)
+                except Exception: continue
+                if d.get('stage') == stage or d.get('loop') == stage:
+                    last = d
+except Exception as e:
+    read_err = str(e)
 if last is None:
-    # No parseable summary. A non-zero exit means the loop crashed — alert (flag 2).
-    if rc != 0:
+    # A log-read failure is itself a failure to surface, not something to swallow.
+    if read_err is not None:
+        print(f"2|FAILED — could not read log: {read_err}")
+    elif rc != 0:
         print(f"2|FAILED — exit {rc}, no summary")
     else:
-        print(f"0|exit {rc}, no summary")
+        # Exit 0 but nothing parseable = a silently-degraded run. Flag 1 (notable)
+        # so the lost activity surfaces in the feed rather than passing as quiet.
+        print(f"1|exit {rc}, no summary")
     sys.exit()
 d = last
 if d.get('paused'):

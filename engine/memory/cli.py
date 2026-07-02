@@ -22,7 +22,7 @@ def _mem_dir(env):
 
 def _parse(path):
     with open(path, encoding="utf-8") as fh:
-        text = fh.read()
+        text = fh.read().replace("\r\n", "\n")  # tolerate CRLF-authored files
     m = re.match(r"^---\n(.*?)\n---\n?(.*)$", text, re.S)
     if not m:
         return None
@@ -62,7 +62,11 @@ def cmd_remember(args, env):
     os.makedirs(d, exist_ok=True)
     name = _slug(args.title)
     path = os.path.join(d, f"{name}.md")
-    desc = args.title if len(args.title) <= 80 else args.title[:77] + "..."
+    # Collapse any newlines/whitespace so a multi-line title can't corrupt the
+    # single-line `description:` frontmatter this writes.
+    desc = " ".join(args.title.split())
+    if len(desc) > 80:
+        desc = desc[:77] + "..."
     with open(path, "w", encoding="utf-8") as f:
         f.write(f"---\nname: {name}\nimportance: {args.importance}\n"
                 f"description: {desc}\n---\n\n{args.body}\n")

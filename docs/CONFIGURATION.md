@@ -51,6 +51,10 @@ LINEAR_TEAM_NAME="Modern Print Works"
 RUNNER_PATH_PREPEND="$HOME/Library/Application Support/Herd/bin"
 ```
 
+A quoted value must not contain a backslash-escaped quote (`\"`); the Python
+loader stops at the first quote rather than mirroring bash, and warns. If a value
+needs to contain a quote, wrap it in the other quote style instead.
+
 ## Linear
 
 | Variable | Required | Description |

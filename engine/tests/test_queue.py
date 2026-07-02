@@ -87,6 +87,20 @@ class TestRender(unittest.TestCase):
         self.assertIn("cycle 5", out)
 
 
+class TestConflicts(unittest.TestCase):
+    def test_double_labelled_issue_is_flagged(self):
+        conflicts = cli.conflicts([_issue("P-2", ["agent:triaged", "agent:specced"])])
+        self.assertEqual(conflicts, [("P-2", ["agent:specced", "agent:triaged"])])
+
+    def test_single_label_is_not_flagged(self):
+        self.assertEqual(cli.conflicts([_issue("P-1", ["agent:specced"])]), [])
+
+    def test_render_shows_conflict_warning_line(self):
+        issues = [_issue("P-2", ["agent:triaged", "agent:specced"])]
+        out = cli.render(cli.bucket(issues), conflict_list=cli.conflicts(issues))
+        self.assertIn("⚠ inconsistent labels: P-2 (agent:specced + agent:triaged)", out)
+
+
 class TestFetchIssues(unittest.TestCase):
     def test_file_backend_reads_tasks_file(self):
         with tempfile.TemporaryDirectory() as tmp:

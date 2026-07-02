@@ -236,10 +236,12 @@ issue. Never open a PR from a red build. Never leave a held claim.
 
 ## On finishing
 
-Emit a JSON summary to stdout (and append it as a line to
-`$CADENCE_STATE_DIR/runs/runs.jsonl`). Include the per-issue comparison data so the
+Emit the JSON summary as the final line of stdout, prefixed with the fixed marker
+`CADENCE_SUMMARY ` so the runner finds it reliably even if prose surrounds it, and
+append the bare JSON object (no marker) as a line to
+`$CADENCE_STATE_DIR/runs/runs.jsonl`. Include the per-issue comparison data so the
 implementer bake-off can read it later:
 
-```json
-{"loop":"build","dry_run":false,"built":0,"pr_numbers":[],"skipped":0,"errors":0,"issues":[{"id":"<ID>","implementer":"claude","fell_back":false,"gates_first_try":true,"review_findings":0,"seconds":0}]}
+```text
+CADENCE_SUMMARY {"loop":"build","dry_run":false,"built":0,"pr_numbers":[],"skipped":0,"errors":0,"issues":[{"id":"<ID>","implementer":"claude","fell_back":false,"gates_first_try":true,"review_findings":0,"seconds":0}]}
 ```

@@ -1,4 +1,4 @@
-import os, sys, tempfile, unittest
+import contextlib, io, os, sys, tempfile, unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from cadence_env import load_env
 
@@ -66,6 +66,23 @@ class TestLoadEnv(unittest.TestCase):
     def test_missing_env_file_is_empty_plus_environ(self):
         env = load_env(tempfile.mkdtemp())
         self.assertIsInstance(env, dict)
+
+    def test_unterminated_quote_warns_and_names_key(self):
+        home = self._home_with('GATE_TEST="composer test\n')
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            env = load_env(home)
+        self.assertEqual(env["GATE_TEST"], "composer test")
+        self.assertIn("GATE_TEST", buf.getvalue())
+        self.assertIn("unterminated quote", buf.getvalue())
+
+    def test_backslash_escaped_quote_warns_and_names_key(self):
+        home = self._home_with('GATE_TEST="a\\"b"\n')
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            load_env(home)
+        self.assertIn("GATE_TEST", buf.getvalue())
+        self.assertIn("backslash-escaped quote", buf.getvalue())
 
 if __name__ == "__main__":
     unittest.main()

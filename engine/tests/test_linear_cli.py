@@ -1,4 +1,4 @@
-import importlib.util, os, types, unittest
+import importlib.util, io, json, os, types, unittest
 
 
 def _load(name, *relpath):
@@ -307,6 +307,86 @@ class TestGraphqlErrors(unittest.TestCase):
                 cli.graphql("{ viewer { id } }", {}, ENV)
         finally:
             cli.urllib.request.urlopen = orig
+
+
+class _Resp:
+    def __init__(self, body):
+        self._body = body.encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return self._body
+
+
+class TestGraphqlRetry(unittest.TestCase):
+    def setUp(self):
+        self._orig_urlopen = cli.urllib.request.urlopen
+        self._orig_sleep = cli.time.sleep
+        self.slept = []
+        cli.time.sleep = lambda s: self.slept.append(s)
+
+    def tearDown(self):
+        cli.urllib.request.urlopen = self._orig_urlopen
+        cli.time.sleep = self._orig_sleep
+
+    def test_retries_once_then_succeeds_honouring_retry_after(self):
+        calls = []
+
+        def fake(req, timeout=None):
+            calls.append(1)
+            if len(calls) == 1:
+                raise cli.urllib.error.HTTPError(
+                    "u", 429, "rate", {"Retry-After": "7"}, io.BytesIO(b""))
+            return _Resp(json.dumps({"data": {"ok": True}}))
+
+        cli.urllib.request.urlopen = fake
+        out = cli.graphql("{ x }", {}, ENV)
+        self.assertEqual(out, {"ok": True})
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.slept, [7])  # numeric Retry-After honoured
+
+    def test_gives_up_after_three_attempts(self):
+        calls = []
+
+        def fake(req, timeout=None):
+            calls.append(1)
+            raise cli.urllib.error.HTTPError("u", 500, "err", {}, io.BytesIO(b"err body"))
+
+        cli.urllib.request.urlopen = fake
+        with self.assertRaises(cli.LinearError):
+            cli.graphql("{ x }", {}, ENV)
+        self.assertEqual(len(calls), 3)          # 3 attempts total
+        self.assertEqual(len(self.slept), 2)     # slept between them, not after the last
+
+    def test_non_retryable_status_fails_immediately(self):
+        calls = []
+
+        def fake(req, timeout=None):
+            calls.append(1)
+            raise cli.urllib.error.HTTPError("u", 400, "bad", {}, io.BytesIO(b"bad body"))
+
+        cli.urllib.request.urlopen = fake
+        with self.assertRaises(cli.LinearError):
+            cli.graphql("{ x }", {}, ENV)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(self.slept, [])
+
+    def test_network_error_retries_then_raises(self):
+        calls = []
+
+        def fake(req, timeout=None):
+            calls.append(1)
+            raise cli.urllib.error.URLError("boom")
+
+        cli.urllib.request.urlopen = fake
+        with self.assertRaises(cli.LinearError):
+            cli.graphql("{ x }", {}, ENV)
+        self.assertEqual(len(calls), 3)
 
 
 if __name__ == "__main__":

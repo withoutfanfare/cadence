@@ -47,6 +47,22 @@ class TestMemoryMarkdown(unittest.TestCase):
         out = cli.cmd_recall(types.SimpleNamespace(min_importance=4, limit=10), env)
         self.assertEqual([r["name"] for r in out], ["money-in-pence"])
 
+    def test_crlf_rule_file_parses(self):
+        env, d = env_with_dir()
+        with open(os.path.join(d, "crlf.md"), "w", encoding="utf-8", newline="") as f:
+            f.write(RULE.replace("\n", "\r\n").replace("money-in-pence", "crlf-rule"))
+        out = cli.cmd_recall(types.SimpleNamespace(min_importance=4, limit=10), env)
+        self.assertEqual([r["name"] for r in out], ["crlf-rule"])
+        self.assertNotIn("\r", out[0]["body"])
+
+    def test_multiline_title_does_not_corrupt_description(self):
+        env, d = env_with_dir()
+        cli.cmd_remember(types.SimpleNamespace(
+            importance=3, title="Line one\nLine two",
+            body="Body."), env)
+        out = cli.cmd_recall(types.SimpleNamespace(min_importance=1, limit=10), env)
+        self.assertEqual(out[0]["description"], "Line one Line two")
+
     def test_recall_respects_limit(self):
         env, d = env_with_dir()
         for i in range(3):
