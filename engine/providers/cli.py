@@ -17,6 +17,7 @@ STAGES = {
     "build": ("ORCHESTRATOR_BUILD", "MODEL_BUILD", "opus", "build orchestrator"),
     "revise": ("ORCHESTRATOR_REVISE", "MODEL_REVISE", "sonnet", "revise orchestrator"),
     "advance": ("ORCHESTRATOR_ADVANCE", "MODEL_ADVANCE", "sonnet", "advance orchestrator"),
+    "roadmap": ("ORCHESTRATOR_ROADMAP", "MODEL_ROADMAP", "opus", "roadmap orchestrator"),
 }
 ORDER = [
     "ORCHESTRATOR_PROVIDER",
@@ -25,6 +26,7 @@ ORDER = [
     "ORCHESTRATOR_BUILD",
     "ORCHESTRATOR_REVISE",
     "ORCHESTRATOR_ADVANCE",
+    "ORCHESTRATOR_ROADMAP",
     "REVIEW_PROVIDER",
     "REVIEW_MODEL",
     "BUILD_IMPLEMENTER",
