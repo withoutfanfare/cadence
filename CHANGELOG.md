@@ -54,8 +54,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   investigation, PR creation, and PR back-fill instead of hardcoding `develop`.
 - Loop skill prompts keep Step 0 as a short defence-in-depth check and defer the
   detailed pause-recording mechanics to `docs/ARCHITECTURE.md`.
+- Run summaries are now located on stdout via an explicit `CADENCE_SUMMARY ` marker
+  (the old bare-JSON heuristic is kept as a fallback); the ledger line stays the bare
+  object. A run that exits cleanly but emits no locatable summary is recorded as
+  notable rather than passing silently as quiet.
 
 ### Fixed
+
+- Linear adapter: transient failures (429, 5xx, network) retry up to three times with
+  exponential backoff, honouring a numeric `Retry-After`, instead of failing the whole
+  scheduled slot on one blip; issue pagination is capped at 100 pages as a safety stop.
+- Build/revise worktree lock refreshes via a heartbeat while its holder is alive, so a
+  legitimate build still running past the 2-hour mark is no longer reclaimed mid-flight;
+  the rendered prompt file is now also removed on signal interruption.
+- Autonomous advancer coerces its repair counts, so a missing or malformed count can no
+  longer silently disable the repair cap; the escalation reason now shows the count.
+- Skill frontmatter parsing tolerates CRLF and trailing spaces on the `---` delimiters,
+  and warns instead of silently leaking the frontmatter when the closing delimiter is
+  missing.
+- Config loader warns (naming the key) when a quoted `.env` value is unterminated or
+  contains a backslash-escaped quote it cannot mirror from bash.
+- `cadence queue` warns when an issue carries conflicting `agent:*` state labels.
+- Memory adapter tolerates CRLF-authored rule files and normalises a multi-line title so
+  it cannot corrupt the `description` frontmatter it writes.
+- Advance idle probe fetches a single issue rather than full issue nodes.
 
 - Local task file: a body line starting `status:` or `labels:` (e.g. `status: 200`
   in a spec) is kept as body text instead of being silently absorbed into the
