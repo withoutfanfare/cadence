@@ -83,6 +83,7 @@ def _project_overview(item):
     values = _schedule.read_env_file(config)
     state_dir = _resolve(values.get("CADENCE_STATE_DIR"), os.path.expanduser("~/.cadence"))
     scheduled = (values.get("CADENCE_SCHEDULED") or "").lower() in TRUE
+    autonomous = (values.get("AUTONOMOUS") or "").lower() in TRUE
     paused = os.path.exists(os.path.join(state_dir, "runs", "PAUSED"))
     runs = _last_run_per_stage(state_dir)
 
@@ -115,6 +116,7 @@ def _project_overview(item):
         "team_name": values.get("LINEAR_TEAM_NAME") or None,
         "backend": (values.get("TASK_BACKEND") or "linear").lower(),
         "scheduled": scheduled,
+        "autonomous": autonomous,
         "paused": paused,
         "health": health,
         "stages": stages,

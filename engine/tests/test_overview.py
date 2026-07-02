@@ -17,11 +17,13 @@ cli = _load("cadence_overview_cli", "..", "overview", "cli.py")
 
 
 class TestOverview(unittest.TestCase):
-    def _project(self, tmp, name, *, scheduled, state, ledger=None, paused=False, activity=None):
+    def _project(self, tmp, name, *, scheduled, state, ledger=None, paused=False, activity=None,
+                 autonomous=False):
         proj = os.path.join(tmp, name)
         os.makedirs(os.path.join(proj, "cadence"))
         with open(os.path.join(proj, "cadence", ".env"), "w", encoding="utf-8") as f:
             f.write("CADENCE_SCHEDULED=%s\n" % ("1" if scheduled else "0"))
+            f.write("AUTONOMOUS=%s\n" % ("on" if autonomous else "0"))
             f.write("CADENCE_STATE_DIR=%s\n" % state)
             f.write('LINEAR_TEAM_NAME="Team %s"\n' % name)
         os.makedirs(os.path.join(state, "runs"))
@@ -40,7 +42,7 @@ class TestOverview(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             registry = os.path.join(tmp, "projects.txt")
             p1 = self._project(
-                tmp, "app1", scheduled=True, state=os.path.join(tmp, "s1"),
+                tmp, "app1", scheduled=True, autonomous=True, state=os.path.join(tmp, "s1"),
                 ledger=[{"stage": "triage", "mode": "enrich", "errors": 0, "ts": "2026-07-02T08:00:00Z"}],
                 activity="[2026-07-02T08:00:00Z] triage — LIVE nothing to do")
             p2 = self._project(
@@ -54,6 +56,8 @@ class TestOverview(unittest.TestCase):
             self.assertEqual(set(by_name), {"app1", "app2"})
             self.assertEqual(by_name["app1"]["health"], "ok")
             self.assertTrue(by_name["app1"]["scheduled"])
+            self.assertTrue(by_name["app1"]["autonomous"])
+            self.assertFalse(by_name["app2"]["autonomous"])
             self.assertEqual(by_name["app1"]["stages"]["triage"]["result"], "ok")
             self.assertIsNone(by_name["app1"]["stages"]["spec"])
             self.assertEqual(by_name["app1"]["last_activity"],

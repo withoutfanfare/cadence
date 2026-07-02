@@ -374,9 +374,10 @@ lets you act.
   is visible before anything is gated.
 - **Stages & controls** — a submenu per project holding the technical detail kept
   out of the main view: each work stage's last result with its relative time, a
-  single grey `Autonomous  off/on` line (advance + conduct collapsed, since off is
-  the default and shouldn't shout), then pause/resume, run-a-stage, view-logs, and
-  open-board/tasks actions. Backed by `cadence overview --json`.
+  single grey `Autonomous  off/on` line (read straight from the project's
+  `AUTONOMOUS` config value, not inferred from the last run), then pause/resume,
+  run-a-stage, view-logs, and open-board/tasks actions. Backed by
+  `cadence overview --json`, which now reports each project's `autonomous` flag.
 
 Install by symlinking it into your SwiftBar plugin folder:
 
