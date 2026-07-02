@@ -93,7 +93,7 @@ case "$cmd" in
   resume)  if [ -f "$PAUSED" ]; then rm -f "$PAUSED"; echo "▶  Resumed."
            else echo "▶  Already live (no PAUSED flag)."; fi ;;
   run)     stage="${1:-}"
-           is_stage "$stage" || { echo "run needs: triage|spec|build|revise|advance" >&2; exit 2; }
+           is_stage "$stage" || { echo "run needs: triage|spec|build|revise|advance|roadmap" >&2; exit 2; }
            shift 2>/dev/null || true
            echo "Running '$stage' now (LIVE) — log: $LOGDIR/$stage.log"
            exec bash "$CADENCE_HOME/engine/scripts/run-loop.sh" "$stage" "$@" ;;

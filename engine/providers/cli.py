@@ -35,7 +35,7 @@ MANUAL = """\
 Cadence Provider Roles
 
 Provider Roles
-  triage/spec/build/revise/advance orchestrator
+  triage/spec/build/revise/advance/roadmap orchestrator
     Controlled by ORCHESTRATOR_<STAGE>=provider:model. This is the lead model
     running each Cadence loop.
 
