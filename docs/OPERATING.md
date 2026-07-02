@@ -380,6 +380,23 @@ ln -s "$PWD/assets/swiftbar/cadence-inbox.5m.py" "$HOME/path/to/SwiftBar/Plugins
 The refresh interval is in each filename (`.1m.`, `.5m.`); the inbox polls less
 often because it calls the Linear API.
 
+### Controlling a task from the menu bar
+
+Every task in the gate inbox — Linear or file-backed alike — carries a submenu:
+
+- **▶ Advance to <stage>** — grants the next gate (triaged → spec, specced →
+  build, pr-open/revised → revise). Shown only when a forward move exists.
+- **Set stage** — jump the task to any stage (Triage, Spec, Build, Revise),
+  forwards or backwards. Setting a stage grants that gate and clears the others,
+  so only one "go" is ever pending. "Triage" clears `agent:triaged` to force a
+  clean re-triage.
+- **Hold / Release hold** — toggles `agent:hold`, the brake every loop honours.
+- **Open** — file tasks open `tasks.md` for hand-editing; Linear issues open in
+  Linear.
+
+Each task shows under exactly one stage — its furthest point in the pipeline —
+so there is never any ambiguity about where a task actually is.
+
 ## Maintenance Helpers
 
 ### Inspect

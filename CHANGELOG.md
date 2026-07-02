@@ -63,6 +63,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with `--where-label`, `--dry-run`, and `-y`. See `docs/BULK-LABEL.md`.
 - `cadence inspect`, `cadence labels init|list|ensure`, and `cadence bakeoff`
   helper commands for setup support, label maintenance, and implementer comparison.
+- SwiftBar gate inbox now gives every task — file-backed and Linear — a single
+  canonical stage and a per-task submenu to advance, set any stage, hold/release,
+  and open it. New `cadence tasks path` verb; the `stage` field is emitted by
+  `cadence tasks list` and `cadence linear issues-list`.
 
 ### Changed
 
