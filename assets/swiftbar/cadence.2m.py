@@ -68,7 +68,7 @@ SET_STAGE = [
     ("Revise", ["agent:revise"],  ["agent:spec", "agent:build"]),
 ]
 
-CLOSED_STATUS = {"done", "cancelled", "canceled", "closed"}
+CLOSED_STATUS = {"done", "completed", "cancelled", "canceled", "closed"}
 CLOSED_STATE_TYPE = {"completed", "canceled", "cancelled"}
 
 
@@ -222,12 +222,14 @@ def section_of(it):
     return st.get("exception") or st.get("name") or "backlog"
 
 
-def action(pre, title, add, remove, config, ident, backend):
+def action(pre, title, add, remove, config, ident, backend, done=""):
+    # param6 (`done`) closes the task to record a human-merged PR: file backend
+    # sets `status: <done>`, Linear moves to the `<done>`-type workflow state.
     return (
         '%s%s | bash="%s" param1=%s param2="%s" param3="%s" param4="%s" param5="%s" '
-        "terminal=false refresh=true"
+        'param6="%s" terminal=false refresh=true'
         % (pre, title, GRANT, backend, config or "", ident,
-           ",".join(add), ",".join(remove))
+           ",".join(add), ",".join(remove), done)
     )
 
 
@@ -246,6 +248,10 @@ def render_task(pre, it, config, backend, task_path):
     emit("%s%s  %s%s" % (pre, ident, disp, marker))
 
     sub = pre + "--"
+    if st.get("name") == "pr-open":
+        # Human merged the draft PR themselves — this only records that merge.
+        emit(action(sub, "✓ Mark merged", [], ["agent:pr-open"],
+                    config, ident, backend, done="completed"))
     adv = st.get("advance")
     if adv:
         emit(action(sub, "▶ Advance to %s" % STAGE_TITLE.get(adv, adv),

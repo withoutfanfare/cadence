@@ -350,7 +350,7 @@ def _resolve_label_ids(names, env, post):
 _STATES_Q = """
 query($teamId: ID!) {
   workflowStates(filter: { team: { id: { eq: $teamId } } }, first: 100) {
-    nodes { id name }
+    nodes { id name type }
   }
 }"""
 
@@ -362,6 +362,19 @@ def _resolve_state_id(name, env, post):
         if n["name"].lower() == name.lower():
             return n["id"]
     raise LinearError(f"no workflow state named {name!r}")
+
+
+def _resolve_state_id_by_type(state_type, env, post):
+    """First workflow state of the given Linear type (backlog, unstarted, started,
+    completed, canceled). Lets callers reach 'the done state' without naming it —
+    the name varies per workspace, so no project fact lands in the engine.
+    ponytail: first match wins; if a team has several done states, that's the one."""
+    _require_env(env, "LINEAR_TEAM_ID")
+    data = post(_STATES_Q, {"teamId": env.get("LINEAR_TEAM_ID")}, env)
+    for n in data["workflowStates"]["nodes"]:
+        if (n.get("type") or "").lower() == state_type.lower():
+            return n["id"]
+    raise LinearError(f"no workflow state of type {state_type!r}")
 
 
 _ISSUE_SCOPE_Q = """
@@ -405,6 +418,8 @@ def cmd_issue_update(args, env, post=graphql):
         inp["estimate"] = int(args.estimate)
     if getattr(args, "state", None):
         inp["stateId"] = _resolve_state_id(args.state, env, post)
+    elif getattr(args, "state_type", None):
+        inp["stateId"] = _resolve_state_id_by_type(args.state_type, env, post)
     if getattr(args, "cycle", None):
         inp["cycleId"] = args.cycle  # caller passes a cycle id
     add = _resolve_label_ids(getattr(args, "add_label", None) or [], env, post)
@@ -612,6 +627,7 @@ def _build_parser():
     g = sub.add_parser("issue-get"); g.add_argument("id")
     u = sub.add_parser("issue-update"); u.add_argument("id")
     u.add_argument("--priority", type=int); u.add_argument("--state")
+    u.add_argument("--state-type", dest="state_type")
     u.add_argument("--title"); u.add_argument("--estimate", type=int)
     u.add_argument("--cycle")
     u.add_argument("--add-label", action="append", dest="add_label")

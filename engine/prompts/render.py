@@ -22,6 +22,7 @@ FILE_STAGE_RULES = {
         "Run `cadence tasks list` and inspect local tasks that do not already carry an agent terminal label.",
         "Fill only blanks that are clear from the task text. Mark settled tasks with `agent:triaged`; mark unclear tasks with `agent:needs-human`.",
         "Before marking a task `agent:triaged`, ensure its body has an `### Acceptance Criteria` section with a `- [ ]` checklist derived from the task text; if it is missing, write it with `cadence tasks update <ID> --body-file <file>` (use `###`, not `##`, which is reserved for task headers). If you cannot state clear criteria, mark `agent:needs-human` instead — autonomous mode only advances tasks that carry acceptance criteria.",
+        "Reconcile merged PRs: `gh pr list --state merged --base \"${BASE_BRANCH:-develop}\" --json number,url,headRefName`. For each `agent:pr-open` task whose recorded PR URL (in its body) matches a PR that is now merged, close it with `cadence tasks update <ID> --status completed --remove-label agent:pr-open`. This only records a merge a human already made — never merge, mark a PR ready, or grant a gate. Count these as `backfilled` in the summary.",
     ],
     "spec": [
         "Run `cadence tasks list --label agent:spec`.",

@@ -156,6 +156,10 @@ and write labels to record what they did. Full label vocabulary:
    that triggered it and leaves exactly one terminal marker.
 2. **Never grant downstream authority.** No loop sets `agent:spec` / `agent:build` /
    `agent:revise`, moves an issue past the review state, merges, or marks a PR ready.
+   One exception, reflecting reality rather than granting it: triage may close an
+   `agent:pr-open` task/issue to a done state once its PR is merged into
+   `BASE_BRANCH` — recording a merge the human already made, never advancing
+   unmerged work (triage's PR back-fill; see `skills/cadence-loop-triage`).
 3. **Write defaults differ per stage.** Triage is opt-in to writes: it analyses and
    writes nothing unless invoked with `--live`. Spec, build, and revise are live by
    default and opt *out* with `--dry-run`. `cadence run <stage>` invokes the live path

@@ -302,6 +302,30 @@ class TestWriteVerbs(unittest.TestCase):
         with self.assertRaises(cli.LinearError):
             cli.cmd_issue_update(args, ENV, post=post)
 
+    def test_issue_update_state_type_resolves_completed_state(self):
+        # The "Mark merged" click and the triage back-fill move an issue to the
+        # done state by TYPE, not name — the name varies per workspace.
+        seen = {}
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            if "workflowStates(" in query:
+                return {"workflowStates": {"nodes": [
+                    {"id": "s-todo", "name": "Todo", "type": "started"},
+                    {"id": "s-done", "name": "Merged", "type": "completed"}]}}
+            if "issueUpdate(" in query:
+                seen["stateId"] = variables["input"].get("stateId")
+                return {"issueUpdate": {"success": True, "issue": {"id": "i1"}}}
+            return {"issue": {"labels": {"nodes": []}}}
+        args = types.SimpleNamespace(
+            id="i1", priority=None, title=None, estimate=None, state=None,
+            state_type="completed", cycle=None, add_label=None, remove_label=None)
+        out = cli.cmd_issue_update(args, ENV, post=post)
+        self.assertTrue(out["success"])
+        self.assertEqual(seen["stateId"], "s-done")
+
     def test_issue_comment(self):
         seen = {}
         def post(query, variables, env):

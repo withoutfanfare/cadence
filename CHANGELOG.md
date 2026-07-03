@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Merged-PR reconciliation: once a human merges a task's draft PR into
+  `BASE_BRANCH`, the task/issue is closed and `agent:pr-open` cleared — two ways.
+  A **"✓ Mark merged"** button appears on PR-open items in the SwiftBar menu, and
+  **triage's PR back-fill** now also closes any tracked `agent:pr-open` item whose
+  recorded PR has merged (previously it only created issues for *unlinked* merged
+  PRs). This is a narrow, documented relaxation of the "no loop moves an issue past
+  In Review" invariant: it records a merge a human already made, never advancing
+  unmerged work. Linear closes to a completed-*type* state via the new
+  `cadence linear issue-update --state-type` (no state name hard-coded in the
+  engine); file tasks close to `status: completed`.
+
+### Fixed
+
+- SwiftBar menu: file tasks with `status: completed` were treated as still-open
+  and leaked into the actionable list; `completed` now counts as closed.
+
 - `cadence overview [--json]`: a cross-project status view — health, last run per
   stage, and recent activity for every registered project in one glance. Read-only.
 - Multi-project menu bar: a single SwiftBar plugin (`assets/swiftbar/cadence.2m.py`)

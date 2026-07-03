@@ -67,7 +67,8 @@ writes are issue **metadata** only: priority, cycle, type label, the `Stale`
 label, an acceptance-criteria stub in the issue's own description, terminal
 markers, and the duplicate-candidate proposal (a `relatedTo` link +
 `agent:dupe-candidate`, step 4). Full-mode PR back-fill may create a new Linear
-issue for a merged PR with no existing link. Failure comments are allowed only
+issue for a merged PR with no existing link, and may close an `agent:pr-open`
+issue whose PR a human has merged (step 6). Failure comments are allowed only
 when a per-issue failure needs a durable note. Never write documents. Never
 overwrite a field a human has already set — you fill blanks only. In `--dry-run`,
 write none of these — list the intended changes in the digest instead.
@@ -78,16 +79,21 @@ write none of these — list the intended changes in the digest instead.
   `Stale` label, acceptance-criteria stubs, the `agent:triaged` /
   `agent:needs-human` terminal markers (see "Terminal per issue"), and — for
   duplicate detection — the `relatedTo` link and the `agent:dupe-candidate` flag
-  (see step 4). Full-mode PR back-fill issue creation and failure-only comments
-  are the only exceptions.
+  (see step 4). Full-mode PR back-fill (creating an issue for an unlinked merged
+  PR, or closing an `agent:pr-open` issue whose PR a human merged) and
+  failure-only comments are the only exceptions.
 - Duplicate detection is **propose only**. Never set `duplicateOf`, never set
   `agent:superseded`, never `blockedBy`/`blocks`, never hold. You only *suggest*
   a cluster with `relatedTo` + `agent:dupe-candidate`; the spec loop validates it
   against the code and decides. Confirming a duplicate is not a blanks-fill call.
 - Never move an issue into or past In Review, Testing Server, Staging Review,
-  Approved, or Live.
+  Approved, or Live — **except** to a completed-type state to record a PR a human
+  merged into `BASE_BRANCH` (step 6). The merge is the human's action; you only
+  reflect it. You still never move *unmerged* work forward.
 - Never set `agent:spec` or `agent:build`. Authorising work is a human decision.
-- Never close, cancel, or delete an issue. The most you do is apply `Stale`.
+- Never close, cancel, or delete an issue, **except** closing to a completed-type
+  state to record a human-merged PR (step 6). Short of that, the most you do is
+  apply `Stale`.
 - Never run application code, tests, migrations. Never push git.
   The only shell you run is read-only `gh pr list` / `gh pr view` for back-fill.
 - Never overwrite a field a human has already set. You fill blanks only.
@@ -197,11 +203,19 @@ check fails, emit the standard pause JSON and records described in
    close them.
 
 6. PR back-fill (full mode only): `base="${BASE_BRANCH:-develop}"; gh pr list --state merged --base "$base"`
-   since `--since`. For each merged PR with no linked Linear issue, create one
-   with `linear-issue-creator`: title from the PR, body linking the PR and
-   summarising it, type label from the PR prefix (feat/fix/refactor/chore), state
-   set to match (Merged, or Approved/Live if already released), assignee set to
-   the PR author. Check for an existing linked issue first to avoid duplicates.
+   since `--since`. For each merged PR:
+   - **No linked Linear issue** → create one with `linear-issue-creator`: title
+     from the PR, body linking the PR and summarising it, type label from the PR
+     prefix (feat/fix/refactor/chore), state set to match (Merged, or Approved/Live
+     if already released), assignee set to the PR author. Check for an existing
+     linked issue first to avoid duplicates.
+   - **Linked issue still at `agent:pr-open`** → the human has merged it, so record
+     that: move it to a completed-type state and clear the label —
+     `cadence linear issue-update <ID> --state-type completed --remove-label agent:pr-open`.
+     This mirrors a merge a human already made; you are **not** granting a gate,
+     marking a PR ready, or advancing unmerged work. Leave any issue whose PR is
+     still open untouched.
+   Count both as `backfilled`.
 
 7. Produce one digest: counts of issues prioritised, cycled, labelled, stubbed,
    linked as duplicate candidates, marked triaged, parked as needs-human, flagged

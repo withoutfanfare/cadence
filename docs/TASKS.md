@@ -78,6 +78,11 @@ never mistaken for a stranded field.
   what you rejected). Add `agent:later` to a dismissed task to allow it back;
   the file backend has no timestamps, so `agent:later` tasks may be
   reconsidered whenever they still clearly serve the goal.
+- When a human merges a task's draft PR into `BASE_BRANCH`, the task is closed
+  with `status: completed` and `agent:pr-open` removed — done by the "✓ Mark
+  merged" SwiftBar button or automatically by triage's PR back-fill. `completed`
+  is the terminal done status (it counts as closed everywhere; loops never set it
+  except to record a merge a human already made).
 
 ## Editing via the CLI
 
