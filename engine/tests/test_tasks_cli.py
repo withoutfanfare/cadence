@@ -190,6 +190,23 @@ class TestTasksCli(unittest.TestCase):
         result, _updated = self._run(["validate"], tasks_text=text)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_validate_flags_pr_open_without_a_pr_reference(self):
+        # Regression: tasks were labelled agent:pr-open when no PR existed
+        # anywhere; validate accepted the file so nothing surfaced the lie.
+        text = ("# Cadence Tasks\n\n## TASK-1: Title\nstatus: open\n"
+                "labels: agent:pr-open\n\nBody with no PR link.\n")
+        result, _updated = self._run(["validate"], tasks_text=text)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("TASK-1", result.stderr)
+        self.assertIn("agent:pr-open", result.stderr)
+
+    def test_validate_accepts_pr_open_with_a_pr_url_in_the_body(self):
+        text = ("# Cadence Tasks\n\n## TASK-1: Title\nstatus: open\n"
+                "labels: agent:pr-open\n\n"
+                "PR: https://github.com/acme/site/pull/12\n")
+        result, _updated = self._run(["validate"], tasks_text=text)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_list_includes_canonical_stage(self):
         result, _ = self._run(["list"])
         self.assertEqual(result.returncode, 0, result.stderr)

@@ -53,6 +53,11 @@ reserved for task headers).
    line following the header is the description.
 5. **IDs are unique.** Two tasks with the same ID: only the first is reachable
    by `cadence tasks get/update`. `doctor` flags duplicates.
+6. **`agent:pr-open` requires a PR URL in the body.** The build loop records the
+   draft PR's URL (`…/pull/<n>`) when it opens one, so a pr-open task with no PR
+   reference means no PR actually exists — `doctor` flags it as workflow state
+   that needs repair (usually: work done outside the worktree flow, or a label
+   set by hand).
 
 Inside the body, lines that happen to start with `status:` or `labels:` (for
 example `status: 200` in a spec) are kept as body text — they are only metadata

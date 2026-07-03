@@ -29,11 +29,15 @@ FILE_STAGE_RULES = {
     ],
     "build": [
         "Run `cadence tasks list --label agent:build`.",
-        "Implement inside the configured project/worktree only. Run configured gates. Replace `agent:build` with `agent:pr-open` when the work is ready for human review.",
+        "For each selected task, create an isolated worktree off the base branch — `WT=\"$(cadence worktree add <task-id-lowercase> \"${BASE_BRANCH:-develop}\")\"; cd \"$WT\"` — and implement in that worktree only. Never edit the main project checkout (`$PROJECT_DIR`) directly.",
+        "Run the configured gates inside the worktree.",
+        "Commit only the files the task targeted, push the branch, and open a **draft** PR against the base branch: `gh pr create --draft --base \"${BASE_BRANCH:-develop}\"`. Never mark it ready, never merge.",
+        "Record the PR URL in the task body with `cadence tasks update`, then replace `agent:build` with `agent:pr-open` — only after the draft PR exists. If any step fails, keep `agent:build`, add `agent:needs-attention` with a note explaining what failed, and count it in `errors`.",
     ],
     "revise": [
         "Run `cadence tasks list --label agent:revise`.",
-        "Address the task feedback, run configured gates, then replace `agent:revise` with `agent:revised`.",
+        "For each selected task, work in the task's existing worktree and branch (locate them from the PR URL recorded in the task body). Address the feedback there, run the configured gates, and push to the same branch so the existing draft PR updates. Never open a new PR, never mark it ready, never merge.",
+        "Replace `agent:revise` with `agent:revised`. If the task has no PR URL or the branch is missing, do not edit any files — add `agent:needs-attention` with a note and count it in `errors`.",
     ],
     "advance": [
         "Run `cadence tasks list --label agent:auto`.",
