@@ -245,6 +245,17 @@ else:
         self.assertIn("GATE_LINT: mytool --all", result.stdout)
         self.assertIn("GATE_TEST: blank (skipped)", result.stdout)
 
+    def test_gate_with_quoted_env_assignment_resolves_executable(self):
+        # Gates are sourced shell: a quoted VAR="a b" prefix is valid and the
+        # executable after it (mytool) must be what doctor probes, not a fragment
+        # of the quoted value.
+        self._write_exe(self.runner_bin, "mytool", "#!/bin/sh\nexit 0\n")
+
+        result = self._run({"GATE_LINT": 'FOO="a b" mytool --all', "GATE_TEST": ""})
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('GATE_LINT: FOO="a b" mytool --all', result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

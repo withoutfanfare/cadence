@@ -82,17 +82,27 @@ check_model() {
 check_gate() {
   label="$1"; cmd="$2"
   if [ -z "$cmd" ]; then echo "  •  $label: blank (skipped)"; return; fi
-  # Strip leading whitespace and any VAR=value env assignments — `CI=1 composer
-  # test` runs `composer`, not `CI=1`, so that is the executable to probe.
-  exe="${cmd#"${cmd%%[![:space:]]*}"}"
-  while :; do
-    first="${exe%% *}"
-    case "$first" in
-      [A-Za-z_]*=*) exe="${exe#"$first"}"; exe="${exe#"${exe%%[![:space:]]*}"}" ;;
-      *) break ;;
-    esac
-  done
-  exe="${exe%% *}"
+  # Gates are sourced shell, so quoted values are valid (`FOO="a b" tool --all`).
+  # Let shlex tokenise honouring quotes, then skip leading VAR=value env
+  # assignments — `CI=1 composer test` runs `composer`, so that is what to probe.
+  # Prints empty on a parse error (unbalanced quotes).
+  exe="$(CADENCE_GATE="$cmd" python3 - <<'PY'
+import os, shlex
+try:
+    toks = shlex.split(os.environ["CADENCE_GATE"])
+except ValueError:
+    toks = []
+for t in toks:
+    if "=" in t and t.split("=", 1)[0].isidentifier():
+        continue
+    print(t)
+    break
+PY
+)"
+  if [ -z "$exe" ]; then
+    fail "$label '$cmd' — could not parse a command to check (unbalanced quotes?)"
+    return
+  fi
   # Path-form gates (`./vendor/bin/pint`, `bin/test`) resolve relative to where the
   # gate runs (PROJECT_DIR), not doctor's cwd; only bare names go through PATH.
   case "$exe" in
