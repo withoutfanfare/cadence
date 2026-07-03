@@ -26,6 +26,26 @@ def _split_list(value):
     return [part.strip() for part in value.split(",") if part.strip()]
 
 
+def _check_body(description):
+    """Reject body text that would round-trip into a brand-new task.
+
+    `## ID: Title` is reserved for task headers; a body line matching it re-parses
+    on the next load() as a separate task carrying attacker-chosen status/labels —
+    a privilege-escalation vector, since roadmap bodies can derive from untrusted
+    repo content and could forge gate labels (agent:build/agent:auto) the loops are
+    forbidden from granting, while bypassing the ROADMAP_MAX_OPEN cap. Bodies use
+    `###` for sub-headings (see the triage/roadmap rules).
+    ponytail: rejects at the write path rather than escaping in render/parse —
+    validate() already flags any forged header a human hand-edits in.
+    """
+    for line in (description or "").splitlines():
+        if HEADER_RE.match(line):
+            raise ValueError(
+                "task body contains a line that parses as a task header "
+                f"({line.strip()!r}); use '###' for sub-headings — '##' is "
+                "reserved for task headers")
+
+
 def parse(text):
     tasks = []
     current = None
@@ -210,7 +230,9 @@ def cmd_update(args, env=None):
     task["labels"] = labels
     if args.body_file:
         with open(args.body_file, encoding="utf-8") as f:
-            task["description"] = f.read().strip()
+            description = f.read().strip()
+        _check_body(description)
+        task["description"] = description
     save(tasks, env)
     return task
 
@@ -254,6 +276,7 @@ def cmd_add(args, env=None):
     if args.body_file:
         with open(args.body_file, encoding="utf-8") as f:
             description = f.read().strip()
+        _check_body(description)
     identifier = _next_id(tasks)
     task = {"id": identifier, "identifier": identifier, "title": args.title,
             "status": "open", "labels": labels, "description": description}

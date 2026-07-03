@@ -82,8 +82,28 @@ check_model() {
 check_gate() {
   label="$1"; cmd="$2"
   if [ -z "$cmd" ]; then echo "  •  $label: blank (skipped)"; return; fi
-  exe="${cmd%% *}"
-  if (PATH="$RUNNER_PATH"; command -v "$exe" >/dev/null 2>&1); then
+  # Strip leading whitespace and any VAR=value env assignments — `CI=1 composer
+  # test` runs `composer`, not `CI=1`, so that is the executable to probe.
+  exe="${cmd#"${cmd%%[![:space:]]*}"}"
+  while :; do
+    first="${exe%% *}"
+    case "$first" in
+      [A-Za-z_]*=*) exe="${exe#"$first"}"; exe="${exe#"${exe%%[![:space:]]*}"}" ;;
+      *) break ;;
+    esac
+  done
+  exe="${exe%% *}"
+  # Path-form gates (`./vendor/bin/pint`, `bin/test`) resolve relative to where the
+  # gate runs (PROJECT_DIR), not doctor's cwd; only bare names go through PATH.
+  case "$exe" in
+    /*)  probe="$exe" ;;
+    */*) probe="${PROJECT_DIR:-$PWD}/$exe" ;;
+    *)   probe="" ;;
+  esac
+  if [ -n "$probe" ]; then
+    if [ -x "$probe" ]; then echo "  •  $label: $cmd"
+    else fail "$label '$cmd' — '$exe' not executable at $probe (stale gate? fix the command or blank it)"; fi
+  elif (PATH="$RUNNER_PATH"; command -v "$exe" >/dev/null 2>&1); then
     echo "  •  $label: $cmd"
   else
     fail "$label '$cmd' — '$exe' not on PATH (stale gate? fix the command or blank it)"
