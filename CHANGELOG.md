@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `tests/test_providers_cli.py` was not hermetic: it spawned the providers CLI
+  with the repo root as its working directory, so the `<cwd>/cadence/.env`
+  fallback read — and the `set` test rewrote — the repo's live config instead
+  of the test fixture. The subprocess now runs from a temp directory with any
+  inherited `CADENCE_CONFIG` dropped.
+
 - SwiftBar menu: file tasks with `status: completed` were treated as still-open
   and leaked into the actionable list; `completed` now counts as closed.
 

@@ -28,11 +28,14 @@ class TestProvidersCli(unittest.TestCase):
 
     def _run_with_env(self, extra_env, *args):
         env = os.environ.copy()
+        # Hermetic: drop any real config pointer and run from the temp dir so
+        # the <cwd>/cadence/.env fallback cannot find the repo's live config.
+        env.pop("CADENCE_CONFIG", None)
         env.update({"HOME": str(self.home), "CADENCE_HOME": str(self.cadence_home)})
         env.update(extra_env)
         return subprocess.run(
             [sys.executable, str(self.script), *args],
-            cwd=ROOT,
+            cwd=self.tmp.name,
             env=env,
             text=True,
             capture_output=True,
