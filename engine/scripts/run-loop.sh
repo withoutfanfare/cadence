@@ -96,10 +96,11 @@ pause_before_launch() {
   detail="$2"
   TS="$(date -u +%FT%TZ)"
   DAY="$(date -u +%F)"
-  payload="$(STAGE="$STAGE" REASON="$reason" DETAIL="$detail" python3 - <<'PY'
+  payload="$(STAGE="$STAGE" TS="$TS" REASON="$reason" DETAIL="$detail" python3 - <<'PY'
 import json, os
 print(json.dumps({
     "stage": os.environ["STAGE"],
+    "ts": os.environ["TS"],
     "paused": True,
     "reason": os.environ["REASON"],
     "detail": os.environ["DETAIL"],
@@ -121,10 +122,11 @@ idle_before_launch() {
   reason="$1"
   detail="$2"
   TS="$(date -u +%FT%TZ)"
-  payload="$(STAGE="$STAGE" REASON="$reason" DETAIL="$detail" python3 - <<'PY'
+  payload="$(STAGE="$STAGE" TS="$TS" REASON="$reason" DETAIL="$detail" python3 - <<'PY'
 import json, os
 print(json.dumps({
     "stage": os.environ["STAGE"],
+    "ts": os.environ["TS"],
     "dry_run": False,
     "idle": True,
     "reason": os.environ["REASON"],
