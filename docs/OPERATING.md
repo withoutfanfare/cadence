@@ -10,7 +10,7 @@ Daily read-only commands:
 cadence status          # live/paused state, launchd jobs, recent runs (one project)
 cadence overview        # cross-project glance: health + last run per stage, all projects
 cadence overview --json # same, machine-readable (used by the menu-bar plugin)
-cadence doctor          # verify local setup (providers, models, key, labels)
+cadence doctor          # verify local setup (providers, models, key, gates, labels)
 cadence doctor --labels # verify the Linear label vocabulary exists
 cadence logs triage     # tail one stage log; conduct is supported too
 cadence feed 30         # recent activity lines

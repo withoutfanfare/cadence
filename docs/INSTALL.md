@@ -171,6 +171,10 @@ The critical checks are:
   the model exists in `~/.kimi-code/config.toml` (so a wrong name like `kimi:k2`
   is caught at setup, not at the first scheduled run); for other providers it
   prints the resolved `provider:model` so a typo is visible.
+- The configured **gate commands** are usable — a blank gate is skipped, a gate
+  whose tool is missing on `PATH` fails (catching a stale `composer` gate on a
+  non-PHP repo), and a resolvable gate is printed so a wrong-toolchain command is
+  at least visible.
 - The Linear API key works.
 - The configured team is visible to that key.
 - The state directory exists.

@@ -225,6 +225,26 @@ else:
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("build orchestrator provider 'unknown' invalid", result.stdout)
 
+    def test_stale_gate_with_missing_executable_is_caught(self):
+        # A gate whose leading executable is absent (wrong toolchain for this repo)
+        # must fail doctor now, not wait to abort a build days later.
+        result = self._run({"GATE_TEST": "no-such-tool-xyz test:filter"})
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no-such-tool-xyz test:filter", result.stdout)
+        self.assertIn("'no-such-tool-xyz' not on PATH", result.stdout)
+
+    def test_blank_gate_skipped_and_resolvable_gate_shown(self):
+        # Blank gate = skip (valid). A gate whose leading executable resolves is
+        # shown (doctor can't verify the subcommand) and does not fail.
+        self._write_exe(self.runner_bin, "mytool", "#!/bin/sh\nexit 0\n")
+
+        result = self._run({"GATE_LINT": "mytool --all", "GATE_TEST": ""})
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("GATE_LINT: mytool --all", result.stdout)
+        self.assertIn("GATE_TEST: blank (skipped)", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
