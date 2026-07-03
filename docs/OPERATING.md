@@ -246,7 +246,10 @@ issues by hand. Every 3 hours it ranks the ready backlog (priority → current c
 already-auto, anything without acceptance criteria, and, for Linear, blocked or
 parent issues with children), and tops up `agent:auto` to `CONDUCT_WIP`
 (default 1) — one issue in flight at a time until you raise it. A task with no
-acceptance criteria is never queued, so triage stubs them in.
+acceptance criteria is never queued, so triage stubs them in. An issue that
+stalls into `agent:needs-attention` (or `agent:hold`) releases its WIP slot, so
+one stuck item cannot freeze the whole queue — the conductor moves on and feeds
+the next.
 
 - **Shadow it first:** `AUTONOMOUS=on cadence conduct --dry-run` prints which issue
   it would set loose (and, for Linear, which it skipped as blocked or parent work),

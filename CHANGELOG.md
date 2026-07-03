@@ -107,6 +107,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Autonomous queue no longer freezes on one stuck issue. The conductor counted
+  every `agent:auto` issue against `CONDUCT_WIP`, including ones parked in
+  `agent:needs-attention`/`agent:hold`/terminal states — so a single failed
+  issue could hold the only WIP slot indefinitely, reporting "queue full" every
+  run while nothing progressed. A parked issue now releases its slot (active and
+  `agent:pr-open` issues still count, capping concurrent draft PRs).
 - Loop-runner crashes are no longer silent. Any non-zero exit that happens
   before a run's normal logging (a script error, an early failure after the
   pause/backend guards) now appends a `CRASHED (exit N)` line to both the stage

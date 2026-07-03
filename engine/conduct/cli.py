@@ -29,9 +29,30 @@ parse_criteria = _advance.parse_criteria
 _TERMINAL = {"completed", "canceled"}
 _BLOCK_OUT = {"agent:hold", "agent:superseded", "agent:needs-human",
               "agent:needs-attention", "agent:auto", "agent:proposed"}
+# An agent:auto issue carrying one of these (or in a terminal state) is parked
+# for a human and is NOT making autonomous progress, so it must not count as a
+# live WIP slot — otherwise a single stuck item freezes the whole queue at
+# CONDUCT_WIP. Active states (in-progress, agent:pr-open awaiting merge) still
+# count, which is what caps how many draft PRs pile up for review.
+_PARKED = {"agent:hold", "agent:superseded", "agent:needs-human",
+           "agent:needs-attention"}
 # Linear priority: 1=urgent … 4=low, 0=none. Map so urgent ranks highest and
 # none ranks lowest, then sort priority-descending (most urgent first).
 _PRIORITY_RANK = {1: 4, 2: 3, 3: 2, 4: 1}
+
+
+def _is_parked(issue):
+    labels = set(issue.get("labels") or [])
+    if labels & _PARKED:
+        return True
+    return (issue.get("state_type") or issue.get("status") or "") in _TERMINAL
+
+
+def active_inflight(issues):
+    """agent:auto issues actually in flight. Parked/terminal ones are excluded so
+    a stuck item cannot hold a WIP slot forever (the queue-full freeze)."""
+    return [i for i in issues
+            if "agent:auto" in (i.get("labels") or []) and not _is_parked(i)]
 
 
 def eligible(issues):
@@ -153,7 +174,7 @@ def conduct(env, dry_run=False):
 
     wip = int(env.get("CONDUCT_WIP") or 1)
     issues = _issues_list(env)
-    inflight = [i for i in issues if "agent:auto" in (i.get("labels") or [])]
+    inflight = active_inflight(issues)
     free = wip - len(inflight)
     if free <= 0:
         return {"loop": "conduct", "dry_run": dry_run, "inflight": len(inflight),

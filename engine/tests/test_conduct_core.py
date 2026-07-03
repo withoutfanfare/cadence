@@ -46,6 +46,32 @@ class TestEligible(unittest.TestCase):
         self.assertEqual(cli.eligible([issue("A-5", ["agent:triaged"], state_type="canceled")]), [])
 
 
+class TestActiveInflight(unittest.TestCase):
+    """A parked agent:auto issue (needs-attention/hold/terminal) is not making
+    autonomous progress, so it must not occupy a WIP slot — otherwise one stuck
+    item freezes the whole queue at CONDUCT_WIP."""
+
+    def test_parked_needs_attention_item_does_not_hold_a_slot(self):
+        stuck = issue("A-1", ["agent:auto", "agent:needs-attention"])
+        healthy = issue("A-2", ["agent:auto", "agent:pr-open"])
+        out = [i["identifier"] for i in cli.active_inflight([stuck, healthy])]
+        self.assertEqual(out, ["A-2"])
+
+    def test_held_and_terminal_auto_items_do_not_count(self):
+        held = issue("A-3", ["agent:auto", "agent:hold"])
+        superseded = issue("A-6", ["agent:auto", "agent:superseded"])
+        done = issue("A-4", ["agent:auto"], state_type="completed")
+        self.assertEqual(cli.active_inflight([held, superseded, done]), [])
+
+    def test_plain_and_pr_open_auto_items_still_count(self):
+        # A healthy in-progress item and a draft-PR-awaiting-merge item both
+        # legitimately occupy WIP (the cap limits concurrent draft PRs too).
+        a = issue("A-5", ["agent:auto"])
+        b = issue("A-7", ["agent:auto", "agent:pr-open"])
+        out = [i["identifier"] for i in cli.active_inflight([a, b])]
+        self.assertEqual(out, ["A-5", "A-7"])
+
+
 class TestRank(unittest.TestCase):
     def test_priority_dominates_then_cycle_then_age(self):
         a = issue("A", ["agent:triaged"], priority=1, createdAt="2026-06-02T00:00:00Z")  # urgent
