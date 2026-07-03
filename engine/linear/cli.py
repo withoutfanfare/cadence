@@ -128,8 +128,19 @@ def cmd_projects_list(args, env, post=graphql):
             for n in data["team"]["projects"]["nodes"]]
 
 
+_PROJECT_GET_Q = """
+query($id: String!) { project(id: $id) { id name description } }"""
+
+
+def cmd_project_get(args, env, post=graphql):
+    """The configured project itself — its description is the roadmap goal."""
+    _require_env(env, "LINEAR_PROJECT_ID")
+    n = post(_PROJECT_GET_Q, {"id": env.get("LINEAR_PROJECT_ID")}, env)["project"]
+    return {"id": n["id"], "name": n.get("name"), "description": n.get("description")}
+
+
 _ISSUE_FIELDS = """
-  id identifier title url description priority createdAt
+  id identifier title url description priority createdAt updatedAt canceledAt
   state { name type } assignee { name id }
   labels { nodes { name } } cycle { number }
 """
@@ -156,6 +167,10 @@ def _shape_issue(n):
         out["priority"] = n.get("priority")
     if n.get("createdAt"):
         out["createdAt"] = n.get("createdAt")
+    if n.get("updatedAt"):
+        out["updatedAt"] = n.get("updatedAt")
+    if n.get("canceledAt"):
+        out["canceledAt"] = n.get("canceledAt")
     if n.get("state"):
         out["state"] = n["state"].get("name")
         out["state_type"] = n["state"].get("type")
@@ -299,6 +314,7 @@ AGENT_LABELS = [
     "agent:claimed", "agent:triaged", "agent:needs-human",  # agent status
     "agent:dupe-candidate", "agent:specced", "agent:pr-open",
     "agent:revised", "agent:superseded", "agent:needs-attention",
+    "agent:proposed", "agent:later",                        # roadmap proposals
     "agent:hold", "Stale",
 ]
 
@@ -537,12 +553,59 @@ def cmd_doc_upsert(args, env, post=graphql):
     return {"id": res["document"]["id"], "url": res["document"]["url"]}
 
 
+_TERMINAL_STATE_TYPES = {"completed", "canceled"}
+
+_ISSUE_CREATE_M = """
+mutation($input: IssueCreateInput!) {
+  issueCreate(input: $input) { success issue { id identifier url } }
+}"""
+
+
+def _open_proposal_count(env, post):
+    f = _scoped_filter(env)
+    f["labels"] = {"name": {"eq": "agent:proposed"}}
+    nodes = _issue_nodes(f, env, post=post)
+    return sum(1 for n in nodes
+               if ((n.get("state") or {}).get("type")) not in _TERMINAL_STATE_TYPES)
+
+
+def cmd_issue_create(args, env, post=graphql):
+    """File a roadmap proposal. Always carries agent:proposed, always scoped to
+    the configured team/project/assignee, and refuses to exceed ROADMAP_MAX_OPEN
+    open proposals — the cap is engine-enforced, not prompt-promised."""
+    _require_env(env, "LINEAR_TEAM_ID", "LINEAR_PROJECT_ID", "LINEAR_ASSIGNEE_ID")
+    try:
+        max_open = int(env.get("ROADMAP_MAX_OPEN") or 5)
+    except ValueError:
+        max_open = 5
+    open_now = _open_proposal_count(env, post)
+    if open_now >= max_open:
+        raise LinearError(
+            f"roadmap cap reached: {open_now} open proposal(s) (ROADMAP_MAX_OPEN={max_open})")
+    with open(args.body_file, encoding="utf-8") as f:
+        description = f.read().strip()
+    names = ["agent:proposed"] + [x for x in (args.label or []) if x != "agent:proposed"]
+    label_ids = _resolve_label_ids(names, env, post)
+    res = post(_ISSUE_CREATE_M, {"input": {
+        "teamId": env.get("LINEAR_TEAM_ID"),
+        "projectId": env.get("LINEAR_PROJECT_ID"),
+        "assigneeId": env.get("LINEAR_ASSIGNEE_ID"),
+        "title": args.title,
+        "description": description,
+        "labelIds": label_ids,
+    }}, env)["issueCreate"]
+    issue = res["issue"]
+    return {"id": issue["id"], "identifier": issue["identifier"],
+            "url": issue["url"], "success": res["success"]}
+
+
 def _build_parser():
     p = argparse.ArgumentParser(prog="cadence linear")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("teams")
     sub.add_parser("me")
     sub.add_parser("projects")
+    sub.add_parser("project-get")
     il = sub.add_parser("issues-list"); il.add_argument("--label")
     il.add_argument("--state"); il.add_argument("--assignee")
     il.add_argument("--limit", type=int)
@@ -570,17 +633,23 @@ def _build_parser():
     d.add_argument("--title", required=True); d.add_argument("--body", required=True)
     d.add_argument("--doc-id", dest="doc_id")
     sub.add_parser("cycles-list")
+    ic = sub.add_parser("issue-create")
+    ic.add_argument("--title", required=True)
+    ic.add_argument("--body-file", required=True, dest="body_file")
+    ic.add_argument("--label", action="append")
     return p
 
 
 _DISPATCH = {
     "teams": cmd_teams, "me": cmd_viewer, "projects": cmd_projects_list,
+    "project-get": cmd_project_get,
     "issues-list": cmd_issues_list, "issue-get": cmd_issue_get,
     "issue-update": cmd_issue_update, "bulk-label": cmd_bulk_label,
     "issue-comment": cmd_issue_comment,
     "issue-relate": cmd_issue_relate, "label-ensure": cmd_label_ensure,
     "labels-list": cmd_labels_list, "labels-init": cmd_labels_init,
     "doc-upsert": cmd_doc_upsert, "cycles-list": cmd_cycles_list,
+    "issue-create": cmd_issue_create,
 }
 
 

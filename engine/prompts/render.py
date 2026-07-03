@@ -8,7 +8,7 @@ import re
 import sys
 
 
-STAGES = {"triage", "spec", "build", "revise", "advance"}
+STAGES = {"triage", "spec", "build", "revise", "advance", "roadmap"}
 
 # Delimiters may carry trailing spaces/tabs and the file may use CRLF; match the
 # lines loosely rather than requiring an exact `\n---\n`, which silently leaked the
@@ -25,7 +25,7 @@ FILE_STAGE_RULES = {
     ],
     "spec": [
         "Run `cadence tasks list --label agent:spec`.",
-        "For each selected task, write the spec into the task body with `cadence tasks update <ID> --body-file <file>`, then replace `agent:spec` with `agent:specced`.",
+        "For each selected task, write the spec into the task body with `cadence tasks update <ID> --body-file <file>`, then replace `agent:spec` with `agent:specced`. Also remove `agent:proposed` if present — a human gating a proposal accepts it.",
     ],
     "build": [
         "Run `cadence tasks list --label agent:build`.",
@@ -38,6 +38,12 @@ FILE_STAGE_RULES = {
     "advance": [
         "Run `cadence tasks list --label agent:auto`.",
         "Grant only the next local gate when the resting label is ready: `agent:triaged` to `agent:spec`, `agent:specced` to `agent:build`, or repair/review labels after build.",
+    ],
+    "roadmap": [
+        "Read the optional goal from the file named by the GOAL_FILE environment variable (default cadence/goal.md, relative to the project root). If it exists and is non-empty, it steers what you look for. If it is missing or empty, that is normal — do not idle; work against the standing quality rubric instead: real bugs and correctness errors, performance problems (payload, slow paths, N+1 queries, image and asset weight), accessibility gaps, security issues, dead code and unused assets, and consistency defects where code violates a pattern the codebase already establishes. Prefer what a senior engineer would stop and flag.",
+        "Run `cadence tasks list` (every task, every status). Treat any task carrying `agent:proposed` — whatever its status — as already proposed: never re-file an idea overlapping an open task, a done task, or a dismissed proposal. A dismissed proposal carrying `agent:later` may be reconsidered if it still clearly serves the goal or rubric.",
+        "Investigate the codebase read-only for the few strongest improvements — bugs or missing pieces — that serve the goal (if set) or the rubric. Never edit files, never run application code.",
+        "File new proposals with `cadence tasks add --title <title> --body-file <file>` (the adapter forces `agent:proposed` and enforces the ROADMAP_MAX_OPEN cap). Each body must state the problem or opportunity, where in the code it lives, a one-line `Why it matters: ...` (tie it to the goal if set, otherwise the rubric category), and an `### Acceptance Criteria` checklist. Prefer few and strong over many and thin; filing nothing is a valid outcome — never pad to the cap.",
     ],
 }
 

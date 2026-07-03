@@ -335,6 +335,62 @@ exec {real_python} "$@"
             log = f.read()
         self.assertIn("starting cadence advance (codex:gpt-test)", log)
 
+    def test_roadmap_without_goal_launches_on_the_rubric(self):
+        # No goal is no longer an opt-out — the loop runs against the standing
+        # quality rubric. The per-project opt-in is SCHED_ROADMAP, not a goal
+        # file, so a manual `run roadmap` proceeds even with no goal present.
+        os.makedirs(os.path.join(self.project, "cadence"))
+        with open(os.path.join(self.project, "cadence", "tasks.md"), "w", encoding="utf-8") as f:
+            f.write("# Cadence Tasks\n")
+        shutil.copytree(os.path.join(ROOT, "engine", "prompts"),
+                        os.path.join(self.root, "engine", "prompts"))
+        self._write_exe("codex", "#!/bin/sh\nprintf '{\"stage\":\"roadmap\",\"proposed\":0,\"errors\":0}\\n'\n")
+
+        result = self._run("roadmap", TASK_BACKEND="file",
+                           ORCHESTRATOR_ROADMAP="codex:gpt-test")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with open(os.path.join(self.state, "logs", "roadmap.log"), encoding="utf-8") as f:
+            log = f.read()
+        self.assertIn("starting cadence roadmap (codex:gpt-test)", log)
+
+    def test_file_backend_roadmap_launches_when_goal_exists(self):
+        os.makedirs(os.path.join(self.project, "cadence"))
+        with open(os.path.join(self.project, "cadence", "tasks.md"), "w", encoding="utf-8") as f:
+            f.write("# Cadence Tasks\n")
+        with open(os.path.join(self.project, "cadence", "goal.md"), "w", encoding="utf-8") as f:
+            f.write("Make onboarding self-serve.\n")
+        shutil.copytree(os.path.join(ROOT, "engine", "prompts"),
+                        os.path.join(self.root, "engine", "prompts"))
+        self._write_exe("codex", "#!/bin/sh\nprintf '{\"stage\":\"roadmap\",\"proposed\":0,\"errors\":0}\\n'\n")
+
+        result = self._run("roadmap", TASK_BACKEND="file",
+                           ORCHESTRATOR_ROADMAP="codex:gpt-test")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with open(os.path.join(self.state, "logs", "roadmap.log"), encoding="utf-8") as f:
+            log = f.read()
+        self.assertIn("starting cadence roadmap (codex:gpt-test)", log)
+
+    def test_unlogged_crash_is_surfaced_in_activity_and_stage_logs(self):
+        # Backend guard passes (absolute TASK_FILE exists) but PROJECT_DIR is
+        # missing, so the script dies at `cd "$WORKTREE"` before its normal run
+        # logging — exactly the class of silent early exit the crash trap covers.
+        task_file = os.path.join(self.tmp.name, "tasks.md")
+        with open(task_file, "w", encoding="utf-8") as f:
+            f.write("# Cadence Tasks\n")
+
+        result = self._run("triage", TASK_BACKEND="file", TASK_FILE=task_file,
+                           PROJECT_DIR=os.path.join(self.tmp.name, "missing"))
+
+        self.assertEqual(result.returncode, 1, result.stderr)
+        with open(os.path.join(self.state, "runs", "activity.log"), encoding="utf-8") as f:
+            activity = f.read()
+        self.assertIn("triage — CRASHED (exit 1)", activity)
+        with open(os.path.join(self.state, "logs", "triage.log"), encoding="utf-8") as f:
+            stage_log = f.read()
+        self.assertIn("CRASHED (exit 1)", stage_log)
+
     def _read_today_digest(self):
         files = [x for x in os.listdir(os.path.join(self.state, "runs"))
                  if x.endswith(".md")]

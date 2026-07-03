@@ -72,6 +72,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   canonical stage and a per-task submenu to advance, set any stage, hold/release,
   and open it. New `cadence tasks path` verb; the `stage` field is emitted by
   `cadence tasks list` and `cadence linear issues-list`.
+- An optional fifth loop, `roadmap`: an advisory scout — `cadence run roadmap
+  [--dry-run]` and the `SCHED_ROADMAP`, `ROADMAP_MAX_OPEN`, and `GOAL_FILE`
+  settings. It scans the codebase read-only and files proposal issues carrying
+  `agent:proposed`, capped at `ROADMAP_MAX_OPEN` open at once by the create
+  verbs, not just the prompt. It is opt-in per project via `SCHED_ROADMAP`
+  (default `off`) — enabling the schedule turns it on, not a stated goal. A
+  goal (the Linear project description, or `GOAL_FILE` on the file backend)
+  *steers* what it looks for; with none it works against a standing
+  engineering-quality rubric (real bugs, performance, accessibility, security,
+  dead code, consistency). It never grants a gate, and the conductor fences
+  `agent:proposed` out of the autonomous queue until a human accepts it.
+  Dismissal has two flavours: cancel for good, or cancel and add `agent:later`
+  for "not now", which allows re-proposal after a 30-day cool-off.
 
 ### Changed
 
@@ -94,6 +107,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Autonomous queue no longer freezes on one stuck issue. The conductor counted
+  every `agent:auto` issue against `CONDUCT_WIP`, including ones parked in
+  `agent:needs-attention`/`agent:hold`/terminal states — so a single failed
+  issue could hold the only WIP slot indefinitely, reporting "queue full" every
+  run while nothing progressed. A parked issue now releases its slot (active and
+  `agent:pr-open` issues still count, capping concurrent draft PRs).
+- Loop-runner crashes are no longer silent. Any non-zero exit that happens
+  before a run's normal logging (a script error, an early failure after the
+  pause/backend guards) now appends a `CRASHED (exit N)` line to both the stage
+  log and the activity feed, so a dead pipeline shows up in `cadence
+  status`/`cadence feed` instead of only in launchd stderr.
+- `run-loop.sh` no longer crashes on macOS's `/bin/bash` 3.2 when a stage has no
+  extra prompt arguments: expanding the empty `CMD_ARGS` array under `set -u` was a
+  fatal "unbound variable" error, so every scheduled spec/revise/live-advance run
+  with real work exited 1 before rendering the prompt — silently, with the failure
+  visible only in the scheduler's launchd stderr. The expansion now uses the
+  bash-3.2-safe `${arr[@]+"${arr[@]}"}` idiom. (`--dry-run` runs passed the arg and
+  masked the bug.)
 - Run-summary marker is now authoritative: a `CADENCE_SUMMARY` line from a run's own
   stdout is accepted even when the summary has no `stage`/`loop` key (triage carries
   `mode`), so a clean triage run is no longer mislabelled "no summary". The triage

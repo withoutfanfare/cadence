@@ -1,6 +1,6 @@
 #!/bin/bash
 # Cadence agent loop runner — invoked by the scheduler or manually.
-# Usage: run-loop.sh <triage|spec|build|revise>
+# Usage: run-loop.sh <triage|spec|build|revise|advance|roadmap>
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck disable=SC1091
@@ -11,13 +11,33 @@ source "$DIR/../lib/lib-env.sh"
 _pp="${RUNNER_PATH_PREPEND:-}"
 [ -z "$_pp" ] && [ -d "$HOME/Library/Application Support/Herd/bin" ] && _pp="$HOME/Library/Application Support/Herd/bin"
 export PATH="${_pp:+$_pp:}$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
-STAGE="${1:?stage required (triage|spec|build|revise)}"
+STAGE="${1:?stage required (triage|spec|build|revise|advance|roadmap)}"
 # Default so a config that legitimately omits PROJECT_DIR (triage/spec-only setups)
 # reaches the `cd "$WORKTREE" || ...` handler below rather than crashing on `set -u`.
 WORKTREE="${PROJECT_DIR:-}"
 LOGDIR="$CADENCE_STATE_DIR/logs"
 RUNS="$CADENCE_STATE_DIR/runs"
 mkdir -p "$LOGDIR" "$RUNS"
+
+# --- Crash surfacing ---------------------------------------------------------
+# A script error after this point (or any early exit before the normal run
+# logging) used to die silently: nothing in the stage log or activity feed,
+# evidence only in launchd stderr — so the pipeline looked healthy while dead.
+# Record any non-zero exit that never reached its normal logging. Failures
+# before this line (e.g. lib-env refusing a bad profile) still surface only on
+# stderr.
+_CADENCE_DONE=0
+# shellcheck disable=SC2329  # invoked via the EXIT trap strings below
+_crash_log() {
+  local _rc=$?
+  [ "$_rc" -eq 0 ] && return 0
+  [ "${_CADENCE_DONE:-0}" = 1 ] && return 0
+  local _ts
+  _ts="$(date -u +%FT%TZ)"
+  echo "[$_ts] $STAGE — CRASHED (exit $_rc)" >> "$RUNS/activity.log" 2>/dev/null || true
+  echo "[$_ts] cadence $STAGE CRASHED (exit $_rc) — see scheduler/launchd stderr" >> "$LOGDIR/$STAGE.log" 2>/dev/null || true
+}
+trap _crash_log EXIT
 
 # --- Single-instance lock (macOS has no flock) -------------------------------
 # Two code-writing runs must never overlap: they'd work issues concurrently and race
@@ -69,7 +89,7 @@ _HB=$!
 # PROMPT_FILE is removed on the normal path too; the trap covers signal interruption
 # (SIGTERM mid-orchestrator) so an orphan prompt is never left in $RUNS.
 PROMPT_FILE=""
-trap 'kill "$_HB" 2>/dev/null; rm -f "$PROMPT_FILE"; rm -rf "$LOCKDIR"' EXIT
+trap '_crash_log; kill "$_HB" 2>/dev/null; rm -f "$PROMPT_FILE"; rm -rf "$LOCKDIR"' EXIT
 
 pause_before_launch() {
   reason="$1"
@@ -182,6 +202,12 @@ if [ "$STAGE" = "advance" ]; then
   [ "$_n" = "0" ] && idle_before_launch "no-auto-work" "no agent:auto issues in scope"
 fi
 
+# The roadmap loop is opt-in per project via SCHED_ROADMAP (default off), not via
+# a stated goal: a goal only steers it, and its absence is normal (the loop falls
+# back to a standing quality rubric). So there is no no-goal idle gate here — a
+# scheduled run only fires where the operator enabled the schedule, and a manual
+# `run roadmap` is an explicit opt-in by definition.
+
 cd "$WORKTREE" || { echo "project dir missing: $WORKTREE" >&2; exit 1; }
 
 provider_from_pair() {
@@ -210,6 +236,9 @@ case "$STAGE" in
   advance)
     CMD_ARGS=(); [ "${2:-}" = "--dry-run" ] && CMD_ARGS=("--dry-run")
     PAIR="$ORCHESTRATOR_ADVANCE" ;;
+  roadmap)
+    CMD_ARGS=(); [ "${2:-}" = "--dry-run" ] && CMD_ARGS=("--dry-run")
+    PAIR="$ORCHESTRATOR_ROADMAP" ;;
   *) echo "unknown stage: $STAGE" >&2; exit 2 ;;
 esac
 PROVIDER="$(provider_from_pair "$PAIR")"
@@ -248,7 +277,8 @@ fi
 LOG="$LOGDIR/$STAGE.log"
 _LOG_START=$(wc -c < "$LOG" 2>/dev/null || echo 0)   # scan only THIS run's output for a summary
 PROMPT_FILE="$RUNS/prompt-$STAGE-$(date -u +%Y%m%dT%H%M%SZ)-$$.md"
-python3 "$CADENCE_HOME/engine/prompts/render.py" "$STAGE" "${CMD_ARGS[@]}" --output "$PROMPT_FILE" >> "$LOG" 2>&1
+# ${arr[@]+…} guard: macOS /bin/bash 3.2 treats an empty array as unbound under set -u
+python3 "$CADENCE_HOME/engine/prompts/render.py" "$STAGE" ${CMD_ARGS[@]+"${CMD_ARGS[@]}"} --output "$PROMPT_FILE" >> "$LOG" 2>&1
 RC=$?
 if [ "$RC" -ne 0 ]; then
   echo "[$(date -u +%FT%TZ)] failed to render cadence $STAGE prompt (exit $RC)" >> "$LOG"
@@ -340,11 +370,13 @@ elif stage == 'advance':
     for k, l in [('advanced','advanced'),('accepted','accepted'),
                  ('repaired','repaired'),('escalated','escalated')]:
         add(k, l)
+elif stage == 'roadmap':
+    add('proposed', 'proposed')
 body = ", ".join(parts) if parts else "nothing to do"
 prefix = ("LIVE " if not dry else "dry ")
 if err: body += f" · {err} ERROR(S)"
 if rc != 0: body += f" · exit {rc}"
-your_move = stage in ('spec', 'build', 'revise') and bool(parts)
+your_move = stage in ('spec', 'build', 'revise', 'roadmap') and bool(parts)
 failed = rc != 0 or err > 0
 # 2 = failure (alert), 1 = notable activity (your move), 0 = quiet
 flag = 2 if failed else (1 if ((not dry and parts) or your_move) else 0)
@@ -362,8 +394,9 @@ if [ "$FLAG" != "0" ] && [ "$NOTIFY" = "on" ]; then
     TITLE="Cadence $STAGE — FAILED"; SOUND="Basso"
   else
     TITLE="Cadence $STAGE"; SOUND="Glass"
-    case "$STAGE" in spec) TITLE="Cadence spec — your move";; build) TITLE="Cadence build — review PR";; revise) TITLE="Cadence revise — re-review";; esac
+    case "$STAGE" in spec) TITLE="Cadence spec — your move";; build) TITLE="Cadence build — review PR";; revise) TITLE="Cadence revise — re-review";; roadmap) TITLE="Cadence roadmap — review proposals";; esac
   fi
   osascript -e "display notification \"$MSG\" with title \"$TITLE\" sound name \"$SOUND\"" 2>/dev/null || true
 fi
+_CADENCE_DONE=1   # run reached its normal logging; a non-zero RC here is already surfaced
 exit $RC

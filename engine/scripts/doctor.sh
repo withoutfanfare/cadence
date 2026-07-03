@@ -70,6 +70,26 @@ check_model() {
   fi
 }
 
+# Gate commands are per-project shell commands the build/revise loops run (blank =
+# skip, which is valid). A gate pointing at a tool this project lacks — a Composer
+# gate on a Node repo, say — otherwise only fails mid-build, days later. We can't
+# verify a subcommand without running the gate (unsafe, and tool-specific), so:
+# hard-fail when the leading executable is missing, and otherwise print the full
+# command so a human eyeballing doctor spots a wrong-toolchain gate (composer on a
+# Python repo) even when the binary happens to be installed.
+# ponytail: no per-tool subcommand probe — `composer test:filter` with composer
+# installed is shown, not failed; add a probe only if that class of mistake bites.
+check_gate() {
+  label="$1"; cmd="$2"
+  if [ -z "$cmd" ]; then echo "  •  $label: blank (skipped)"; return; fi
+  exe="${cmd%% *}"
+  if (PATH="$RUNNER_PATH"; command -v "$exe" >/dev/null 2>&1); then
+    echo "  •  $label: $cmd"
+  else
+    fail "$label '$cmd' — '$exe' not on PATH (stale gate? fix the command or blank it)"
+  fi
+}
+
 labels_only=0
 case "${1:-}" in
   --labels) labels_only=1 ;;
@@ -211,6 +231,12 @@ case "${BUILD_IMPLEMENTER:-claude}" in
     fail "implementer '${BUILD_IMPLEMENTER:-claude}' invalid (use claude, codex, kimi, or opencode)"
     ;;
 esac
+
+# Configured gate commands (build/revise run these; blank = skip). Catch a stale
+# gate now rather than when a build aborts on it days later.
+check_gate "GATE_LINT" "${GATE_LINT:-}"
+check_gate "GATE_ANALYSE" "${GATE_ANALYSE:-}"
+check_gate "GATE_TEST" "${GATE_TEST:-}"
 
 # Autonomous mode (optional; off unless explicitly enabled). Match config()'s
 # case-insensitive truthy set: 1/on/true/yes.

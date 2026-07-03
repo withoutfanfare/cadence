@@ -1,4 +1,4 @@
-import importlib.util, io, json, os, types, unittest
+import importlib.util, io, json, os, tempfile, types, unittest
 
 
 def _load(name, *relpath):
@@ -144,6 +144,101 @@ class TestReadVerbs(unittest.TestCase):
         out = cli.cmd_issues_list(args, ENV, post=fake_post(cap))
         self.assertEqual(out[0]["stage"]["name"], "specced")
         self.assertEqual(out[0]["stage"]["advance"], "agent:build")
+
+class TestProjectGet(unittest.TestCase):
+    def test_reads_configured_project_description(self):
+        cap = {"response": {"project": {
+            "id": "proj-1", "name": "App", "description": "Make onboarding self-serve."}}}
+        out = cli.cmd_project_get(types.SimpleNamespace(), ENV, post=fake_post(cap))
+        self.assertEqual(cap["variables"], {"id": "proj-1"})
+        self.assertEqual(out, {"id": "proj-1", "name": "App",
+                               "description": "Make onboarding self-serve."})
+
+    def test_requires_project_id(self):
+        env = dict(ENV); env.pop("LINEAR_PROJECT_ID")
+        with self.assertRaises(cli.LinearError):
+            cli.cmd_project_get(types.SimpleNamespace(), env, post=fake_post({"response": {}}))
+
+
+def routing_post(routes, calls):
+    """Dispatch a fake response by substring of the query; record every call."""
+    def _post(query, variables, env):
+        calls.append((query, variables))
+        for needle, resp in routes:
+            if needle in query:
+                return resp
+        raise AssertionError("unexpected query: " + query.strip()[:80])
+    return _post
+
+
+class TestIssueCreate(unittest.TestCase):
+    def _env(self, **extra):
+        env = dict(ENV)
+        env.update(extra)
+        return env
+
+    def _labels_resp(self):
+        return {"issueLabels": {"nodes": [
+            {"id": "lbl-proposed", "name": "agent:proposed"},
+            {"id": "lbl-bug", "name": "Bug"}]}}
+
+    def _issues_resp(self, n_open, state=("Backlog", "backlog")):
+        nodes = [{"id": "i%d" % i, "identifier": "STU-%d" % i, "title": "t",
+                  "url": "u", "state": {"name": state[0], "type": state[1]},
+                  "labels": {"nodes": [{"name": "agent:proposed"}]}}
+                 for i in range(n_open)]
+        return {"issues": {"nodes": nodes, "pageInfo": {"hasNextPage": False}}}
+
+    def _body(self, text):
+        f = tempfile.NamedTemporaryFile("w", suffix=".md", delete=False)
+        f.write(text); f.close()
+        self.addCleanup(os.unlink, f.name)
+        return f.name
+
+    def test_creates_scoped_proposal_with_forced_label(self):
+        calls = []
+        post = routing_post([
+            ("issues(", self._issues_resp(0)),
+            ("issueLabels", self._labels_resp()),
+            ("issueCreate", {"issueCreate": {"success": True, "issue": {
+                "id": "new-1", "identifier": "STU-9", "url": "https://x"}}}),
+        ], calls)
+        args = types.SimpleNamespace(
+            title="Add retry to importer",
+            body_file=self._body("Why this serves the goal.\n"), label=["Bug"])
+        out = cli.cmd_issue_create(args, self._env(), post=post)
+        inp = calls[-1][1]["input"]
+        self.assertEqual(inp["teamId"], "team-1")
+        self.assertEqual(inp["projectId"], "proj-1")
+        self.assertEqual(inp["assigneeId"], "user-1")
+        self.assertEqual(inp["title"], "Add retry to importer")
+        self.assertEqual(inp["description"], "Why this serves the goal.")
+        self.assertIn("lbl-proposed", inp["labelIds"])
+        self.assertIn("lbl-bug", inp["labelIds"])
+        self.assertEqual(out, {"id": "new-1", "identifier": "STU-9",
+                               "url": "https://x", "success": True})
+
+    def test_refuses_when_open_proposals_reach_cap(self):
+        calls = []
+        post = routing_post([("issues(", self._issues_resp(2))], calls)
+        args = types.SimpleNamespace(title="One more",
+                                     body_file=self._body("x"), label=None)
+        with self.assertRaises(cli.LinearError):
+            cli.cmd_issue_create(args, self._env(ROADMAP_MAX_OPEN="2"), post=post)
+        self.assertFalse(any("issueCreate" in q for q, _ in calls))
+
+    def test_cancelled_proposals_do_not_count_toward_cap(self):
+        calls = []
+        post = routing_post([
+            ("issues(", self._issues_resp(3, state=("Cancelled", "canceled"))),
+            ("issueLabels", self._labels_resp()),
+            ("issueCreate", {"issueCreate": {"success": True, "issue": {
+                "id": "new-2", "identifier": "STU-10", "url": "https://x"}}}),
+        ], calls)
+        args = types.SimpleNamespace(title="T", body_file=self._body("b"), label=None)
+        out = cli.cmd_issue_create(args, self._env(ROADMAP_MAX_OPEN="3"), post=post)
+        self.assertTrue(out["success"])
+
 
 class TestWriteVerbs(unittest.TestCase):
     def test_label_ensure_returns_existing(self):
@@ -429,6 +524,12 @@ class TestGraphqlRetry(unittest.TestCase):
         with self.assertRaises(cli.LinearError):
             cli.graphql("{ x }", {}, ENV)
         self.assertEqual(len(calls), 3)
+
+
+class TestAgentLabelVocabulary(unittest.TestCase):
+    def test_roadmap_labels_are_in_the_init_set(self):
+        self.assertIn("agent:proposed", cli.AGENT_LABELS)
+        self.assertIn("agent:later", cli.AGENT_LABELS)
 
 
 if __name__ == "__main__":

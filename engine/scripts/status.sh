@@ -15,7 +15,7 @@ fi
 echo; echo "launchd jobs (last exit code):"
 launchctl list 2>/dev/null | awk '/cadence\.(scheduler|loop|conduct)/{printf "  %-32s %s\n",$3,$2}' || echo "  (none loaded)"
 echo; echo "Last run per stage:"
-for s in triage spec build revise advance conduct; do
+for s in triage spec build revise advance roadmap conduct; do
   st=$(grep "starting .* $s " "$LOGD/$s.log" 2>/dev/null | tail -1 | grep -oE '^\[[^]]+\]')
   [ -z "$st" ] && [ "$s" = "conduct" ] && st=$(grep "conduct —" "$RUNS/activity.log" 2>/dev/null | tail -1 | grep -oE '^\[[^]]+\]')
   printf "  %-7s %s\n" "$s" "${st:-—}"

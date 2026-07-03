@@ -14,7 +14,8 @@ Cadence.
 4. [AI Provider Roles](PROVIDERS.md) - how to inspect and switch orchestrators,
    reviewers, and build implementers without confusing legacy `MODEL_*` aliases.
 5. [Operating Cadence](OPERATING.md) - daily commands, logs, digests, pausing,
-   autonomous monitoring, helper commands, and common troubleshooting.
+   autonomous monitoring, roadmapper mode, helper commands, and common
+   troubleshooting.
 
 ## Reference
 

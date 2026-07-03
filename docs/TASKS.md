@@ -67,6 +67,12 @@ never mistaken for a stranded field.
 - **Never add a gate label** (`agent:spec`, `agent:build`, `agent:revise`,
   `agent:auto`) unless you are the human granting that gate. Loops write the
   status labels (`agent:specced`, `agent:pr-open`, …) themselves.
+- Roadmap proposals are added by `cadence tasks add` and always carry
+  `agent:proposed` with `status: open`. Dismiss one by setting
+  `status: dismissed` (keep it in the file — it is the roadmapper's memory of
+  what you rejected). Add `agent:later` to a dismissed task to allow it back;
+  the file backend has no timestamps, so `agent:later` tasks may be
+  reconsidered whenever they still clearly serve the goal.
 
 ## Editing via the CLI
 

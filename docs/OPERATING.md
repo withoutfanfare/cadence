@@ -10,7 +10,7 @@ Daily read-only commands:
 cadence status          # live/paused state, launchd jobs, recent runs (one project)
 cadence overview        # cross-project glance: health + last run per stage, all projects
 cadence overview --json # same, machine-readable (used by the menu-bar plugin)
-cadence doctor          # verify local setup (providers, models, key, labels)
+cadence doctor          # verify local setup (providers, models, key, gates, labels)
 cadence doctor --labels # verify the Linear label vocabulary exists
 cadence logs triage     # tail one stage log; conduct is supported too
 cadence feed 30         # recent activity lines
@@ -246,7 +246,10 @@ issues by hand. Every 3 hours it ranks the ready backlog (priority → current c
 already-auto, anything without acceptance criteria, and, for Linear, blocked or
 parent issues with children), and tops up `agent:auto` to `CONDUCT_WIP`
 (default 1) — one issue in flight at a time until you raise it. A task with no
-acceptance criteria is never queued, so triage stubs them in.
+acceptance criteria is never queued, so triage stubs them in. An issue that
+stalls into `agent:needs-attention` (or `agent:hold`) releases its WIP slot, so
+one stuck item cannot freeze the whole queue — the conductor moves on and feeds
+the next.
 
 - **Shadow it first:** `AUTONOMOUS=on cadence conduct --dry-run` prints which issue
   it would set loose (and, for Linear, which it skipped as blocked or parent work),
@@ -258,6 +261,33 @@ acceptance criteria is never queued, so triage stubs them in.
 - **Steer it:** `agent:hold` excludes an issue; raise/lower `CONDUCT_WIP` to speed
   up or slow down; `cadence pause` or `AUTONOMOUS=0` stops it. It never starts an
   issue whose blockers are not done.
+
+## Roadmapper mode (opt-in)
+
+An advisory scout: on its schedule, a high-reasoning model scans the codebase
+read-only and files at most `ROADMAP_MAX_OPEN` proposal issues carrying
+`agent:proposed`. It never gates anything, and autonomous mode never picks a
+proposal up until you accept it.
+
+1. **Turn it on for a project.** It is opt-in: set `SCHED_ROADMAP` to a cadence
+   (e.g. `SCHED_ROADMAP=24h@20` for daily at 00:20) in that project's
+   `cadence/.env`. Default is `off`, so no project runs it until you enable it.
+2. **Optionally steer it.** Write a goal — the Linear project description, or
+   `cadence/goal.md` (or `GOAL_FILE`) on the file backend — and it looks for work
+   that serves that goal. With no goal it works against a standing quality rubric
+   (real bugs, performance, accessibility, security, dead code, consistency).
+3. **Let it run**, or run one now: `cadence run roadmap` (`--dry-run` to see what
+   it would propose without filing anything).
+4. **Review proposals** on the board:
+   - **Accept** — set `agent:spec` (the spec loop strips `agent:proposed`), or
+     just remove `agent:proposed` to leave it as normal backlog.
+   - **Dismiss for good** — cancel the issue (file backend:
+     `status: dismissed`). It will never be re-proposed.
+   - **Not now** — cancel **and** add `agent:later`; it may return after 30
+     days if it still serves the goal or rubric.
+
+Ignore it and it goes quiet: once `ROADMAP_MAX_OPEN` open proposals sit
+unreviewed, runs report "at cap" and file nothing.
 
 ## Reclaiming a Stuck Issue
 
