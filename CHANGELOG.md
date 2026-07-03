@@ -107,6 +107,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- File-backend build and revise loops now carry the full worktree/draft-PR
+  contract. The rendered file prompts told build only to "implement inside the
+  configured project/worktree" and flip `agent:build` to `agent:pr-open`, so
+  orchestrators edited the main checkout directly and labelled tasks as having
+  a PR that never existed (the advance loop then escalated
+  `agent:needs-attention` on phantom PRs). Build now creates an isolated
+  worktree off the base branch, runs gates there, opens a draft PR, and records
+  the PR URL in the task body before setting `agent:pr-open`; revise pushes to
+  the task's existing PR branch only.
+- `cadence tasks validate` (and therefore `cadence doctor`) flags a task
+  labelled `agent:pr-open` whose body has no PR URL — the tell that no draft PR
+  actually exists and the workflow state needs repair.
 - Autonomous queue no longer freezes on one stuck issue. The conductor counted
   every `agent:auto` issue against `CONDUCT_WIP`, including ones parked in
   `agent:needs-attention`/`agent:hold`/terminal states — so a single failed
