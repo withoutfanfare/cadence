@@ -59,6 +59,19 @@ BADGE_KEYS = {k for k, _, counts in SECTIONS if counts}
 ALL_GATES = ["agent:spec", "agent:build", "agent:revise"]
 STAGE_TITLE = {"agent:spec": "Spec", "agent:build": "Build", "agent:revise": "Revise"}
 
+# Traffic-light status icons (SF Symbols, drawn via sfimage + sfcolor so the
+# icon is tinted but the project name stays in the menu's default colour). Red
+# is reserved for a genuinely failed run; "your move" is amber — attention, not
+# alarm; grey is dormant (paused/idle); green is healthy and running.
+RED, AMBER, GREEN, GREY = "#d0021b", "#e0a000", "#34c759", "#8e8e93"
+STATUS_ICON = {
+    "failed":    ("exclamationmark.triangle.fill", RED),    # broken — check logs
+    "needs-you": ("arrow.right.circle.fill",       AMBER),  # a decision waits on you
+    "paused":    ("pause.circle.fill",             GREY),   # deliberately stopped
+    "ok":        ("circle.fill",                   GREEN),  # running, nothing waiting
+    "idle":      ("circle",                        GREY),   # hollow — nothing happening
+}
+
 # Set stage -> (labels to add, labels to remove). The menu writes only gate
 # labels; "Triage" is the one sanctioned breadcrumb clear (force re-triage).
 SET_STAGE = [
@@ -136,21 +149,22 @@ def last_active_ts(p):
 
 
 def status_of(p, need_you, now=None):
-    """(glyph, subline) for a project header. Pure — covered by selftest."""
+    """(sfimage, sfcolor, subline) for a project header. Pure — covered by selftest."""
     health = p.get("health") or "idle"
     scheduled = p.get("scheduled", True)
     ra = rel(last_active_ts(p), now=now)
 
     if health == "failed":
-        glyph = "⚠️"          # warning
+        key = "failed"
     elif need_you:
-        glyph = "\U0001f534"            # red circle
+        key = "needs-you"
     elif health == "paused":
-        glyph = "⏸"               # pause
+        key = "paused"
     elif health == "ok":
-        glyph = "\U0001f7e2"           # green circle
+        key = "ok"
     else:
-        glyph = "⚪"               # white circle (idle)
+        key = "idle"
+    sym, color = STATUS_ICON[key]
 
     bits = []
     if need_you:
@@ -168,7 +182,7 @@ def status_of(p, need_you, now=None):
         bits.append(ra)
     if not scheduled:
         bits.append("not scheduled")
-    return glyph, " · ".join(bits)
+    return sym, color, " · ".join(bits)
 
 
 def run_json(args, timeout=30):
@@ -334,10 +348,10 @@ def render_project(p, now=None):
         board = workspace_url(items)
         task_path = run_text(config, "tasks", "path") if backend == "file" else None
 
-    glyph, subline = status_of(p, need_you, now=now)
+    sym, color, subline = status_of(p, need_you, now=now)
     team = ("  · " + p["team_name"]) if p.get("team_name") else ""
     tag = "  · file" if backend == "file" else ""
-    emit("%s %s%s%s" % (glyph, p["name"], team, tag))
+    emit("%s%s%s | sfimage=%s sfcolor=%s" % (p["name"], team, tag, sym, color))
     emit("--%s | size=12 color=#888888" % subline)
     emit("-----")
 
@@ -364,7 +378,7 @@ def render_project(p, now=None):
 def main():
     data, err = run_json(["overview", "--json"])
     if err is not None or data is None:
-        print("⚠️ | color=#d0021b")
+        print(" | sfimage=%s sfcolor=%s" % STATUS_ICON["failed"])
         print("---")
         print("overview unavailable: %s | size=11 color=#d0021b font=Menlo" % (err or "no data"))
         print("Refresh now | refresh=true")
@@ -389,15 +403,18 @@ def main():
         failed_any = failed_any or p.get("health") == "failed"
         paused_any = paused_any or p.get("paused")
 
-    # Menu bar: failed > needs-you > paused > all-clear.
+    # Menu bar: failed > needs-you > paused > all-clear. Same traffic-light icons;
+    # the icon carries the colour, the count stays the menu bar's default colour.
     if failed_any:
-        menubar = ("⚠️ %d" % badge) if badge else "⚠️"
+        sym, color = STATUS_ICON["failed"]
     elif badge:
-        menubar = "\U0001f4e5 %d" % badge
+        sym, color = STATUS_ICON["needs-you"]
     elif paused_any:
-        menubar = " | sfimage=pause.circle.fill color=#e0a000"
+        sym, color = STATUS_ICON["paused"]
     else:
-        menubar = " | sfimage=checkmark.circle color=#2e7d32"
+        sym, color = STATUS_ICON["ok"]
+    count = "%d" % badge if badge else ""
+    menubar = "%s | sfimage=%s sfcolor=%s" % (count, sym, color)
 
     print(menubar)
     print("---")
@@ -422,21 +439,24 @@ def _selftest():
 
     base = {"health": "ok", "scheduled": True, "stages": {},
             "last_activity": "[2026-07-02T10:00:00Z] build — nothing to do"}
-    # Failure outranks everything.
-    g, sub = status_of({**base, "health": "failed"}, 3, now)
-    assert g == "⚠️" and "3 awaiting you" in sub and "last run failed" in sub, sub
-    # Waiting work turns the dot red even when the loop itself is healthy.
-    g, sub = status_of(base, 2, now)
-    assert g == "\U0001f534" and sub.startswith("2 awaiting you") and "2h ago" in sub, sub
-    # Healthy, nothing waiting -> green + freshness.
-    g, sub = status_of(base, 0, now)
-    assert g == "\U0001f7e2" and sub == "active · 2h ago", sub
-    # Idle, nothing waiting, never run -> honest white dot, no fake freshness.
-    g, sub = status_of({"health": "idle", "scheduled": True, "stages": {}, "last_activity": None}, 0, now)
-    assert g == "⚪" and sub == "nothing waiting", sub
-    # Paused shows as paused; unscheduled is flagged.
-    g, sub = status_of({**base, "health": "paused", "scheduled": False}, 0, now)
-    assert g == "⏸" and "paused" in sub and "not scheduled" in sub, sub
+    # Failure outranks everything -> red warning triangle.
+    sym, color, sub = status_of({**base, "health": "failed"}, 3, now)
+    assert sym == "exclamationmark.triangle.fill" and color == RED \
+        and "3 awaiting you" in sub and "last run failed" in sub, (sym, color, sub)
+    # Waiting work shows the amber "your move" arrow even when the loop is healthy.
+    sym, color, sub = status_of(base, 2, now)
+    assert sym == "arrow.right.circle.fill" and color == AMBER \
+        and sub.startswith("2 awaiting you") and "2h ago" in sub, (sym, color, sub)
+    # Healthy, nothing waiting -> green dot + freshness.
+    sym, color, sub = status_of(base, 0, now)
+    assert sym == "circle.fill" and color == GREEN and sub == "active · 2h ago", (sym, color, sub)
+    # Idle, nothing waiting, never run -> grey hollow ring, no fake freshness.
+    sym, color, sub = status_of({"health": "idle", "scheduled": True, "stages": {}, "last_activity": None}, 0, now)
+    assert sym == "circle" and color == GREY and sub == "nothing waiting", (sym, color, sub)
+    # Paused shows a grey pause icon; unscheduled is flagged.
+    sym, color, sub = status_of({**base, "health": "paused", "scheduled": False}, 0, now)
+    assert sym == "pause.circle.fill" and color == GREY \
+        and "paused" in sub and "not scheduled" in sub, (sym, color, sub)
     print("ok")
 
 

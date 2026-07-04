@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- SwiftBar menu status icons are now an SF Symbol traffic light instead of
+  emoji. Red is reserved for a genuinely failed run; "your move" (a decision
+  waiting on you) is amber — attention, not alarm — so a board full of pending
+  work no longer reads as a board full of errors. Green is running, grey is
+  dormant (paused/idle), and every state has a distinct shape as well as colour
+  for a clear glance and colour-blind legibility.
+
 ### Added
 
 - One-command project onboarding and offboarding. `cadence onboard [path]` does
