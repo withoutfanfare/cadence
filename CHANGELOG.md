@@ -41,6 +41,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Build loop: interrupted work is now resumed instead of skipped. The skip rule
+  treated "branch has commits ahead of `BASE_BRANCH`" as in-progress work but
+  compared against a stale origin ref, so base history looked like branch work
+  and an issue with stranded, unpushed implementation was re-skipped every run
+  with no PR. The loop now fetches the base before comparing, and leftover work
+  with no open PR is carried through gates → commit → push → draft PR.
+  `lib-env.sh` also exports `WORKTREE_BASE` so external tooling (e.g. user git
+  hooks) can recognise the loop's own worktrees.
+
 - `tests/test_providers_cli.py` was not hermetic: it spawned the providers CLI
   with the repo root as its working directory, so the `<cwd>/cadence/.env`
   fallback read — and the `set` test rewrote — the repo's live config instead
