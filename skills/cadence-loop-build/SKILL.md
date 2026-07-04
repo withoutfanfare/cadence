@@ -61,10 +61,18 @@ agents would write the same fix.
 - Never set `agent:revise` or any later gate — that is the human's GATE 3.
 - Push only to the issue's own branch. Never push to `$BASE_BRANCH`/`main`.
 - No "Claude"/"AI" mention in any commit, branch, or PR text (project rule).
-- Skip an issue only if an **open PR** already exists for it (or its branch has
-  commits ahead of `$BASE_BRANCH`). Do **not** skip on bare-branch existence —
-  `cadence worktree add` creates a tracking branch, so a branch alone is not a signal
-  of in-progress work.
+- Skip an issue only if an **open PR** already exists for it. Do **not** skip on
+  bare-branch existence — `cadence worktree add` creates a tracking branch, so a branch
+  alone is not a signal of in-progress work. Before judging a branch "ahead of
+  `$BASE_BRANCH`", run `git fetch origin "$BASE_BRANCH"` and compare against the
+  fresh `origin/$BASE_BRANCH` — against a stale ref, base history looks like branch
+  work. If the branch or its worktree carries real leftover work (commits ahead of
+  the fresh base, or uncommitted changes) and there is **no open PR**, a previous
+  run was interrupted: **resume it**, don't re-skip it every run. Verify the
+  leftover diff implements *this* issue's spec, then continue from step 5
+  (gates → commit → push → draft PR) so the work actually ships. Only if the
+  leftover diff clearly belongs to a different issue: release the claim and add
+  `agent:needs-attention` with a comment saying why.
 
 ## Unattended execution — read first
 

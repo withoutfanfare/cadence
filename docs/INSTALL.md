@@ -272,6 +272,19 @@ Project-local `cadence/.env` is supported for manual and scheduled commands.
 Scheduled runs use one global launchd job that reads an explicit projects file,
 then runs due stages with each project's own config.
 
+The one-command path does all of the below for you — per-project state dir,
+registry, `CADENCE_SCHEDULED=1`, the scheduler job, and a doctor pass — and
+leaves the project paused until you resume it:
+
+```bash
+cadence onboard /path/to/app
+```
+
+To reverse it later, `cadence offboard /path/to/app` pauses the project,
+disables scheduling, and removes it from the registry (deleting nothing;
+`--purge` also removes its run history). The manual steps below remain the
+reference for what onboarding does.
+
 First make sure the project has its **own** `CADENCE_STATE_DIR` (see
 `CONFIGURATION.md` → Runtime). Sharing one across projects makes their pause flag,
 logs, and scheduler markers collide. Create it explicitly, with the execute bit,

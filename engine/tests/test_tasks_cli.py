@@ -73,6 +73,47 @@ class TestTasksCli(unittest.TestCase):
         self.assertEqual(tasks[0]["labels"], ["agent:triaged", "Bug"])
         self.assertIn("Acceptance criteria here.", tasks[0]["description"])
 
+    def _run_env(self, args, extra_env, tasks_text=TASKS_MD):
+        with tempfile.TemporaryDirectory() as tmp:
+            task_file = os.path.join(tmp, "cadence", "tasks.md")
+            os.makedirs(os.path.dirname(task_file))
+            with open(task_file, "w", encoding="utf-8") as f:
+                f.write(tasks_text)
+            env = os.environ.copy()
+            env["TASK_FILE"] = task_file
+            env.pop("CADENCE_STAGE", None)
+            env.update(extra_env)
+            result = subprocess.run(
+                [sys.executable, TASKS_CLI, *args],
+                cwd=ROOT, env=env, text=True, capture_output=True, timeout=10)
+            with open(task_file, encoding="utf-8") as f:
+                updated = f.read()
+        return result, updated
+
+    def test_a_loop_cannot_strip_a_human_gate_it_does_not_own(self):
+        text = TASKS_MD.replace("labels: agent:triaged, Bug", "labels: agent:triaged, agent:spec")
+        result, updated = self._run_env(
+            ["update", "TASK-1", "--remove-label", "agent:spec"],
+            {"CADENCE_STAGE": "triage"}, tasks_text=text)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("refused", result.stderr.lower())
+        self.assertIn("agent:spec", updated)  # gate survived the attempted strip
+
+    def test_owning_stage_may_retire_its_gate(self):
+        text = TASKS_MD.replace("labels: agent:triaged, Bug", "labels: agent:spec")
+        result, updated = self._run_env(
+            ["update", "TASK-1", "--remove-label", "agent:spec", "--add-label", "agent:specced"],
+            {"CADENCE_STAGE": "spec"}, tasks_text=text)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("agent:specced", updated)
+
+    def test_human_without_a_stage_may_ungrant_a_gate(self):
+        text = TASKS_MD.replace("labels: agent:triaged, Bug", "labels: agent:triaged, agent:spec")
+        result, updated = self._run_env(
+            ["update", "TASK-1", "--remove-label", "agent:spec"], {}, tasks_text=text)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("agent:spec", updated)
+
     def test_update_adds_and_removes_labels_without_losing_body(self):
         result, updated = self._run([
             "update", "TASK-1",

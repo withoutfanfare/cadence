@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- One-command project onboarding and offboarding. `cadence onboard [path]` does
+  everything that was manual — fills a per-project `CADENCE_STATE_DIR` (refusing a
+  dir another registered project already uses), sets `CADENCE_SCHEDULED=1`,
+  registers the project, loads the launchd scheduler, and runs doctor — leaving
+  the project **paused** so a human resumes deliberately. `cadence offboard [path]`
+  reverses it (pause, `CADENCE_SCHEDULED=0`, unregister) and unloads the scheduler
+  job once the registry empties; `--purge` also deletes the project's own state
+  dir, never the config or the shared default. New `cadence schedule unregister`
+  primitive mirrors `register`, and a `cadence-offboard` skill drives the
+  conversational path. Documented in `INSTALL.md`, `OPERATING.md`, and the
+  cheatsheet.
+
+- Parallel scheduler dispatch with a per-run timeout. A tick now launches its
+  admitted runs through a bounded pool: `CADENCE_SCHEDULER_MAX_RUNS` remains the
+  per-tick throughput ceiling, new `CADENCE_SCHEDULER_CONCURRENCY` (default `4`)
+  is how many run at once, and new `CADENCE_SCHEDULER_RUN_TIMEOUT` (default
+  `3600`, `0` disables) kills any single run that overstays and reports it as a
+  failure without disturbing the other runs in the same tick. Defaults preserve
+  the old serial behaviour (`MAX_RUNS=1`). Documented in `CONFIGURATION.md`.
+
+- `ORCH_TIMEOUT` (default `2700` = 45m): a hard cap on any single orchestrator
+  run, applied to **every existing and new project by default** (was a hard-coded
+  3600s). Bounds a hung or wedged run — e.g. a model idling in a self-monitoring
+  loop instead of building — so it cannot hold the shared build/revise worktree
+  lock for an hour. Override per profile for unusually slow build+gate cycles.
+  Documented in `CONFIGURATION.md` alongside `CADENCE_LOCK_MAX_AGE_SECONDS`.
+
 - Merged-PR reconciliation: once a human merges a task's draft PR into
   `BASE_BRANCH`, the task/issue is closed and `agent:pr-open` cleared — two ways.
   A **"✓ Mark merged"** button appears on PR-open items in the SwiftBar menu, and
@@ -21,6 +48,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   engine); file tasks close to `status: completed`.
 
 ### Fixed
+
+- Multi-project scheduler fairness: the tick served registered projects in
+  registry order and stopped after `max_runs`, so several projects sharing the
+  same `SCHED_*` offsets would starve the ones behind them — a later project with
+  identical offsets could get **zero** runs indefinitely while earlier ones ran
+  dozens of times. The tick now orders due projects **least-recently-served
+  first**, warns when more projects are due than `max_runs` can serve in one tick,
+  and `cadence schedule status` shows each project's last-run age with a starved
+  flag.
+
+- Human gate labels are now protected in the engine, not just in prompt text. A
+  scheduled loop could remove a human-granted `agent:spec` / `agent:build` /
+  `agent:revise` (a triage run did exactly this, reverting granted work to
+  `agent:triaged`). `cadence tasks update` and `cadence linear
+  issue-update`/`bulk-label` now refuse to remove a gate label unless the caller
+  is a human (no `CADENCE_STAGE`) or the stage that owns the gate; `run-loop.sh`
+  exports `CADENCE_STAGE` for every run.
+
+- Build loop: interrupted work is now resumed instead of skipped. The skip rule
+  treated "branch has commits ahead of `BASE_BRANCH`" as in-progress work but
+  compared against a stale origin ref, so base history looked like branch work
+  and an issue with stranded, unpushed implementation was re-skipped every run
+  with no PR. The loop now fetches the base before comparing, and leftover work
+  with no open PR is carried through gates → commit → push → draft PR.
+  `lib-env.sh` also exports `WORKTREE_BASE` so external tooling (e.g. user git
+  hooks) can recognise the loop's own worktrees.
+
+- `tests/test_providers_cli.py` was not hermetic: it spawned the providers CLI
+  with the repo root as its working directory, so the `<cwd>/cadence/.env`
+  fallback read — and the `set` test rewrote — the repo's live config instead
+  of the test fixture. The subprocess now runs from a temp directory with any
+  inherited `CADENCE_CONFIG` dropped.
 
 - SwiftBar menu: file tasks with `status: completed` were treated as still-open
   and leaked into the actionable list; `completed` now counts as closed.

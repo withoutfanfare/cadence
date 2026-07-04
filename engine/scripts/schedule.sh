@@ -2,6 +2,7 @@
 # cadence schedule [show|status|register|tick|apply] — one launchd scheduler for project configs.
 #   show      print each job's configured cadence (read-only)
 #   register  add a project (dir or config .env) to the scheduler registry
+#   unregister  remove a project (dir or config .env) from the scheduler registry
 #   apply     regenerate the single scheduler plist and reload it
 # Generation lives in engine/schedule/cli.py; this script orchestrates files+launchd.
 set -u
@@ -35,6 +36,9 @@ case "${1:-show}" in
   register)
     shift 2>/dev/null || true
     exec python3 "$CLI" register "$@" ;;
+  unregister)
+    shift 2>/dev/null || true
+    exec python3 "$CLI" unregister "$@" ;;
   tick)
     exec python3 "$CLI" tick ;;
   apply)
@@ -58,6 +62,6 @@ case "${1:-show}" in
     echo
     python3 "$CLI" status ;;
   *)
-    echo "usage: cadence schedule [show|status|register [path]|tick|apply]" >&2
+    echo "usage: cadence schedule [show|status|register [path]|unregister [path]|tick|apply]" >&2
     exit 2 ;;
 esac

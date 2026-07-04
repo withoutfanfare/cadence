@@ -6,6 +6,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from datetime import datetime, timezone
 
@@ -137,7 +138,7 @@ class TestSchedulerTick(unittest.TestCase):
                 f.write(project + "\n")
             calls = []
 
-            def fake_run(cmd, cwd=None, env=None):
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
                 calls.append((cmd, cwd, env))
                 return type("Proc", (), {"returncode": 0})()
 
@@ -158,6 +159,219 @@ class TestSchedulerTick(unittest.TestCase):
                                os.path.join(config_dir, ".env"), "run", "triage"])
         self.assertEqual(cwd, project)
         self.assertEqual(run_env["CADENCE_CONFIG"], os.path.join(config_dir, ".env"))
+
+    def test_tick_bounds_simultaneous_runs_to_the_concurrency_cap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+            projects = []
+            for name in ("a", "b", "c"):
+                config_dir = os.path.join(tmp, name, "cadence")
+                os.makedirs(config_dir)
+                with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                    f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n"
+                            % os.path.join(tmp, name, "state"))
+                projects.append(os.path.join(tmp, name))
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write("\n".join(projects) + "\n")
+
+            lock = threading.Lock()
+            seen = {"calls": 0, "inflight": 0, "high": 0}
+            # The first two runs must be in flight at the same moment to pass the
+            # barrier — deterministic proof of parallel dispatch. A serial
+            # implementation deadlocks on it until the 5s safety deadline breaks
+            # the barrier and fails the test.
+            overlap = threading.Barrier(2)
+
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
+                with lock:
+                    seen["calls"] += 1
+                    me = seen["calls"]
+                    seen["inflight"] += 1
+                    seen["high"] = max(seen["high"], seen["inflight"])
+                if me <= 2:
+                    overlap.wait(timeout=5)
+                with lock:
+                    seen["inflight"] -= 1
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "3",
+                   "CADENCE_SCHEDULER_CONCURRENCY": "2"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                rc = cli.tick(env, now=now, run=fake_run)
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(seen["calls"], 3)   # every pick ran
+            self.assertEqual(seen["high"], 2)    # parallel, but never above the cap
+
+    def test_tick_dispatch_admission_follows_least_recently_served_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+
+            def make(name):
+                config_dir = os.path.join(tmp, name, "cadence")
+                state = os.path.join(tmp, name, "state")
+                os.makedirs(config_dir)
+                with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                    f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n" % state)
+                return os.path.join(tmp, name), state
+
+            a, sa = make("a")
+            b, sb = make("b")
+            c, _sc = make("c")  # never served — must lead the tick
+            # Stale slot keys keep both projects due; utime pins served order.
+            cli._mark_ran(sa, "triage", "triage:older-slot")
+            os.utime(os.path.join(sa, "scheduler", "triage.last"), (100, 100))
+            cli._mark_ran(sb, "triage", "triage:newer-slot")
+            os.utime(os.path.join(sb, "scheduler", "triage.last"), (200, 200))
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write("\n".join([a, b, c]) + "\n")
+
+            served = []
+
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
+                served.append(cwd)
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "3",
+                   # Width 1 serialises dispatch so call order == admission order.
+                   "CADENCE_SCHEDULER_CONCURRENCY": "1"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                cli.tick(env, now=now, run=fake_run)
+
+            # Never-served first, then oldest-served; registry order breaks ties only.
+            self.assertEqual(served, [c, a, b])
+
+    def test_tick_reports_a_timed_out_run_without_killing_the_tick(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+            projects = []
+            for name in ("a", "b"):
+                config_dir = os.path.join(tmp, name, "cadence")
+                os.makedirs(config_dir)
+                with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                    f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n"
+                            % os.path.join(tmp, name, "state"))
+                projects.append(os.path.join(tmp, name))
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write("\n".join(projects) + "\n")
+
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
+                # subprocess.run RAISES on timeout expiry — the tick must report
+                # that run as failed, not crash and drop its siblings' outcomes.
+                if cwd == projects[0]:
+                    raise subprocess.TimeoutExpired(cmd, timeout or 0)
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "2"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                rc = cli.tick(env, now=now, run=fake_run)
+
+            self.assertEqual(rc, 1)                      # the timeout counts as a failure
+            out = buf.getvalue()
+            self.assertIn("timed out", out)              # ...and is reported as one
+            self.assertIn(f"{projects[1]}: triage exit 0", out)  # sibling outcome survives
+
+    def test_tick_launches_at_most_one_run_per_project_per_tick(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "app")
+            config_dir = os.path.join(project, "cadence")
+            registry = os.path.join(tmp, "projects.txt")
+            os.makedirs(config_dir)
+            with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                # Two stages due in the same window, budget for three runs —
+                # the project must still get exactly one.
+                f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\nSCHED_SPEC=:00\n"
+                        % os.path.join(tmp, "state"))
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(project + "\n")
+            calls = []
+
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
+                calls.append(cmd)
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "3"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                cli.tick(env, now=now, run=fake_run)
+
+            self.assertEqual(len(calls), 1)
+            self.assertIn("triage", calls[0])  # the first due stage in JOBS order
+
+    def test_tick_passes_run_timeout_through_the_run_seam(self):
+        # (raw env value, timeout the run seam must receive)
+        for raw, expected in (("120", 120), ("0", None), (None, 3600)):
+            with tempfile.TemporaryDirectory() as tmp:
+                project = os.path.join(tmp, "app")
+                config_dir = os.path.join(project, "cadence")
+                registry = os.path.join(tmp, "projects.txt")
+                os.makedirs(config_dir)
+                with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                    f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n"
+                            % os.path.join(tmp, "state"))
+                with open(registry, "w", encoding="utf-8") as f:
+                    f.write(project + "\n")
+                seen = []
+
+                def fake_run(cmd, cwd=None, env=None, timeout=None):
+                    seen.append(timeout)
+                    return type("Proc", (), {"returncode": 0})()
+
+                env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry}
+                if raw is not None:
+                    env["CADENCE_SCHEDULER_RUN_TIMEOUT"] = raw
+                now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+                with contextlib.redirect_stdout(io.StringIO()), \
+                        contextlib.redirect_stderr(io.StringIO()):
+                    cli.tick(env, now=now, run=fake_run)
+                self.assertEqual(seen, [expected])
+
+    def test_tick_serves_least_recently_served_project_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+
+            def make(name):
+                config_dir = os.path.join(tmp, name, "cadence")
+                state = os.path.join(tmp, name, "state")
+                os.makedirs(config_dir)
+                with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                    f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n" % state)
+                return os.path.join(tmp, name), state
+
+            first, s1 = make("first")     # earlier in the registry, served recently
+            second, _s2 = make("second")  # later in the registry, never served
+            cli._mark_ran(s1, "triage", "triage:earlier-slot")
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(first + "\n" + second + "\n")
+
+            served = []
+
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
+                served.append(cwd)
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "1"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                cli.tick(env, now=now, run=fake_run)
+
+            # Both are due, but the one run this tick is the never-served project —
+            # fairness overrides registry order so it can't be permanently starved.
+            self.assertEqual(served, [second])
 
     def test_tick_skips_projects_not_opted_into_scheduling(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -222,7 +436,7 @@ class TestSchedulerTick(unittest.TestCase):
             with open(registry, "w", encoding="utf-8") as f:
                 f.write(project + "\n")
 
-            def fake_run(cmd, cwd=None, env=None):
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
                 return type("Proc", (), {"returncode": 0})()
 
             env = {
@@ -252,7 +466,7 @@ class TestSchedulerTick(unittest.TestCase):
 
             calls = []
 
-            def fake_run(cmd, cwd=None, env=None):
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
                 calls.append(cmd)
                 return type("Proc", (), {"returncode": 0})()
 
@@ -276,6 +490,66 @@ class TestSchedulerTick(unittest.TestCase):
         self.assertEqual(values.get("EXPORTED"), "yes")
         # `KEY = value` is not a bash assignment, so the scheduler must skip it too.
         self.assertNotIn("CADENCE_STATE_DIR", values)
+
+    def _two_project_registry(self, tmp, names):
+        registry = os.path.join(tmp, "projects.txt")
+        paths = []
+        for name in names:
+            config_dir = os.path.join(tmp, name, "cadence")
+            os.makedirs(config_dir)
+            with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n"
+                        % os.path.join(tmp, name, "state"))
+            paths.append(os.path.join(tmp, name))
+        with open(registry, "w", encoding="utf-8") as f:
+            f.write("\n".join(paths) + "\n")
+        return registry, paths
+
+    def test_tick_isolates_a_crashing_run_and_reports_it_failed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry, paths = self._two_project_registry(tmp, ("boom", "fine"))
+            served = []
+
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
+                served.append(cwd)
+                if "boom" in cwd:
+                    raise RuntimeError("model runner fell over")
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "2"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                rc = cli.tick(env, now=now, run=fake_run)
+
+            self.assertEqual(rc, 1)                          # the crash is a failure...
+            self.assertEqual(sorted(served), sorted(paths))  # ...but the other run still ran
+            self.assertIn("failed (model runner fell over)", out.getvalue())
+            self.assertIn("exit 0", out.getvalue())
+
+    def test_tick_records_a_timed_out_run_as_failed_without_sinking_the_tick(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry, paths = self._two_project_registry(tmp, ("slow", "fine"))
+            served = []
+
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
+                served.append(cwd)
+                if "slow" in cwd:
+                    raise subprocess.TimeoutExpired(cmd="cadence run triage",
+                                                    timeout=timeout or 3600)
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "2"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                rc = cli.tick(env, now=now, run=fake_run)
+
+            self.assertEqual(rc, 1)
+            self.assertEqual(sorted(served), sorted(paths))
+            self.assertIn("timed out", out.getvalue())
 
 
 class TestScheduleApplyScript(unittest.TestCase):
@@ -390,6 +664,192 @@ class TestRegister(unittest.TestCase):
             # read_projects should see the same project dir the config lives under.
             projects = cli.read_projects(registry)
             self.assertEqual(projects[0]["project"], os.path.join(tmp, "app"))
+
+
+class TestUpsertEnvVar(unittest.TestCase):
+    def test_appends_when_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, ".env")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("LINEAR_TEAM_ID=abc\n")
+            cli.upsert_env_var(path, "CADENCE_SCHEDULED", "1")
+            with open(path, encoding="utf-8") as f:
+                txt = f.read()
+            self.assertIn("LINEAR_TEAM_ID=abc\n", txt)
+            self.assertIn("CADENCE_SCHEDULED=1\n", txt)
+
+    def test_replaces_existing_value_and_export_form(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, ".env")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("# comment stays\nexport CADENCE_SCHEDULED=0\nOTHER=x\n")
+            cli.upsert_env_var(path, "CADENCE_SCHEDULED", "1")
+            with open(path, encoding="utf-8") as f:
+                txt = f.read()
+            self.assertIn("# comment stays\n", txt)
+            self.assertIn("OTHER=x\n", txt)
+            self.assertIn("CADENCE_SCHEDULED=1\n", txt)
+            self.assertNotIn("CADENCE_SCHEDULED=0", txt)
+
+    def test_creates_file_when_absent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, ".env")
+            cli.upsert_env_var(path, "CADENCE_SCHEDULED", "1")
+            with open(path, encoding="utf-8") as f:
+                self.assertEqual(f.read(), "CADENCE_SCHEDULED=1\n")
+
+
+class TestUnregister(unittest.TestCase):
+    def test_removes_project_preserving_other_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            keep = os.path.join(tmp, "keep")
+            drop = os.path.join(tmp, "drop")
+            os.makedirs(keep); os.makedirs(drop)
+            reg = os.path.join(tmp, "projects.txt")
+            with open(reg, "w", encoding="utf-8") as f:
+                f.write(f"# my projects\n{keep}\n{drop}\n")
+            lines = []
+            self.assertEqual(cli.unregister(env, [drop], out=lines.append), 0)
+            self.assertTrue(any("unregistered:" in x for x in lines))
+            with open(reg, encoding="utf-8") as f:
+                txt = f.read()
+            self.assertEqual(txt, f"# my projects\n{keep}\n")
+
+    def test_accepts_env_path_and_matches_dir_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            project = os.path.join(tmp, "app")
+            os.makedirs(os.path.join(project, "cadence"))
+            reg = os.path.join(tmp, "projects.txt")
+            with open(reg, "w", encoding="utf-8") as f:
+                f.write(project + "\n")
+            config = os.path.join(project, "cadence", ".env")
+            self.assertEqual(cli.unregister(env, [config], out=lambda *_: None), 0)
+            with open(reg, encoding="utf-8") as f:
+                self.assertEqual(f.read(), "")
+
+    def test_idempotent_when_absent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            lines = []
+            self.assertEqual(
+                cli.unregister(env, [os.path.join(tmp, "ghost")], out=lines.append), 0)
+            self.assertTrue(any("not registered" in x for x in lines))
+
+
+class TestOnboard(unittest.TestCase):
+    def _project(self, tmp, name="app", config_lines=""):
+        project = os.path.join(tmp, name)
+        os.makedirs(os.path.join(project, "cadence"))
+        config = os.path.join(project, "cadence", ".env")
+        with open(config, "w", encoding="utf-8") as f:
+            f.write(config_lines)
+        return project, config
+
+    def test_requires_a_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            missing = os.path.join(tmp, "bare")
+            os.makedirs(missing)
+            lines = []
+            self.assertEqual(cli.onboard(env, [missing], out=lines.append), 1)
+            self.assertTrue(any("no config" in x for x in lines))
+
+    def test_fills_state_dir_schedules_registers_and_pauses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            project, config = self._project(tmp, config_lines="LINEAR_TEAM_ID=t\n")
+            self.assertEqual(cli.onboard(env, [project], out=lambda *_: None), 0)
+            values = cli.read_env_file(config)
+            state = os.path.join(tmp, "projects", "app")
+            self.assertEqual(values.get("CADENCE_STATE_DIR"), state)
+            self.assertEqual(values.get("CADENCE_SCHEDULED"), "1")
+            self.assertEqual(values.get("LINEAR_TEAM_ID"), "t")  # untouched
+            self.assertTrue(os.path.isfile(os.path.join(state, "runs", "PAUSED")))
+            projects = [i["project"] for i in cli.read_projects(cli.projects_file(env))]
+            self.assertIn(project, projects)
+
+    def test_respects_existing_state_dir_and_rerun_does_not_repause(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            own_state = os.path.join(tmp, "custom-state")
+            project, config = self._project(
+                tmp, config_lines=f"CADENCE_STATE_DIR={own_state}\n")
+            self.assertEqual(cli.onboard(env, [project], out=lambda *_: None), 0)
+            self.assertEqual(
+                cli.read_env_file(config).get("CADENCE_STATE_DIR"), own_state)
+            # a human resumes; re-running onboard must not re-pause
+            os.remove(os.path.join(own_state, "runs", "PAUSED"))
+            self.assertEqual(cli.onboard(env, [project], out=lambda *_: None), 0)
+            self.assertFalse(
+                os.path.exists(os.path.join(own_state, "runs", "PAUSED")))
+
+    def test_refuses_to_autofill_a_taken_state_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            taken = os.path.join(tmp, "projects", "app")
+            # an already-registered project (different dir, same basename)
+            other, _ = self._project(
+                tmp, name="elsewhere", config_lines=f"CADENCE_STATE_DIR={taken}\n")
+            cli.register(env, [other], out=lambda *_: None)
+            project, config = self._project(tmp, name="app", config_lines="")
+            lines = []
+            self.assertEqual(cli.onboard(env, [project], out=lines.append), 1)
+            self.assertTrue(any("already belongs" in x for x in lines))
+            self.assertNotIn("CADENCE_STATE_DIR",
+                             cli.read_env_file(config))  # nothing written
+
+
+class TestOffboard(unittest.TestCase):
+    def _onboarded(self, tmp):
+        env = {"CADENCE_STATE_DIR": tmp}
+        project = os.path.join(tmp, "app")
+        os.makedirs(os.path.join(project, "cadence"))
+        config = os.path.join(project, "cadence", ".env")
+        with open(config, "w", encoding="utf-8") as f:
+            f.write("LINEAR_TEAM_ID=t\n")
+        cli.onboard(env, [project], out=lambda *_: None)
+        state = os.path.join(tmp, "projects", "app")
+        return env, project, config, state
+
+    def test_pauses_deschedules_and_unregisters(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, project, config, state = self._onboarded(tmp)
+            os.remove(os.path.join(state, "runs", "PAUSED"))  # human had resumed
+            self.assertEqual(cli.offboard(env, [project], out=lambda *_: None), 0)
+            self.assertTrue(os.path.isfile(os.path.join(state, "runs", "PAUSED")))
+            values = cli.read_env_file(config)
+            self.assertEqual(values.get("CADENCE_SCHEDULED"), "0")
+            self.assertEqual(values.get("LINEAR_TEAM_ID"), "t")  # untouched
+            self.assertEqual(cli.read_projects(cli.projects_file(env)), [])
+            self.assertTrue(os.path.isdir(state))  # nothing deleted
+
+    def test_purge_removes_own_state_dir_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, project, config, state = self._onboarded(tmp)
+            self.assertEqual(
+                cli.offboard(env, [project, "--purge"], out=lambda *_: None), 0)
+            self.assertFalse(os.path.exists(state))
+            self.assertTrue(os.path.exists(config))  # config always survives
+
+    def test_skips_pause_and_purge_without_own_state_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            project = os.path.join(tmp, "app")
+            os.makedirs(os.path.join(project, "cadence"))
+            config = os.path.join(project, "cadence", ".env")
+            with open(config, "w", encoding="utf-8") as f:
+                f.write("CADENCE_SCHEDULED=1\n")  # no CADENCE_STATE_DIR
+            cli.register(env, [project], out=lambda *_: None)
+            lines = []
+            self.assertEqual(
+                cli.offboard(env, [project, "--purge"], out=lines.append), 0)
+            self.assertTrue(any("own CADENCE_STATE_DIR" in x for x in lines))
+            self.assertEqual(cli.read_projects(cli.projects_file(env)), [])
+            # the shared default state dir was neither paused nor deleted
+            self.assertFalse(os.path.exists(
+                os.path.join(tmp, "runs", "PAUSED")))
 
 
 if __name__ == "__main__":

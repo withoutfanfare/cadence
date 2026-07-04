@@ -407,8 +407,30 @@ mutation($id: String!, $input: IssueUpdateInput!) {
 }"""
 
 
+GATE_LABELS = {"agent:spec", "agent:build", "agent:revise"}
+_STAGE_MAY_REMOVE_GATE = {"spec": {"agent:spec"}, "build": {"agent:build"}, "revise": {"agent:revise"}}
+
+
+def _guard_gate_removal(remove_labels, env):
+    """A scheduled loop must never strip a human gate label; only a human (no
+    CADENCE_STAGE in the environment) or the stage that owns the gate may remove
+    it. Engine-enforced because the prompt-level rule can be disobeyed by a model.
+    run-loop.sh exports CADENCE_STAGE for every loop run."""
+    stage = (env.get("CADENCE_STAGE") or "").strip().lower()
+    if not stage:
+        return
+    allowed = _STAGE_MAY_REMOVE_GATE.get(stage, set())
+    illegal = sorted(lbl for lbl in remove_labels if lbl in GATE_LABELS and lbl not in allowed)
+    if illegal:
+        raise LinearError(
+            "refused: the %s loop may not remove human gate label(s) %s — only a "
+            "human, or the stage that owns the gate, removes it"
+            % (stage, ", ".join(illegal)))
+
+
 def cmd_issue_update(args, env, post=graphql):
     _assert_in_scope(args.id, env, post)
+    _guard_gate_removal(getattr(args, "remove_label", None) or [], env)
     inp = {}
     if getattr(args, "priority", None) is not None:
         inp["priority"] = int(args.priority)
@@ -443,6 +465,7 @@ def cmd_bulk_label(args, env, post=graphql):
     runs confirm first unless --yes; --dry-run reports the plan without writing."""
     add = args.add_label or []
     rem = args.remove_label or []
+    _guard_gate_removal(rem, env)
     if not add and not rem:
         raise LinearError("bulk-label: nothing to do (need --add and/or --remove)")
     if args.where_label and args.issues:

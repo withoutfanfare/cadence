@@ -12,6 +12,10 @@ _pp="${RUNNER_PATH_PREPEND:-}"
 [ -z "$_pp" ] && [ -d "$HOME/Library/Application Support/Herd/bin" ] && _pp="$HOME/Library/Application Support/Herd/bin"
 export PATH="${_pp:+$_pp:}$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 STAGE="${1:?stage required (triage|spec|build|revise|advance|roadmap)}"
+# Expose the stage to every descendant (the orchestrator and any `cadence tasks
+# update` / `cadence linear issue-update` it runs) so the engine can refuse a loop
+# that tries to strip a human gate label it does not own.
+export CADENCE_STAGE="$STAGE"
 # Default so a config that legitimately omits PROJECT_DIR (triage/spec-only setups)
 # reaches the `cd "$WORKTREE" || ...` handler below rather than crashing on `set -u`.
 WORKTREE="${PROJECT_DIR:-}"

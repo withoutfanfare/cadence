@@ -216,7 +216,33 @@ def cmd_get(args, env=None):
     return _find(load(env), args.identifier)
 
 
+GATE_LABELS = {"agent:spec", "agent:build", "agent:revise"}
+# Only the stage that owns a gate may retire it as part of its forward transition
+# (spec consumes agent:spec, build consumes agent:build, revise consumes agent:revise).
+_STAGE_MAY_REMOVE_GATE = {"spec": {"agent:spec"}, "build": {"agent:build"}, "revise": {"agent:revise"}}
+
+
+def _guard_gate_removal(remove_labels, env):
+    """A scheduled loop must never strip a human gate label; only a human (no
+    CADENCE_STAGE in the environment) or the stage that owns the gate may remove
+    it. Enforced here in the engine because the prompt-level rule can be — and was
+    — disobeyed by a model (triage erased a granted agent:spec, reverting the work
+    to agent:triaged). run-loop.sh exports CADENCE_STAGE for every loop run."""
+    stage = (env.get("CADENCE_STAGE") or "").strip().lower()
+    if not stage:
+        return
+    allowed = _STAGE_MAY_REMOVE_GATE.get(stage, set())
+    illegal = sorted(lbl for lbl in remove_labels if lbl in GATE_LABELS and lbl not in allowed)
+    if illegal:
+        raise SystemExit(
+            "refused: the %s loop may not remove human gate label(s) %s — only a "
+            "human, or the stage that owns the gate, removes it"
+            % (stage, ", ".join(illegal)))
+
+
 def cmd_update(args, env=None):
+    env = env or os.environ
+    _guard_gate_removal(args.remove_label or [], env)
     tasks = load(env)
     task = _find(tasks, args.identifier)
     if args.status is not None:

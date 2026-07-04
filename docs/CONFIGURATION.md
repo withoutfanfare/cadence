@@ -102,7 +102,7 @@ back-fill. Use `file` when a local `cadence/tasks.md` board is enough.
 | `REPO_SLUG` | Build/revise | GitHub repository slug, for example `owner/app`. |
 | `BASE_BRANCH` | Build/revise | Branch used as the base for generated worktrees and draft PRs. Defaults to `develop`. |
 | `PROJECT_DIR` | Build/revise | Main checkout of the app repo Cadence works on. |
-| `WORKTREE_BASE` | Build/revise | Directory where build/revise create temporary worktrees. |
+| `WORKTREE_BASE` | Build/revise | Directory where build/revise create temporary worktrees. Exported into the loop's environment so external tooling (for example user git hooks) can recognise Cadence's own worktrees. |
 | `WORKTREE_TOOL` | Build/revise | `git` (default) or `grove` — how worktrees are created. |
 
 `PROJECT_DIR` should be a normal checkout of the application repo. This is the
@@ -291,7 +291,9 @@ registered project has scheduling enabled.
 | --- | --- | --- | --- |
 | `CADENCE_PROJECTS_FILE` | `$CADENCE_STATE_DIR/projects.txt` | scheduler | Newline-separated project folders or explicit `cadence/.env` paths. |
 | `CADENCE_SCHEDULER_INTERVAL` | `300` | scheduler | Launchd wake interval in seconds. |
-| `CADENCE_SCHEDULER_MAX_RUNS` | `1` | scheduler | Maximum scheduled stage runs per tick across all projects. |
+| `CADENCE_SCHEDULER_MAX_RUNS` | `1` | scheduler | Maximum scheduled stage runs per tick across all projects (the throughput ceiling). |
+| `CADENCE_SCHEDULER_CONCURRENCY` | `4` | scheduler | How many of a tick's runs execute at once (the width). Effective only when `CADENCE_SCHEDULER_MAX_RUNS` allows more than one run; keep it small for API-rate and cost safety. |
+| `CADENCE_SCHEDULER_RUN_TIMEOUT` | `3600` | scheduler | Wall-clock cap in seconds per scheduled run; the child is killed on expiry and the run reported as failed. `0` disables. Sits above `ORCH_TIMEOUT`, which bounds only the model call inside the run. |
 | `CADENCE_SCHEDULER_WINDOW_MINUTES` | `5` | scheduler | Due window used to tolerate launchd jitter without catching up old missed runs. |
 | `CADENCE_SCHEDULED` | unset/off | project | Set to `1`, `on`, `true`, or `yes` to let the scheduler run this project. |
 
@@ -344,6 +346,14 @@ turn, then escalates to `agent:needs-attention` if it still fails.
 | `CADENCE_STATE_DIR` | `$HOME/.cadence` | Logs, digests, activity feed, machine ledger, and pause flag. **Set a unique value per project** — see below. |
 | `NOTIFY` | `on` | macOS notifications for runs that did work, paused, or **failed**. Failures (non-zero exit or reported errors) use a distinct title and "Basso" sound and are always also recorded in the dated digest and activity feed. `off` silences the notifications only; the digest/feed records are kept. |
 | `RUNNER_PATH_PREPEND` | unset | Optional directory prepended to `PATH` for loop runners. |
+| `ORCH_TIMEOUT` | `2700` | Max seconds for any single orchestrator run (all stages). Caps a hung or wedged run — e.g. a model idling in a self-monitoring loop — so it cannot hold the shared build/revise worktree lock indefinitely. Applies to every existing and new project by default; override per profile for unusually slow build+gate cycles. |
+| `CADENCE_LOCK_MAX_AGE_SECONDS` | `7200` | Hard ceiling after which a build/revise worktree lock is reclaimed even if its holder PID is still alive (guards against PID recycling and wedged holders). Kept well above `ORCH_TIMEOUT` so a legitimate in-flight build is never stolen. |
+
+`ORCH_TIMEOUT` is the primary robustness lever against a stuck run: the build/revise
+worktree lock is released when the run ends, so a lower cap bounds how long a wedged
+run can block a project's builds. The default (45 minutes) leaves an honest build in a
+fresh worktree — dependency install plus gates — room to finish while still killing
+anything genuinely stuck.
 
 **Every project profile must set its own `CADENCE_STATE_DIR`.** If two projects
 share one — most easily by both leaving it blank, which defaults to

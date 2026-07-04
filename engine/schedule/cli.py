@@ -12,9 +12,11 @@ Format (value of each SCHED_<STAGE>):
   Nh@MM     every N hours, at minute MM  (e.g. 4h@30 -> 00:30, 04:30, 08:30, ...)
 """
 from datetime import datetime, timedelta, timezone
+import concurrent.futures
 import importlib.util
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -219,6 +221,15 @@ def main(argv):
     if cmd == "register":
         return register(os.environ, argv[1:])
 
+    if cmd == "unregister":
+        return unregister(os.environ, argv[1:])
+
+    if cmd == "onboard":
+        return onboard(os.environ, argv[1:])
+
+    if cmd == "offboard":
+        return offboard(os.environ, argv[1:])
+
     if cmd == "tick":
         return tick(os.environ)
 
@@ -239,7 +250,7 @@ def main(argv):
             return 1
         return 0
 
-    print("usage: cadence schedule [show|status|register|tick|apply]", file=sys.stderr)
+    print("usage: cadence schedule [show|status|register|unregister|tick|apply]", file=sys.stderr)
     return 2
 
 
@@ -259,7 +270,7 @@ def _project_dir_for(path):
     return path, os.path.join(path, "cadence", ".env")
 
 
-def register(env, args, out=print):
+def register(env, args, out=print, hint=True):
     """Add a project to the scheduler registry (idempotent). `args[0]` is a project
     directory or a config .env path; defaults to the current directory."""
     given = args[0] if args else os.getcwd()
@@ -276,7 +287,112 @@ def register(env, args, out=print):
     out(f"registered: {project}")
     out(f"  registry: {reg}")
     out(f"  config:   {config}")
-    out("Next: set CADENCE_SCHEDULED=1 in that config, then run `cadence schedule apply`.")
+    if hint:
+        out("Next: set CADENCE_SCHEDULED=1 in that config, then run `cadence schedule apply`.")
+    return 0
+
+
+def unregister(env, args, out=print):
+    """Remove a project from the scheduler registry (idempotent). `args[0]` is a
+    project directory or a config .env path; defaults to the current directory.
+    Other lines — comments, blanks, other projects — pass through untouched."""
+    given = args[0] if args else os.getcwd()
+    project, _ = _project_dir_for(given)
+    reg = projects_file(env)
+    kept, removed = [], False
+    if os.path.exists(reg):
+        with open(reg, encoding="utf-8") as f:
+            for line in f:
+                raw = line.strip()
+                if raw and not raw.startswith("#") and _project_dir_for(raw)[0] == project:
+                    removed = True
+                    continue
+                kept.append(line)
+    if not removed:
+        out(f"not registered: {project}")
+        return 0
+    with open(reg, "w", encoding="utf-8") as f:
+        f.writelines(kept)
+    out(f"unregistered: {project}")
+    out(f"  registry: {reg}")
+    return 0
+
+
+def _state_dir_for(env, project):
+    """Default per-project state dir: <caller state root>/projects/<basename>."""
+    root = os.path.expanduser(os.path.expandvars(
+        env.get("CADENCE_STATE_DIR") or "~/.cadence"))
+    return os.path.join(root, "projects", os.path.basename(project))
+
+
+def onboard(env, args, out=print):
+    """One-shot scheduler onboarding. Fills CADENCE_STATE_DIR if blank (refusing a
+    dir another registered project already uses), creates it, sets
+    CADENCE_SCHEDULED=1, pauses newly registered projects (a human resumes
+    deliberately), and registers. The launchd side stays in onboard.sh."""
+    given = args[0] if args else os.getcwd()
+    project, config = _project_dir_for(given)
+    if not os.path.exists(config):
+        out(f"no config at {config}")
+        out("Create one first — run the cadence-setup skill, or copy .env.example.")
+        return 1
+    values = read_env_file(config)
+    state = _path_value(values.get("CADENCE_STATE_DIR"), "")
+    if not state:
+        state = _state_dir_for(env, project)
+        for item in read_projects(projects_file(env)):
+            if item["project"] == project:
+                continue
+            other = read_env_file(item["config"]).get("CADENCE_STATE_DIR")
+            if other and _path_value(other, "") == state:
+                out(f"state dir {state} already belongs to {item['project']}")
+                out("Set CADENCE_STATE_DIR in the config yourself, then re-run.")
+                return 1
+        upsert_env_var(config, "CADENCE_STATE_DIR", state)
+        out(f"  state dir: {state} (written to config)")
+    os.makedirs(os.path.join(state, "runs"), mode=0o700, exist_ok=True)
+    upsert_env_var(config, "CADENCE_SCHEDULED", "1")
+    out(f"  CADENCE_SCHEDULED=1 written to {config}")
+    already = any(i["project"] == project
+                  for i in read_projects(projects_file(env)))
+    if not already:
+        with open(os.path.join(state, "runs", "PAUSED"), "w", encoding="utf-8"):
+            pass
+        out("  paused — resume with: cadence --config " + config + " resume")
+    register(env, [project], out=out, hint=False)
+    return 0
+
+
+def offboard(env, args, out=print):
+    """Take a project off the scheduler: pause it, set CADENCE_SCHEDULED=0,
+    unregister. Deletes nothing unless --purge, which removes only the project's
+    own state dir (never the config, never the shared default state dir).
+    Pausing/purging is skipped when the project has no CADENCE_STATE_DIR of its
+    own — touching the shared default would hit every project at once."""
+    purge = "--purge" in args
+    paths = [a for a in args if not a.startswith("--")]
+    given = paths[0] if paths else os.getcwd()
+    project, config = _project_dir_for(given)
+    values = read_env_file(config)
+    state = _path_value(values.get("CADENCE_STATE_DIR"), "")
+    if state:
+        os.makedirs(os.path.join(state, "runs"), exist_ok=True)
+        with open(os.path.join(state, "runs", "PAUSED"), "w", encoding="utf-8"):
+            pass
+        out(f"  paused: {os.path.join(state, 'runs', 'PAUSED')}")
+    else:
+        out("  no own CADENCE_STATE_DIR in config — skipping pause"
+            + (" and purge" if purge else ""))
+    if os.path.exists(config):
+        upsert_env_var(config, "CADENCE_SCHEDULED", "0")
+        out(f"  CADENCE_SCHEDULED=0 written to {config}")
+    unregister(env, [project], out=out)
+    if purge and state:
+        shutil.rmtree(state, ignore_errors=True)
+        out(f"  purged state dir: {state}")
+    elif state:
+        out(f"  left in place: {state}")
+    out(f"  left in place: {config}")
     return 0
 
 
@@ -320,6 +436,31 @@ def read_env_file(path):
                 key = key.split(None, 1)[1]
             values[key] = _cadence_env._parse_value(val)
     return values
+
+
+def upsert_env_var(path, key, value):
+    """Set KEY=value in a config file in place, preserving everything else.
+
+    Replaces every uncommented assignment of the key (including `export KEY=`
+    forms — lib-env sources with allexport, so the plain form is equivalent);
+    appends when absent; creates the file when missing. Mirrors the in-place
+    edit `autonomous.sh` performs for AUTONOMOUS.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            txt = f.read()
+    except FileNotFoundError:
+        txt = ""
+    line = f"{key}={value}"
+    pattern = re.compile(r"(?m)^\s*(?:export\s+)?" + re.escape(key) + r"=.*$")
+    if pattern.search(txt):
+        txt = pattern.sub(line, txt)
+    else:
+        if txt and not txt.endswith("\n"):
+            txt += "\n"
+        txt += line + "\n"
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(txt)
 
 
 def _path_value(value, default):
@@ -393,7 +534,33 @@ def _mark_ran(state, stage, key):
         f.write(key + "\n")
 
 
-def _run_stage(home, project, config, stage, run):
+def _last_served(state):
+    """Newest mtime among a project's scheduler slot markers, or 0.0 if it has
+    never been served. Used to order the tick least-recently-served first so a
+    project can never be permanently starved by its registry position when
+    several fall due in the same slot."""
+    d = os.path.join(state, "scheduler")
+    try:
+        return max((os.path.getmtime(os.path.join(d, f)) for f in os.listdir(d)), default=0.0)
+    except FileNotFoundError:
+        return 0.0
+
+
+def _due_stage_count(values, now, window):
+    """How many stages this project has due (and not yet run this slot check is
+    left to the caller) — used only to warn when max_runs can't cover demand."""
+    n = 0
+    for stage in JOBS:
+        spec = (values.get("SCHED_" + stage.upper()) or JOBS[stage][3]).strip()
+        try:
+            if _slot_key(stage, spec, now, window):
+                n += 1
+        except ValueError:
+            pass
+    return n
+
+
+def _run_stage(home, project, config, stage, run, timeout=None):
     cmd = [os.path.join(home, "bin", "cadence"), "--config", config]
     if stage == "conduct":
         cmd.append("conduct")
@@ -401,16 +568,40 @@ def _run_stage(home, project, config, stage, run):
         cmd.extend(["run", stage])
     env = os.environ.copy()
     env["CADENCE_CONFIG"] = config
-    return run(cmd, cwd=project, env=env)
+    return run(cmd, cwd=project, env=env, timeout=timeout)
+
+
+def _execute(home, project, config, stage, run, timeout):
+    """Run one admitted pick and describe the outcome. Never raises: one
+    crashed or hung run must not sink the tick or the other pool slots.
+    subprocess.run kills the child itself on timeout, so a timed-out run frees
+    its slot at once — the fast path in front of run-loop.sh's 2h lock reclaim."""
+    try:
+        proc = _run_stage(home, project, config, stage, run, timeout)
+        return ("exit %d" % proc.returncode, proc.returncode != 0)
+    except subprocess.TimeoutExpired as e:
+        return ("failed (timed out after %ss; child killed)" % e.timeout, True)
+    except Exception as e:  # isolation is the point: report it, never propagate
+        return ("failed (%s)" % e, True)
 
 
 def tick(env, now=None, run=subprocess.run):
     home = env.get("CADENCE_HOME") or HOME
     now = now or datetime.now(timezone.utc)
     window = max(1, _int_env(env, "CADENCE_SCHEDULER_WINDOW_MINUTES", 5))
+    # MAX_RUNS is the per-tick throughput ceiling (how many runs are launched);
+    # CONCURRENCY is the width (how many run at once). A twenty-project fleet
+    # raises MAX_RUNS to cover demand and keeps CONCURRENCY small for API-rate
+    # and cost safety; a tick lasts roughly ceil(MAX_RUNS / CONCURRENCY) times
+    # the longest run. The defaults reproduce the old behaviour exactly.
     max_runs = _int_env(env, "CADENCE_SCHEDULER_MAX_RUNS", 1)
+    concurrency = max(1, _int_env(env, "CADENCE_SCHEDULER_CONCURRENCY", 4))
+    # Wall-clock cap per run; 0 disables it. subprocess.run kills the child on
+    # expiry, so a hung model call cannot hold a pool slot forever. This sits
+    # above ORCH_TIMEOUT (default 2700s), which bounds only the model call
+    # inside the run; run-loop.sh's 2h stale-lock reclaim is the coarser backstop.
+    timeout = _int_env(env, "CADENCE_SCHEDULER_RUN_TIMEOUT", 3600) or None
     projects = read_projects(projects_file(env))
-    ran = 0
     failed = 0
 
     if not projects:
@@ -420,15 +611,37 @@ def tick(env, now=None, run=subprocess.run):
     for w in shared_state_warnings(projects):
         print(w, file=sys.stderr)
 
-    for item in projects:
-        if ran >= max_runs:
-            break
-        project, config = item["project"], item["config"]
-        values = read_env_file(config)
+    # Resolve the scheduled projects, then order them least-recently-served first.
+    # Registry order alone lets projects sharing a slot starve the ones behind them
+    # once max_runs is spent (a later project with identical SCHED offsets never gets
+    # a turn); ordering by last-served makes the neediest project lead each tick, so
+    # service rotates and no project is permanently skipped. Ties keep registry order.
+    candidates = []
+    for idx, item in enumerate(projects):
+        values = read_env_file(item["config"])
         if (values.get("CADENCE_SCHEDULED") or "").lower() not in TRUE:
-            print(f"{project}: skipped (CADENCE_SCHEDULED not enabled)")
+            print(f"{item['project']}: skipped (CADENCE_SCHEDULED not enabled)")
             continue
         state = _path_value(values.get("CADENCE_STATE_DIR"), os.path.expanduser("~/.cadence"))
+        candidates.append((item, values, state, idx))
+    candidates.sort(key=lambda c: (_last_served(c[2]), c[3]))
+
+    # Under-provisioning signal: if more projects have work due than one tick can
+    # serve, say so — that is exactly the condition that produced silent starvation.
+    due = sum(1 for _i, v, _s, _x in candidates if _due_stage_count(v, now, window))
+    if due > max_runs:
+        print(f"scheduler: {due} projects due but max_runs={max_runs} — raise "
+              f"CADENCE_SCHEDULER_MAX_RUNS so none are starved", file=sys.stderr)
+
+    # Admission (serial): walk candidates in fairness order and pick at most one
+    # due stage per project until max_runs picks are collected. Selecting per
+    # project *before* dispatching is what guarantees a project never runs twice
+    # in one tick — run-loop.sh's per-project lock is only a backstop.
+    picks = []
+    for item, values, state, _idx in candidates:
+        if len(picks) >= max_runs:
+            break
+        project, config = item["project"], item["config"]
         # Dedup is per (stage, slot) only — a project is never excluded as a whole,
         # so two stages due in the same window each get their turn (across ticks),
         # rather than the first one silently starving the rest.
@@ -442,15 +655,36 @@ def tick(env, now=None, run=subprocess.run):
                 continue
             if not key or _already_ran(state, stage, key):
                 continue
-            proc = _run_stage(home, project, config, stage, run)
+            # Mark at admission, not completion: the marker means "this slot was
+            # served", which is true once the launch is committed. launchd
+            # coalesces ticks so they never overlap, and run-loop.sh skips a
+            # duplicate launch of a stage already in flight, so a run spanning
+            # several tick intervals cannot be double-launched for its slot.
+            # Marking here also stamps _last_served at selection time, which is
+            # what the fairness rotation keys on. (The old code marked after the
+            # child returned, but wrote the marker even on failure — semantics
+            # are unchanged for every case except a crash inside run() itself.)
             _mark_ran(state, stage, key)
-            ran += 1
-            print(f"{project}: {stage} exit {proc.returncode}")
-            if proc.returncode:
-                failed = 1
+            picks.append((project, config, stage))
             break
-    if ran == 0:
+
+    if not picks:
         print("scheduler: nothing due")
+        return failed
+
+    # Dispatch (parallel): the pool is fed in admission order, so when width is
+    # scarce the least-recently-served projects still start first. The tick
+    # blocks until every run finishes — launchd coalesces ticks, so a long tick
+    # delays the next wake rather than overlapping it, and the exit code can
+    # honestly report every run it launched.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures = [pool.submit(_execute, home, project, config, stage, run, timeout)
+                   for project, config, stage in picks]
+        outcomes = [f.result() for f in futures]
+    for (project, _config, stage), (line, bad) in zip(picks, outcomes):
+        print(f"{project}: {stage} {line}")
+        if bad:
+            failed = 1
     return failed
 
 
@@ -462,10 +696,20 @@ def print_status(env):
     if not projects:
         print("  (none)")
         return 0
+    now = datetime.now(timezone.utc).timestamp()
     for item in projects:
         values = read_env_file(item["config"])
         enabled = "yes" if (values.get("CADENCE_SCHEDULED") or "").lower() in TRUE else "no"
-        print(f"  {item['project']}  scheduled={enabled}  config={item['config']}")
+        served = ""
+        if enabled == "yes":
+            state = _path_value(values.get("CADENCE_STATE_DIR"), os.path.expanduser("~/.cadence"))
+            ls = _last_served(state)
+            if ls == 0.0:
+                served = "  last-run=never ⚠ starved"
+            else:
+                hrs = (now - ls) / 3600
+                served = "  last-run=%.1fh ago%s" % (hrs, "  ⚠ starved?" if hrs >= 3 else "")
+        print(f"  {item['project']}  scheduled={enabled}{served}  config={item['config']}")
     for w in shared_state_warnings(projects):
         print("  " + w)
     return 0
