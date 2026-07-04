@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conversational path. Documented in `INSTALL.md`, `OPERATING.md`, and the
   cheatsheet.
 
+- Parallel scheduler dispatch with a per-run timeout. A tick now launches its
+  admitted runs through a bounded pool: `CADENCE_SCHEDULER_MAX_RUNS` remains the
+  per-tick throughput ceiling, new `CADENCE_SCHEDULER_CONCURRENCY` (default `4`)
+  is how many run at once, and new `CADENCE_SCHEDULER_RUN_TIMEOUT` (default
+  `3600`, `0` disables) kills any single run that overstays and reports it as a
+  failure without disturbing the other runs in the same tick. Defaults preserve
+  the old serial behaviour (`MAX_RUNS=1`). Documented in `CONFIGURATION.md`.
+
 - `ORCH_TIMEOUT` (default `2700` = 45m): a hard cap on any single orchestrator
   run, applied to **every existing and new project by default** (was a hard-coded
   3600s). Bounds a hung or wedged run — e.g. a model idling in a self-monitoring

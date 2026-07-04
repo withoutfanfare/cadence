@@ -291,7 +291,9 @@ registered project has scheduling enabled.
 | --- | --- | --- | --- |
 | `CADENCE_PROJECTS_FILE` | `$CADENCE_STATE_DIR/projects.txt` | scheduler | Newline-separated project folders or explicit `cadence/.env` paths. |
 | `CADENCE_SCHEDULER_INTERVAL` | `300` | scheduler | Launchd wake interval in seconds. |
-| `CADENCE_SCHEDULER_MAX_RUNS` | `1` | scheduler | Maximum scheduled stage runs per tick across all projects. |
+| `CADENCE_SCHEDULER_MAX_RUNS` | `1` | scheduler | Maximum scheduled stage runs per tick across all projects (the throughput ceiling). |
+| `CADENCE_SCHEDULER_CONCURRENCY` | `4` | scheduler | How many of a tick's runs execute at once (the width). Effective only when `CADENCE_SCHEDULER_MAX_RUNS` allows more than one run; keep it small for API-rate and cost safety. |
+| `CADENCE_SCHEDULER_RUN_TIMEOUT` | `3600` | scheduler | Wall-clock cap in seconds per scheduled run; the child is killed on expiry and the run reported as failed. `0` disables. Sits above `ORCH_TIMEOUT`, which bounds only the model call inside the run. |
 | `CADENCE_SCHEDULER_WINDOW_MINUTES` | `5` | scheduler | Due window used to tolerate launchd jitter without catching up old missed runs. |
 | `CADENCE_SCHEDULED` | unset/off | project | Set to `1`, `on`, `true`, or `yes` to let the scheduler run this project. |
 
