@@ -169,6 +169,13 @@ one global launchd job, `com.cadence.scheduler`; it reads a projects file and
 then runs due stages with each project's own config. Projects are skipped unless
 their config contains `CADENCE_SCHEDULED=1`.
 
+To put a project on that scheduler in one step — state dir, registry,
+`CADENCE_SCHEDULED=1`, the launchd job, and a doctor pass — run `cadence onboard
+/path/to/app`. It leaves the project **paused**, so nothing runs until you
+`cadence --config /path/to/app/cadence/.env resume`. `cadence offboard
+/path/to/app` reverses it (pause, deschedule, unregister); `--purge` also deletes
+the project's run history, never its config.
+
 For the first deliberate live triage run, keep the system paused until you are
 ready, then resume, run it, and pause again while you inspect the result:
 

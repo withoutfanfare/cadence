@@ -82,9 +82,13 @@ Scheduling uses one launchd job: `com.cadence.scheduler`. It runs
 `cadence schedule tick`, which reads `CADENCE_PROJECTS_FILE` (default
 `$CADENCE_STATE_DIR/projects.txt`).
 
-Each line is a project folder or explicit `cadence/.env` path; add one with
-`cadence schedule register [path]` (idempotent). A project only runs when its own
-config contains `CADENCE_SCHEDULED=1`. The global tick is capped by
+Each line is a project folder or explicit `cadence/.env` path. `cadence onboard
+[path]` adds a project in one step (state dir, registry, `CADENCE_SCHEDULED=1`,
+the launchd job, doctor) and leaves it paused; `cadence offboard [path]` removes
+it again (`--purge` also deletes its run history). The underlying registry
+primitives are `cadence schedule register|unregister [path]` (idempotent). A
+project only runs when its own config contains `CADENCE_SCHEDULED=1`. The global
+tick is capped by
 `CADENCE_SCHEDULER_MAX_RUNS`, default `1`, so adding projects does not create
 unbounded fan-out. See
 [Running multiple projects](OPERATING.md#running-multiple-projects).
