@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ORCH_TIMEOUT` (default `2700` = 45m): a hard cap on any single orchestrator
+  run, applied to **every existing and new project by default** (was a hard-coded
+  3600s). Bounds a hung or wedged run — e.g. a model idling in a self-monitoring
+  loop instead of building — so it cannot hold the shared build/revise worktree
+  lock for an hour. Override per profile for unusually slow build+gate cycles.
+  Documented in `CONFIGURATION.md` alongside `CADENCE_LOCK_MAX_AGE_SECONDS`.
+
 - Merged-PR reconciliation: once a human merges a task's draft PR into
   `BASE_BRANCH`, the task/issue is closed and `agent:pr-open` cleared — two ways.
   A **"✓ Mark merged"** button appears on PR-open items in the SwiftBar menu, and

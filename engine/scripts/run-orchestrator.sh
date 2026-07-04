@@ -25,7 +25,12 @@ MODEL="${2:?model}"
 WORKDIR="${3:?workdir}"
 PROMPT_FILE="${4:?prompt file}"
 STAGE="${5:?stage}"
-TIMEOUT="${ORCH_TIMEOUT:-3600}"
+# Default cap on any single orchestrator run (all stages, all projects). Bounds a
+# hung/wedged run (e.g. a model idling in a self-monitoring loop) so it cannot hold
+# the shared build/revise worktree lock indefinitely. Override per project with
+# ORCH_TIMEOUT. 45m gives an honest build in a fresh worktree (cargo/pnpm install +
+# gates) room while still killing anything genuinely stuck.
+TIMEOUT="${ORCH_TIMEOUT:-2700}"
 
 [ -d "$WORKDIR" ] || { echo "run-orchestrator: workdir not found: $WORKDIR" >&2; exit 3; }
 [ -f "$PROMPT_FILE" ] || { echo "run-orchestrator: prompt not found: $PROMPT_FILE" >&2; exit 3; }
