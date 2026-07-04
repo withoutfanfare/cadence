@@ -222,6 +222,9 @@ def main(argv):
     if cmd == "unregister":
         return unregister(os.environ, argv[1:])
 
+    if cmd == "onboard":
+        return onboard(os.environ, argv[1:])
+
     if cmd == "tick":
         return tick(os.environ)
 
@@ -262,7 +265,7 @@ def _project_dir_for(path):
     return path, os.path.join(path, "cadence", ".env")
 
 
-def register(env, args, out=print):
+def register(env, args, out=print, hint=True):
     """Add a project to the scheduler registry (idempotent). `args[0]` is a project
     directory or a config .env path; defaults to the current directory."""
     given = args[0] if args else os.getcwd()
@@ -279,7 +282,8 @@ def register(env, args, out=print):
     out(f"registered: {project}")
     out(f"  registry: {reg}")
     out(f"  config:   {config}")
-    out("Next: set CADENCE_SCHEDULED=1 in that config, then run `cadence schedule apply`.")
+    if hint:
+        out("Next: set CADENCE_SCHEDULED=1 in that config, then run `cadence schedule apply`.")
     return 0
 
 
@@ -306,6 +310,51 @@ def unregister(env, args, out=print):
         f.writelines(kept)
     out(f"unregistered: {project}")
     out(f"  registry: {reg}")
+    return 0
+
+
+def _state_dir_for(env, project):
+    """Default per-project state dir: <caller state root>/projects/<basename>."""
+    root = os.path.expanduser(os.path.expandvars(
+        env.get("CADENCE_STATE_DIR") or "~/.cadence"))
+    return os.path.join(root, "projects", os.path.basename(project))
+
+
+def onboard(env, args, out=print):
+    """One-shot scheduler onboarding. Fills CADENCE_STATE_DIR if blank (refusing a
+    dir another registered project already uses), creates it, sets
+    CADENCE_SCHEDULED=1, pauses newly registered projects (a human resumes
+    deliberately), and registers. The launchd side stays in onboard.sh."""
+    given = args[0] if args else os.getcwd()
+    project, config = _project_dir_for(given)
+    if not os.path.exists(config):
+        out(f"no config at {config}")
+        out("Create one first — run the cadence-setup skill, or copy .env.example.")
+        return 1
+    values = read_env_file(config)
+    state = _path_value(values.get("CADENCE_STATE_DIR"), "")
+    if not state:
+        state = _state_dir_for(env, project)
+        for item in read_projects(projects_file(env)):
+            if item["project"] == project:
+                continue
+            other = read_env_file(item["config"]).get("CADENCE_STATE_DIR")
+            if other and _path_value(other, "") == state:
+                out(f"state dir {state} already belongs to {item['project']}")
+                out("Set CADENCE_STATE_DIR in the config yourself, then re-run.")
+                return 1
+        upsert_env_var(config, "CADENCE_STATE_DIR", state)
+        out(f"  state dir: {state} (written to config)")
+    os.makedirs(os.path.join(state, "runs"), mode=0o700, exist_ok=True)
+    upsert_env_var(config, "CADENCE_SCHEDULED", "1")
+    out(f"  CADENCE_SCHEDULED=1 written to {config}")
+    already = any(i["project"] == project
+                  for i in read_projects(projects_file(env)))
+    if not already:
+        with open(os.path.join(state, "runs", "PAUSED"), "w", encoding="utf-8"):
+            pass
+        out("  paused — resume with: cadence --config " + config + " resume")
+    register(env, [project], out=out, hint=False)
     return 0
 
 

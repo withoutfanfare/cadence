@@ -464,5 +464,68 @@ class TestUnregister(unittest.TestCase):
             self.assertTrue(any("not registered" in x for x in lines))
 
 
+class TestOnboard(unittest.TestCase):
+    def _project(self, tmp, name="app", config_lines=""):
+        project = os.path.join(tmp, name)
+        os.makedirs(os.path.join(project, "cadence"))
+        config = os.path.join(project, "cadence", ".env")
+        with open(config, "w", encoding="utf-8") as f:
+            f.write(config_lines)
+        return project, config
+
+    def test_requires_a_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            missing = os.path.join(tmp, "bare")
+            os.makedirs(missing)
+            lines = []
+            self.assertEqual(cli.onboard(env, [missing], out=lines.append), 1)
+            self.assertTrue(any("no config" in x for x in lines))
+
+    def test_fills_state_dir_schedules_registers_and_pauses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            project, config = self._project(tmp, config_lines="LINEAR_TEAM_ID=t\n")
+            self.assertEqual(cli.onboard(env, [project], out=lambda *_: None), 0)
+            values = cli.read_env_file(config)
+            state = os.path.join(tmp, "projects", "app")
+            self.assertEqual(values.get("CADENCE_STATE_DIR"), state)
+            self.assertEqual(values.get("CADENCE_SCHEDULED"), "1")
+            self.assertEqual(values.get("LINEAR_TEAM_ID"), "t")  # untouched
+            self.assertTrue(os.path.isfile(os.path.join(state, "runs", "PAUSED")))
+            projects = [i["project"] for i in cli.read_projects(cli.projects_file(env))]
+            self.assertIn(project, projects)
+
+    def test_respects_existing_state_dir_and_rerun_does_not_repause(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            own_state = os.path.join(tmp, "custom-state")
+            project, config = self._project(
+                tmp, config_lines=f"CADENCE_STATE_DIR={own_state}\n")
+            self.assertEqual(cli.onboard(env, [project], out=lambda *_: None), 0)
+            self.assertEqual(
+                cli.read_env_file(config).get("CADENCE_STATE_DIR"), own_state)
+            # a human resumes; re-running onboard must not re-pause
+            os.remove(os.path.join(own_state, "runs", "PAUSED"))
+            self.assertEqual(cli.onboard(env, [project], out=lambda *_: None), 0)
+            self.assertFalse(
+                os.path.exists(os.path.join(own_state, "runs", "PAUSED")))
+
+    def test_refuses_to_autofill_a_taken_state_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            taken = os.path.join(tmp, "projects", "app")
+            # an already-registered project (different dir, same basename)
+            other, _ = self._project(
+                tmp, name="elsewhere", config_lines=f"CADENCE_STATE_DIR={taken}\n")
+            cli.register(env, [other], out=lambda *_: None)
+            project, config = self._project(tmp, name="app", config_lines="")
+            lines = []
+            self.assertEqual(cli.onboard(env, [project], out=lines.append), 1)
+            self.assertTrue(any("already belongs" in x for x in lines))
+            self.assertNotIn("CADENCE_STATE_DIR",
+                             cli.read_env_file(config))  # nothing written
+
+
 if __name__ == "__main__":
     unittest.main()
