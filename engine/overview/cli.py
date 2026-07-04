@@ -37,7 +37,10 @@ def _resolve(path, default=None):
 
 
 def _last_run_per_stage(state_dir):
-    """Last ledger entry per stage from runs/runs.jsonl, keyed by stage/loop."""
+    """Last substantive ledger entry per stage from runs/runs.jsonl, keyed by
+    stage/loop. Paused runs are skipped: a pause is a skipped tick that did no
+    work, so it must not mask a stage's real last result (and current-pause is
+    already surfaced by the PAUSED flag → health)."""
     out = {}
     path = os.path.join(state_dir, "runs", "runs.jsonl")
     try:
@@ -50,6 +53,8 @@ def _last_run_per_stage(state_dir):
                     d = json.loads(line)
                 except ValueError:
                     continue
+                if d.get("paused"):
+                    continue
                 stage = d.get("stage") or d.get("loop")
                 if stage:
                     out[stage] = d
@@ -59,9 +64,8 @@ def _last_run_per_stage(state_dir):
 
 
 def _stage_result(d):
-    """Compact outcome string for one ledger entry."""
-    if d.get("paused"):
-        return "paused (%s)" % (d.get("reason") or "?")
+    """Compact outcome string for one ledger entry. Paused runs never reach here
+    — _last_run_per_stage skips them."""
     if d.get("idle"):
         return "idle"
     errors = int(d.get("errors") or 0)

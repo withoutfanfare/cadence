@@ -88,17 +88,28 @@ class TestRender(unittest.TestCase):
 
 
 class TestConflicts(unittest.TestCase):
-    def test_double_labelled_issue_is_flagged(self):
-        conflicts = cli.conflicts([_issue("P-2", ["agent:triaged", "agent:specced"])])
-        self.assertEqual(conflicts, [("P-2", ["agent:specced", "agent:triaged"])])
+    def test_two_position_labels_are_flagged(self):
+        # build crashed mid-swap: specced not cleared when pr-open was added
+        conflicts = cli.conflicts([_issue("P-2", ["agent:specced", "agent:pr-open"])])
+        self.assertEqual(conflicts, [("P-2", ["agent:specced", "agent:pr-open"])])
+
+    def test_sticky_triaged_is_not_a_conflict(self):
+        # agent:triaged is cleared only by a human, so it coexists with a position
+        # label by design and must never be flagged (docs/LABELS.md).
+        self.assertEqual(cli.conflicts([_issue("P-9", ["agent:triaged", "agent:specced"])]), [])
+
+    def test_exception_flag_with_position_is_not_a_conflict(self):
+        # a failed build keeps its position label + adds agent:needs-attention
+        self.assertEqual(
+            cli.conflicts([_issue("P-8", ["agent:triaged", "agent:specced", "agent:needs-attention"])]), [])
 
     def test_single_label_is_not_flagged(self):
         self.assertEqual(cli.conflicts([_issue("P-1", ["agent:specced"])]), [])
 
     def test_render_shows_conflict_warning_line(self):
-        issues = [_issue("P-2", ["agent:triaged", "agent:specced"])]
+        issues = [_issue("P-2", ["agent:specced", "agent:pr-open"])]
         out = cli.render(cli.bucket(issues), conflict_list=cli.conflicts(issues))
-        self.assertIn("⚠ inconsistent labels: P-2 (agent:specced + agent:triaged)", out)
+        self.assertIn("⚠ inconsistent labels: P-2 (agent:specced + agent:pr-open)", out)
 
 
 class TestFetchIssues(unittest.TestCase):
