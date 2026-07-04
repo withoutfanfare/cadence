@@ -22,7 +22,7 @@ FILE_STAGE_RULES = {
         "Run `cadence tasks list` and inspect local tasks that do not already carry an agent terminal label.",
         "Fill only blanks that are clear from the task text. Mark settled tasks with `agent:triaged`; mark unclear tasks with `agent:needs-human`.",
         "Before marking a task `agent:triaged`, ensure its body has an `### Acceptance Criteria` section with a `- [ ]` checklist derived from the task text; if it is missing, write it with `cadence tasks update <ID> --body-file <file>` (use `###`, not `##`, which is reserved for task headers). If you cannot state clear criteria, mark `agent:needs-human` instead — autonomous mode only advances tasks that carry acceptance criteria.",
-        "Reconcile merged PRs: `gh pr list --state merged --base \"${BASE_BRANCH:-develop}\" --json number,url,headRefName`. For each `agent:pr-open` task whose recorded PR URL (in its body) matches a PR that is now merged, close it with `cadence tasks update <ID> --status completed --remove-label agent:pr-open`. This only records a merge a human already made — never merge or grant a gate. Count these as `backfilled` in the summary.",
+        "Reconcile merged PRs: `gh pr list --state merged --base \"${BASE_BRANCH:-develop}\" --json number,url,headRefName`. For each `agent:pr-open` task whose recorded PR URL (in its body) matches a PR that is now merged, close it with `cadence tasks update <ID> --status completed --remove-label agent:pr-open`. This only records a merge a human already made — never merge, mark a PR ready, or grant a gate. Count these as `backfilled` in the summary.",
     ],
     "spec": [
         "Run `cadence tasks list --label agent:spec`.",
@@ -32,12 +32,12 @@ FILE_STAGE_RULES = {
         "Run `cadence tasks list --label agent:build`. Skip any task that already carries `agent:needs-attention` — it is parked for a human and must not be retried.",
         "For each selected task, create an isolated worktree off the base branch — `WT=\"$(cadence worktree add <task-id-lowercase> \"${BASE_BRANCH:-develop}\")\"; cd \"$WT\"` — and implement in that worktree only. Never edit the main project checkout (`$PROJECT_DIR`) directly.",
         "Run the configured gates inside the worktree.",
-        "Commit only the files the task targeted, push the branch, and open a PR against the base branch: `gh pr create --base \"${BASE_BRANCH:-develop}\"`. Never merge it — merging is a human's decision.",
-        "Record the PR URL by appending a `PR: <url>` line to the task's *existing* body — first read it with `cadence tasks get`, then pass the full body (spec and acceptance criteria intact, plus the new line) to `cadence tasks update <ID> --body-file <file>`, which replaces the whole body. Never overwrite the body with only the URL. Then replace `agent:build` with `agent:pr-open` — only after the PR exists. If any step fails, keep `agent:build`, add `agent:needs-attention` with a note explaining what failed, and count it in `errors`.",
+        "Commit only the files the task targeted, push the branch, and open a **draft** PR against the base branch: `gh pr create --draft --base \"${BASE_BRANCH:-develop}\"`. Never mark it ready, never merge.",
+        "Record the PR URL by appending a `PR: <url>` line to the task's *existing* body — first read it with `cadence tasks get`, then pass the full body (spec and acceptance criteria intact, plus the new line) to `cadence tasks update <ID> --body-file <file>`, which replaces the whole body. Never overwrite the body with only the URL. Then replace `agent:build` with `agent:pr-open` — only after the draft PR exists. If any step fails, keep `agent:build`, add `agent:needs-attention` with a note explaining what failed, and count it in `errors`.",
     ],
     "revise": [
         "Run `cadence tasks list --label agent:revise`. Skip any task that already carries `agent:needs-attention` — it is parked for a human and must not be retried.",
-        "For each selected task, work in the task's existing worktree and branch (locate them from the PR URL recorded in the task body). Address the feedback there, run the configured gates, and push to the same branch so the existing PR updates. Never open a new PR, never merge.",
+        "For each selected task, work in the task's existing worktree and branch (locate them from the PR URL recorded in the task body). Address the feedback there, run the configured gates, and push to the same branch so the existing draft PR updates. Never open a new PR, never mark it ready, never merge.",
         "Replace `agent:revise` with `agent:revised`. If the task has no PR URL or the branch is missing, do not edit any files — add `agent:needs-attention` with a note and count it in `errors`.",
     ],
     "advance": [

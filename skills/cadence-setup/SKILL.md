@@ -94,7 +94,7 @@ Point the user at `docs/CONFIGURATION.md#task-backend` for the task format.
 Ask for and set:
 
 - `REPO_SLUG` — `owner/name` for GitHub PR operations.
-- `BASE_BRANCH` — the branch PRs target (e.g. `develop`).
+- `BASE_BRANCH` — the branch draft PRs target (e.g. `develop`).
 - `WORKTREE_BASE` — a directory where Cadence may create throwaway build
   worktrees (kept separate from `PROJECT_DIR`).
 

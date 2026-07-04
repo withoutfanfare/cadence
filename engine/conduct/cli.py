@@ -33,7 +33,7 @@ _BLOCK_OUT = {"agent:hold", "agent:superseded", "agent:needs-human",
 # for a human and is NOT making autonomous progress, so it must not count as a
 # live WIP slot — otherwise a single stuck item freezes the whole queue at
 # CONDUCT_WIP. Active states (in-progress, agent:pr-open awaiting merge) still
-# count, which is what caps how many open PRs pile up for review.
+# count, which is what caps how many draft PRs pile up for review.
 _PARKED = {"agent:hold", "agent:superseded", "agent:needs-human",
            "agent:needs-attention"}
 # Linear priority: 1=urgent … 4=low, 0=none. Map so urgent ranks highest and

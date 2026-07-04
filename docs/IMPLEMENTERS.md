@@ -3,7 +3,7 @@
 The build loop delegates the *coding* step to a headless agent (the implementer).
 The orchestrating loop, selected by `ORCHESTRATOR_<STAGE>`, still owns
 everything else: claiming the issue, reading the spec, setting up the worktree,
-running gates, reviewing the diff, opening the PR, and setting labels.
+running gates, reviewing the diff, opening the draft PR, and setting labels.
 
 Install and configure Cadence first with [Installation](INSTALL.md) and
 [Configuration](CONFIGURATION.md). This page is the reference for the build

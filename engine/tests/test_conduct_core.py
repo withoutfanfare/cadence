@@ -64,8 +64,8 @@ class TestActiveInflight(unittest.TestCase):
         self.assertEqual(cli.active_inflight([held, superseded, done]), [])
 
     def test_plain_and_pr_open_auto_items_still_count(self):
-        # A healthy in-progress item and a PR-awaiting-merge item both
-        # legitimately occupy WIP (the cap limits concurrent open PRs too).
+        # A healthy in-progress item and a draft-PR-awaiting-merge item both
+        # legitimately occupy WIP (the cap limits concurrent draft PRs too).
         a = issue("A-5", ["agent:auto"])
         b = issue("A-7", ["agent:auto", "agent:pr-open"])
         out = [i["identifier"] for i in cli.active_inflight([a, b])]

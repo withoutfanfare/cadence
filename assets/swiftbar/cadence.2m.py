@@ -249,7 +249,7 @@ def render_task(pre, it, config, backend, task_path):
 
     sub = pre + "--"
     if st.get("name") == "pr-open":
-        # Human merged the PR themselves — this only records that merge.
+        # Human merged the draft PR themselves — this only records that merge.
         emit(action(sub, "✓ Mark merged", [], ["agent:pr-open"],
                     config, ident, backend, done="completed"))
     adv = st.get("advance")

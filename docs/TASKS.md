@@ -8,8 +8,7 @@ file against these rules; run it after editing by hand.
 The loops treat this file exactly as they treat a Linear board: the `labels:`
 line is the state machine (see [LABELS.md](LABELS.md)), and the same invariants
 hold — gate labels are set by a human only, agents fill blanks and record
-status, PRs are opened ready for review (non-draft) against `BASE_BRANCH`;
-agents never merge.
+status, PRs are always drafts.
 
 ## Layout
 
@@ -57,7 +56,7 @@ reserved for task headers).
 5. **IDs are unique.** Two tasks with the same ID: only the first is reachable
    by `cadence tasks get/update`. `doctor` flags duplicates.
 6. **`agent:pr-open` requires a PR URL in the body.** The build loop records the
-   PR's URL (`…/pull/<n>`) when it opens one, so a pr-open task with no PR
+   draft PR's URL (`…/pull/<n>`) when it opens one, so a pr-open task with no PR
    reference means no PR actually exists — `doctor` flags it as workflow state
    that needs repair (usually: work done outside the worktree flow, or a label
    set by hand).
@@ -81,7 +80,7 @@ never mistaken for a stranded field.
   what you rejected). Add `agent:later` to a dismissed task to allow it back;
   the file backend has no timestamps, so `agent:later` tasks may be
   reconsidered whenever they still clearly serve the goal.
-- When a human merges a task's PR into `BASE_BRANCH`, the task is closed
+- When a human merges a task's draft PR into `BASE_BRANCH`, the task is closed
   with `status: completed` and `agent:pr-open` removed — done by the "✓ Mark
   merged" SwiftBar button or automatically by triage's PR back-fill. `completed`
   is the terminal done status (it counts as closed everywhere; loops never set it

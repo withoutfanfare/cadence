@@ -369,7 +369,7 @@ elif stage == 'build':
     b = int(d.get('built', 0) or 0)
     if b: parts.append(f"{b} built")
     prs = d.get('pr_numbers') or []
-    if prs: parts.append("PR " + ", ".join(f"#{p}" for p in prs))
+    if prs: parts.append("draft PR " + ", ".join(f"#{p}" for p in prs))
 elif stage == 'revise':
     add('revised', 'revised')
 elif stage == 'advance':

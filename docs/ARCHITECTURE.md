@@ -88,7 +88,7 @@ and write labels to record what they did. Full label vocabulary:
 | `agent:needs-human` | triage | cannot be classified; parked, surfaced once |
 | `agent:dupe-candidate` | triage | proposed member of a duplicate cluster |
 | `agent:specced` | spec | spec written — your move: review, then set `agent:build` |
-| `agent:pr-open` | build | PR opened + reviewed — your move: review |
+| `agent:pr-open` | build | draft PR opened + reviewed — your move: review |
 | `agent:revised` | revise | revise loop pushed — your move: re-review |
 | `agent:proposed` | roadmap | advisory proposal — your move: accept (gate it or remove the label) or dismiss (cancel; add `agent:later` for "not now") |
 | `agent:superseded` | spec | confirmed duplicate, collapsed into canonical |
@@ -123,16 +123,16 @@ and write labels to record what they did. Full label vocabulary:
         │
         │  ◆ GATE 2 — human approves spec, sets  agent:build
         ▼
-   BUILD loop  (agent:claimed)  → worktree off base branch · gates · PR · code review
+   BUILD loop  (agent:claimed)  → worktree off base branch · gates · DRAFT PR · code review
         ▼
-   agent:pr-open  +  In Review  +  open PR         ◀─────────────┐
+   agent:pr-open  +  In Review  +  draft PR        ◀─────────────┐
         │                                                        │
-        │  ◆ GATE 3 — human reviews the PR                       │
-        ├── satisfied → human merges (human-only)                │
+        │  ◆ GATE 3 — human reviews the draft PR                 │
+        ├── satisfied → human marks PR ready / merges (human-only)│
         └── changes → human sets agent:revise                    │
                    │                                             │
                    ▼                                             │
-            REVISE loop (agent:claimed) → push to SAME PR ───────┘
+            REVISE loop (agent:claimed) → push to SAME draft PR ─┘
                    → agent:revised (back to Gate 3)
 ```
 
@@ -148,9 +148,9 @@ and write labels to record what they did. Full label vocabulary:
 - **Gate 1 (spec)** — human sets `agent:spec`. Only then may the spec loop act.
 - **Gate 2 (build)** — spec loop stops at `agent:specced`; human reads the spec doc
   and sets `agent:build`. This is the gate that lets code be written.
-- **Gate 3 (review)** — build loop stops at `agent:pr-open` with an open PR. Human
+- **Gate 3 (review)** — build loop stops at `agent:pr-open` with a draft PR. Human
   either merges (human-only) or sets `agent:revise`; the revise loop pushes to the
-  same PR and stops at `agent:revised` — back to Gate 3, repeatable.
+  same draft PR and stops at `agent:revised` — back to Gate 3, repeatable.
 
 ---
 
@@ -159,7 +159,7 @@ and write labels to record what they did. Full label vocabulary:
 1. **Consume your trigger, set a terminal.** A loop removes the gate/status label
    that triggered it and leaves exactly one terminal marker.
 2. **Never grant downstream authority.** No loop sets `agent:spec` / `agent:build` /
-   `agent:revise`, moves an issue past the review state, or merges.
+   `agent:revise`, moves an issue past the review state, merges, or marks a PR ready.
    One exception, reflecting reality rather than granting it: triage may close an
    `agent:pr-open` task/issue to a done state once its PR is merged into
    `BASE_BRANCH` — recording a merge the human already made, never advancing
@@ -169,10 +169,9 @@ and write labels to record what they did. Full label vocabulary:
    default and opt *out* with `--dry-run`. `cadence run <stage>` invokes the live path
    for every stage (it adds `--live` for triage); pause the loops to hold them. Either
    way a run writes only what that stage is permitted to write.
-4. **PRs only against the base branch.** Build/revise work in a worktree, rebase on
-   origin, and open the PR ready for review (non-draft) so CI runs immediately —
-   always against `BASE_BRANCH` (an integration branch such as develop or staging,
-   never main/master). An agent never merges; merging is human-only.
+4. **Draft-only PRs against the base branch.** Build/revise work in a worktree,
+   rebase on origin, PR is always a draft — never merged, never marked ready, by an
+   agent.
 5. **Never overwrite a human's field.** Fill blanks only.
 6. **Read-only on the codebase except build/revise.** Triage and spec investigate
    read-only. Only build and revise edit files inside their own worktree.

@@ -42,9 +42,9 @@ Cadence runs four human-gated loops, plus an optional goal-gated roadmap loop:
 - `triage` fills blanks and leaves `agent:triaged` or `agent:needs-human`.
 - `spec` runs only after a human adds `agent:spec`, then leaves `agent:specced`.
 - `build` runs only after a human adds `agent:build`, creates isolated code work,
-  runs gates, and opens a PR.
+  runs gates, and opens a draft PR.
 - `revise` runs only after a human adds `agent:revise`, then updates the same
-  PR and leaves `agent:revised`.
+  draft PR and leaves `agent:revised`.
 - `roadmap` (optional) is opt-in per project via `SCHED_ROADMAP` (default
   `off`). When enabled it scouts the codebase read-only and files at most
   `ROADMAP_MAX_OPEN` proposal issues carrying `agent:proposed` for a human
@@ -54,7 +54,7 @@ Cadence runs four human-gated loops, plus an optional goal-gated roadmap loop:
 
 Autonomous mode is opt-in. With `AUTONOMOUS=on`, the advancer can grant gates for
 items carrying `agent:auto`, and the conductor can top up that queue. Work still
-stops at an open PR for human merge.
+stops at a draft PR for human merge.
 
 ## Worktree-Based Repositories
 
