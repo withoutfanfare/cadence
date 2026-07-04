@@ -159,6 +159,41 @@ class TestSchedulerTick(unittest.TestCase):
         self.assertEqual(cwd, project)
         self.assertEqual(run_env["CADENCE_CONFIG"], os.path.join(config_dir, ".env"))
 
+    def test_tick_serves_least_recently_served_project_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+
+            def make(name):
+                config_dir = os.path.join(tmp, name, "cadence")
+                state = os.path.join(tmp, name, "state")
+                os.makedirs(config_dir)
+                with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                    f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n" % state)
+                return os.path.join(tmp, name), state
+
+            first, s1 = make("first")     # earlier in the registry, served recently
+            second, _s2 = make("second")  # later in the registry, never served
+            cli._mark_ran(s1, "triage", "triage:earlier-slot")
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(first + "\n" + second + "\n")
+
+            served = []
+
+            def fake_run(cmd, cwd=None, env=None):
+                served.append(cwd)
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "1"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                cli.tick(env, now=now, run=fake_run)
+
+            # Both are due, but the one run this tick is the never-served project —
+            # fairness overrides registry order so it can't be permanently starved.
+            self.assertEqual(served, [second])
+
     def test_tick_skips_projects_not_opted_into_scheduling(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = os.path.join(tmp, "app")

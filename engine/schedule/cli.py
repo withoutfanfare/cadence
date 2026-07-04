@@ -533,6 +533,32 @@ def _mark_ran(state, stage, key):
         f.write(key + "\n")
 
 
+def _last_served(state):
+    """Newest mtime among a project's scheduler slot markers, or 0.0 if it has
+    never been served. Used to order the tick least-recently-served first so a
+    project can never be permanently starved by its registry position when
+    several fall due in the same slot."""
+    d = os.path.join(state, "scheduler")
+    try:
+        return max((os.path.getmtime(os.path.join(d, f)) for f in os.listdir(d)), default=0.0)
+    except FileNotFoundError:
+        return 0.0
+
+
+def _due_stage_count(values, now, window):
+    """How many stages this project has due (and not yet run this slot check is
+    left to the caller) — used only to warn when max_runs can't cover demand."""
+    n = 0
+    for stage in JOBS:
+        spec = (values.get("SCHED_" + stage.upper()) or JOBS[stage][3]).strip()
+        try:
+            if _slot_key(stage, spec, now, window):
+                n += 1
+        except ValueError:
+            pass
+    return n
+
+
 def _run_stage(home, project, config, stage, run):
     cmd = [os.path.join(home, "bin", "cadence"), "--config", config]
     if stage == "conduct":
@@ -560,15 +586,32 @@ def tick(env, now=None, run=subprocess.run):
     for w in shared_state_warnings(projects):
         print(w, file=sys.stderr)
 
-    for item in projects:
+    # Resolve the scheduled projects, then order them least-recently-served first.
+    # Registry order alone lets projects sharing a slot starve the ones behind them
+    # once max_runs is spent (a later project with identical SCHED offsets never gets
+    # a turn); ordering by last-served makes the neediest project lead each tick, so
+    # service rotates and no project is permanently skipped. Ties keep registry order.
+    candidates = []
+    for idx, item in enumerate(projects):
+        values = read_env_file(item["config"])
+        if (values.get("CADENCE_SCHEDULED") or "").lower() not in TRUE:
+            print(f"{item['project']}: skipped (CADENCE_SCHEDULED not enabled)")
+            continue
+        state = _path_value(values.get("CADENCE_STATE_DIR"), os.path.expanduser("~/.cadence"))
+        candidates.append((item, values, state, idx))
+    candidates.sort(key=lambda c: (_last_served(c[2]), c[3]))
+
+    # Under-provisioning signal: if more projects have work due than one tick can
+    # serve, say so — that is exactly the condition that produced silent starvation.
+    due = sum(1 for _i, v, _s, _x in candidates if _due_stage_count(v, now, window))
+    if due > max_runs:
+        print(f"scheduler: {due} projects due but max_runs={max_runs} — raise "
+              f"CADENCE_SCHEDULER_MAX_RUNS so none are starved", file=sys.stderr)
+
+    for item, values, state, _idx in candidates:
         if ran >= max_runs:
             break
         project, config = item["project"], item["config"]
-        values = read_env_file(config)
-        if (values.get("CADENCE_SCHEDULED") or "").lower() not in TRUE:
-            print(f"{project}: skipped (CADENCE_SCHEDULED not enabled)")
-            continue
-        state = _path_value(values.get("CADENCE_STATE_DIR"), os.path.expanduser("~/.cadence"))
         # Dedup is per (stage, slot) only — a project is never excluded as a whole,
         # so two stages due in the same window each get their turn (across ticks),
         # rather than the first one silently starving the rest.
@@ -602,10 +645,20 @@ def print_status(env):
     if not projects:
         print("  (none)")
         return 0
+    now = datetime.now(timezone.utc).timestamp()
     for item in projects:
         values = read_env_file(item["config"])
         enabled = "yes" if (values.get("CADENCE_SCHEDULED") or "").lower() in TRUE else "no"
-        print(f"  {item['project']}  scheduled={enabled}  config={item['config']}")
+        served = ""
+        if enabled == "yes":
+            state = _path_value(values.get("CADENCE_STATE_DIR"), os.path.expanduser("~/.cadence"))
+            ls = _last_served(state)
+            if ls == 0.0:
+                served = "  last-run=never ⚠ starved"
+            else:
+                hrs = (now - ls) / 3600
+                served = "  last-run=%.1fh ago%s" % (hrs, "  ⚠ starved?" if hrs >= 3 else "")
+        print(f"  {item['project']}  scheduled={enabled}{served}  config={item['config']}")
     for w in shared_state_warnings(projects):
         print("  " + w)
     return 0
