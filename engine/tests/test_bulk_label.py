@@ -37,8 +37,8 @@ def fake_post(scope_ok=True, where_nodes=None):
                                   "project": {"id": "P"}, "assignee": {"id": "A"}}}
             return {"issue": {"team": {"id": "T"},
                               "project": {"id": "P"}, "assignee": {"id": "A"}}}
-        if "labels{ nodes{ id }" in query:        # _ISSUE_GET_LABELS_Q
-            return {"issue": {"labels": {"nodes": [{"id": "EXISTING"}]}}}
+        if "labels{ nodes{ id" in query:          # _ISSUE_GET_LABELS_Q
+            return {"issue": {"labels": {"nodes": [{"id": "EXISTING", "name": "Bug"}]}}}
         if "issueUpdate" in query:                # _ISSUE_UPDATE_M
             return {"issueUpdate": {"success": True, "issue": {"id": "i"}}}
         if "issues(filter" in query:              # _ISSUES_Q (where-label)

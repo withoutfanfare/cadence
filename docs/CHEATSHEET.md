@@ -15,6 +15,7 @@ project's config to use. `cadence help` prints the built-in summary.
 |---|---|
 | `cadence status` | Live/paused state, launchd jobs, last run per stage |
 | `cadence queue` | What needs *you* now — board grouped by agent state (`-v` for detail) |
+| `cadence queue --why` | Failed issues grouped by root cause, each with a one-line fix — fix a shared cause once, not N times |
 | `cadence feed [n]` | Recent activity feed (default 20 lines) |
 | `cadence logs [stage]` | Tail a stage log; no stage = summary of all |
 | `cadence digest [date]` | Full run digest for a day (default: today) |

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- SwiftBar menu status icons are now an SF Symbol traffic light instead of
+  emoji. Red is reserved for a genuinely failed run; "your move" (a decision
+  waiting on you) is amber — attention, not alarm — so a board full of pending
+  work no longer reads as a board full of errors. Green is running, grey is
+  dormant (paused/idle), and every state has a distinct shape as well as colour
+  for a clear glance and colour-blind legibility.
+
 ### Added
 
 - One-command project onboarding and offboarding. `cadence onboard [path]` does
@@ -48,6 +57,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   engine); file tasks close to `status: completed`.
 
 ### Fixed
+
+- SwiftBar "Mark merged" (and "Release hold") silently did nothing. SwiftBar
+  drops a menu param whose value is empty, shifting every later positional arg
+  one slot left — and these are the only actions that send an empty "labels to
+  add" slot. So a merge click re-added `agent:pr-open` and dropped the status
+  change instead of closing the task, all with a success exit code. The plugin
+  now sends `-` for any empty value and `cadence-grant.sh` maps it back to empty.
 
 - Multi-project scheduler fairness: the tick served registered projects in
   registry order and stopped after `max_runs`, so several projects sharing the

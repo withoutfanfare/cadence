@@ -85,7 +85,15 @@ import pathlib
 import sys
 
 path = pathlib.Path(sys.argv[1])
-text = path.read_text(encoding="utf-8")
+try:
+    text = path.read_text(encoding="utf-8")
+except FileNotFoundError:
+    # The folded "review" stage has no loop skill — its prompt is the brief file,
+    # passed directly — so there is no allowed-tools frontmatter to read. Fall back
+    # to the read-only set a diff review needs (git/gh + read/search); without this
+    # the reviewer runs with no tools and can never confirm review_clean.
+    print("Bash,Read,Grep,Glob")
+    sys.exit(0)
 tools = []
 in_tools = False
 for line in text.splitlines():

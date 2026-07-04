@@ -14,6 +14,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from cadence_env import load_env  # noqa: E402
+from stages import resolve_labels  # noqa: E402
 from stages import stage_of  # noqa: E402
 
 API_URL = "https://api.linear.app/graphql"
@@ -422,7 +423,7 @@ def _assert_in_scope(issue_id, env, post):
         raise LinearError(f"issue {issue_id} is outside the configured assignee")
 
 
-_ISSUE_GET_LABELS_Q = "query($id: String!){ issue(id:$id){ labels{ nodes{ id } } } }"
+_ISSUE_GET_LABELS_Q = "query($id: String!){ issue(id:$id){ labels{ nodes{ id name } } } }"
 
 _ISSUE_UPDATE_M = """
 mutation($id: String!, $input: IssueUpdateInput!) {
@@ -451,6 +452,20 @@ def _guard_gate_removal(remove_labels, env):
             % (stage, ", ".join(illegal)))
 
 
+def _enforced_label_ids(issue_id, add_names, rem_names, env, post):
+    """Current labels ± the requested changes, with the single-position invariant
+    enforced by resolve_labels (adding a lifecycle label drops the others; stray
+    residue self-heals). Returns the labelIds to set. Shared by issue-update and
+    bulk-label so neither path can leave an issue on two lifecycle labels."""
+    nodes = post(_ISSUE_GET_LABELS_Q, {"id": issue_id}, env)["issue"]["labels"]["nodes"]
+    name2id = {n["name"]: n["id"] for n in nodes}
+    final = resolve_labels([n["name"] for n in nodes], add=add_names, remove=rem_names)
+    need = [n for n in final if n not in name2id]
+    for nm, _id in zip(need, _resolve_label_ids(need, env, post)):
+        name2id[nm] = _id
+    return [name2id[n] for n in final]
+
+
 def cmd_issue_update(args, env, post=graphql):
     _assert_in_scope(args.id, env, post)
     _guard_gate_removal(getattr(args, "remove_label", None) or [], env)
@@ -467,14 +482,11 @@ def cmd_issue_update(args, env, post=graphql):
         inp["stateId"] = _resolve_state_id_by_type(args.state_type, env, post)
     if getattr(args, "cycle", None):
         inp["cycleId"] = args.cycle  # caller passes a cycle id
-    add = _resolve_label_ids(getattr(args, "add_label", None) or [], env, post)
-    rem = set(_resolve_label_ids(getattr(args, "remove_label", None) or [], env, post))
-    if add or rem:
-        current = post(_ISSUE_GET_LABELS_Q, {"id": args.id}, env)["issue"]
-        ids = {x["id"] for x in current["labels"]["nodes"]}
-        ids |= set(add)
-        ids -= rem
-        inp["labelIds"] = list(ids)
+    add_names = getattr(args, "add_label", None) or []
+    rem_names = getattr(args, "remove_label", None) or []
+    if add_names or rem_names:
+        _resolve_label_ids(add_names, env, post)   # fail fast on an unknown add label
+        inp["labelIds"] = _enforced_label_ids(args.id, add_names, rem_names, env, post)
     if not inp:
         raise LinearError("issue-update: no fields to change")
     res = post(_ISSUE_UPDATE_M, {"id": args.id, "input": inp}, env)["issueUpdate"]
@@ -520,17 +532,13 @@ def cmd_bulk_label(args, env, post=graphql):
         if sys.stdin.readline().strip().lower() not in ("y", "yes"):
             return {"aborted": True, "count": len(targets)}
 
-    add_ids = _resolve_label_ids(add, env, post)
-    rem_ids = set(_resolve_label_ids(rem, env, post))
+    _resolve_label_ids(add, env, post)   # fail fast on an unknown add label
     updated, errors = [], []
     for ident in targets:
         try:
             _assert_in_scope(ident, env, post)
-            current = post(_ISSUE_GET_LABELS_Q, {"id": ident}, env)["issue"]
-            ids = {x["id"] for x in current["labels"]["nodes"]}
-            ids |= set(add_ids)
-            ids -= rem_ids
-            post(_ISSUE_UPDATE_M, {"id": ident, "input": {"labelIds": list(ids)}}, env)
+            ids = _enforced_label_ids(ident, add, rem, env, post)
+            post(_ISSUE_UPDATE_M, {"id": ident, "input": {"labelIds": ids}}, env)
             updated.append(ident)
         except LinearError as e:
             errors.append({"issue": ident, "error": str(e)})

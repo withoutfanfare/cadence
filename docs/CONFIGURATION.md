@@ -333,13 +333,27 @@ launchd wake cannot run the same stage twice in one due window.
 | `GATE_TEST` | No | Shell command for tests. Blank means skip. |
 | `GATE_ANALYSE` | No | Shell command for static analysis or type checks. Blank means skip. |
 
-Examples:
+**Scope every gate to the change, not the whole repo.** A gate that runs the
+full suite or lints the entire codebase fails on *pre-existing* debt unrelated to
+the issue being built — and that blocks **every** build from opening a PR, even a
+correct one. CI runs the full suite on the PR; the local gate's only job is to
+catch what *this* change broke. `cadence doctor` warns when a gate looks
+repo-wide. Prefer, per ecosystem:
 
 ```dotenv
-GATE_LINT="composer pint --test"
-GATE_TEST="composer test:filter"
-GATE_ANALYSE="composer analyse"
+# Good — change-scoped
+GATE_LINT="./vendor/bin/pint --test --dirty"   # only the worktree's uncommitted change
+GATE_TEST="composer test:filter"               # a scoped script, not the full suite
+GATE_ANALYSE="./vendor/bin/phpstan analyse"    # after: phpstan analyse --generate-baseline
+
+# Avoid — repo-wide; trips on pre-existing debt and strands unrelated builds
+# GATE_LINT="composer lint"   GATE_TEST="composer test"   GATE_ANALYSE="composer analyse"
 ```
+
+For an analyser with no change-scoped mode, commit a **baseline** (e.g. PHPStan's
+`--generate-baseline`) so it flags only newly introduced errors. If a gate can't
+be scoped and its debt can't be cleared, blank it — the folded draft-PR review
+and CI remain the net.
 
 Commands run from the generated worktree. Keep them deterministic and non-
 interactive. If a gate fails, the build loop gives the implementer one repair

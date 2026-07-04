@@ -112,6 +112,49 @@ class TestConflicts(unittest.TestCase):
         self.assertIn("⚠ inconsistent labels: P-2 (agent:specced + agent:pr-open)", out)
 
 
+class TestFailureClustering(unittest.TestCase):
+    def test_classify_matches_known_signatures(self):
+        self.assertEqual(cli.classify_failure(
+            "cadence worktree add sr3-7 develop: could not find bare repo")[0], "Worktree setup")
+        self.assertEqual(cli.classify_failure(
+            "cannot verify criteria_present; no doc-get verb")[0], "Spec-doc verification")
+        self.assertEqual(cli.classify_failure(
+            "composer lint failed on pre-existing issues in unrelated files")[0],
+            "Gate on pre-existing debt")
+        self.assertEqual(cli.classify_failure("branch has an empty diff")[0], "Empty diff")
+        self.assertEqual(cli.classify_failure("work is already present on develop")[0],
+                         "Work already on base")
+
+    def test_unknown_reason_is_other(self):
+        self.assertEqual(cli.classify_failure("something weird happened")[0], "Other")
+
+    def test_cluster_groups_shared_cause_largest_first(self):
+        items = [
+            ("A", "worktree add failed: bare repo missing"),
+            ("B", "worktree add failed: bare repo missing"),
+            ("C", "empty diff, nothing to ship"),
+        ]
+        clusters = cli.cluster_failures(items)
+        self.assertEqual(clusters[0]["label"], "Worktree setup")
+        self.assertEqual(clusters[0]["ids"], ["A", "B"])
+        self.assertEqual(clusters[1]["label"], "Empty diff")
+
+    def test_render_shows_cluster_count_hint_and_ids(self):
+        out = cli.render_failures(cli.cluster_failures(
+            [("SR3-7", "could not find bare repo"), ("SR3-8", "could not find bare repo")]), team_name="Demo")
+        self.assertIn("Run failures · Demo", out)
+        self.assertIn("Worktree setup", out)
+        self.assertIn("SR3-7, SR3-8", out)
+        self.assertIn("↳", out)
+
+    def test_render_empty_is_calm(self):
+        self.assertIn("nothing is in agent:needs-attention", cli.render_failures([]))
+
+    def test_salient_line_picks_the_failure_paragraph(self):
+        body = "## Problem\nSomething.\n\nBuild note: gate failed on pre-existing lint.\n\nOther text."
+        self.assertIn("gate failed", cli._salient_line(body))
+
+
 class TestFetchIssues(unittest.TestCase):
     def test_file_backend_reads_tasks_file(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -118,6 +118,27 @@ PY
   else
     fail "$label '$cmd' — '$exe' not on PATH (stale gate? fix the command or blank it)"
   fi
+  gate_scope_hint "$label" "$cmd"
+}
+
+# Warn (never fail) when a gate looks like it runs the whole repo/suite rather
+# than the change. Such a gate fails on pre-existing debt unrelated to any one
+# issue and blocks every build from opening a PR. Gates should be change-scoped;
+# CI runs the full suite on the PR. See docs/CONFIGURATION.md. Heuristic — if a
+# recognised scoping signal is present, stay quiet.
+gate_scope_hint() {
+  label="$1"; cmd="$2"
+  case "$cmd" in
+    *--filter*|*--group*|*--testsuite*|*--dirty*|*--changed*|*"{files}"*|*:filter*|*baseline*) return ;;
+  esac
+  case "$cmd" in
+    *"composer test"*|*"artisan test"*|*phpunit*|*"cargo test"*|*"go test ./..."*|*jest*|*vitest*)
+      echo "  ⚠️  $label runs the full test suite — pre-existing failures will block unrelated builds; scope it to the change (CI runs the full suite on the PR)" ;;
+    *phpstan*|*psalm*|*"composer analyse"*|*"composer analyze"*|*"composer stan"*)
+      echo "  ⚠️  $label runs repo-wide static analysis without a baseline — pre-existing errors will block unrelated builds; add a baseline or scope it" ;;
+    *"composer lint"*|*duster*)
+      echo "  ⚠️  $label lints the whole repo — pre-existing style debt will block unrelated builds; scope it to changed files (e.g. pint --dirty)" ;;
+  esac
 }
 
 labels_only=0
