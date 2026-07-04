@@ -16,7 +16,7 @@ import sys
 from datetime import datetime, timezone
 
 ENGINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STAGES = ["triage", "spec", "build", "revise", "advance", "conduct"]
+STAGES = ["triage", "spec", "build", "revise", "advance", "roadmap", "conduct"]
 TRUE = {"1", "on", "true", "yes"}
 
 
