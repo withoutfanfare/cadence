@@ -6,6 +6,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from datetime import datetime, timezone
 
@@ -158,6 +159,122 @@ class TestSchedulerTick(unittest.TestCase):
                                os.path.join(config_dir, ".env"), "run", "triage"])
         self.assertEqual(cwd, project)
         self.assertEqual(run_env["CADENCE_CONFIG"], os.path.join(config_dir, ".env"))
+
+    def test_tick_bounds_simultaneous_runs_to_the_concurrency_cap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+            projects = []
+            for name in ("a", "b", "c"):
+                config_dir = os.path.join(tmp, name, "cadence")
+                os.makedirs(config_dir)
+                with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                    f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n"
+                            % os.path.join(tmp, name, "state"))
+                projects.append(os.path.join(tmp, name))
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write("\n".join(projects) + "\n")
+
+            lock = threading.Lock()
+            seen = {"calls": 0, "inflight": 0, "high": 0}
+            # The first two runs must be in flight at the same moment to pass the
+            # barrier — deterministic proof of parallel dispatch. A serial
+            # implementation deadlocks on it until the 5s safety deadline breaks
+            # the barrier and fails the test.
+            overlap = threading.Barrier(2)
+
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
+                with lock:
+                    seen["calls"] += 1
+                    me = seen["calls"]
+                    seen["inflight"] += 1
+                    seen["high"] = max(seen["high"], seen["inflight"])
+                if me <= 2:
+                    overlap.wait(timeout=5)
+                with lock:
+                    seen["inflight"] -= 1
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "3",
+                   "CADENCE_SCHEDULER_CONCURRENCY": "2"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                rc = cli.tick(env, now=now, run=fake_run)
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(seen["calls"], 3)   # every pick ran
+            self.assertEqual(seen["high"], 2)    # parallel, but never above the cap
+
+    def test_tick_dispatch_admission_follows_least_recently_served_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+
+            def make(name):
+                config_dir = os.path.join(tmp, name, "cadence")
+                state = os.path.join(tmp, name, "state")
+                os.makedirs(config_dir)
+                with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                    f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n" % state)
+                return os.path.join(tmp, name), state
+
+            a, sa = make("a")
+            b, sb = make("b")
+            c, _sc = make("c")  # never served — must lead the tick
+            # Stale slot keys keep both projects due; utime pins served order.
+            cli._mark_ran(sa, "triage", "triage:older-slot")
+            os.utime(os.path.join(sa, "scheduler", "triage.last"), (100, 100))
+            cli._mark_ran(sb, "triage", "triage:newer-slot")
+            os.utime(os.path.join(sb, "scheduler", "triage.last"), (200, 200))
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write("\n".join([a, b, c]) + "\n")
+
+            served = []
+
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
+                served.append(cwd)
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "3",
+                   # Width 1 serialises dispatch so call order == admission order.
+                   "CADENCE_SCHEDULER_CONCURRENCY": "1"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                cli.tick(env, now=now, run=fake_run)
+
+            # Never-served first, then oldest-served; registry order breaks ties only.
+            self.assertEqual(served, [c, a, b])
+
+    def test_tick_launches_at_most_one_run_per_project_per_tick(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "app")
+            config_dir = os.path.join(project, "cadence")
+            registry = os.path.join(tmp, "projects.txt")
+            os.makedirs(config_dir)
+            with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                # Two stages due in the same window, budget for three runs —
+                # the project must still get exactly one.
+                f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\nSCHED_SPEC=:00\n"
+                        % os.path.join(tmp, "state"))
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(project + "\n")
+            calls = []
+
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
+                calls.append(cmd)
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "3"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                cli.tick(env, now=now, run=fake_run)
+
+            self.assertEqual(len(calls), 1)
+            self.assertIn("triage", calls[0])  # the first due stage in JOBS order
 
     def test_tick_passes_run_timeout_through_the_run_seam(self):
         # (raw env value, timeout the run seam must receive)

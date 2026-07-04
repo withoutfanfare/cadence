@@ -12,6 +12,7 @@ Format (value of each SCHED_<STAGE>):
   Nh@MM     every N hours, at minute MM  (e.g. 4h@30 -> 00:30, 04:30, 08:30, ...)
 """
 from datetime import datetime, timedelta, timezone
+import concurrent.futures
 import importlib.util
 import os
 import re
@@ -570,18 +571,29 @@ def _run_stage(home, project, config, stage, run, timeout=None):
     return run(cmd, cwd=project, env=env, timeout=timeout)
 
 
+def _execute(home, project, config, stage, run, timeout):
+    """Run one admitted pick; return (outcome description, failed?)."""
+    proc = _run_stage(home, project, config, stage, run, timeout)
+    return ("exit %d" % proc.returncode, proc.returncode != 0)
+
+
 def tick(env, now=None, run=subprocess.run):
     home = env.get("CADENCE_HOME") or HOME
     now = now or datetime.now(timezone.utc)
     window = max(1, _int_env(env, "CADENCE_SCHEDULER_WINDOW_MINUTES", 5))
+    # MAX_RUNS is the per-tick throughput ceiling (how many runs are launched);
+    # CONCURRENCY is the width (how many run at once). A twenty-project fleet
+    # raises MAX_RUNS to cover demand and keeps CONCURRENCY small for API-rate
+    # and cost safety; a tick lasts roughly ceil(MAX_RUNS / CONCURRENCY) times
+    # the longest run. The defaults reproduce the old behaviour exactly.
     max_runs = _int_env(env, "CADENCE_SCHEDULER_MAX_RUNS", 1)
+    concurrency = max(1, _int_env(env, "CADENCE_SCHEDULER_CONCURRENCY", 4))
     # Wall-clock cap per run; 0 disables it. subprocess.run kills the child on
-    # expiry, so a hung model call cannot hold the scheduler indefinitely. This
-    # sits above ORCH_TIMEOUT (default 2700s), which bounds only the model call
+    # expiry, so a hung model call cannot hold a pool slot forever. This sits
+    # above ORCH_TIMEOUT (default 2700s), which bounds only the model call
     # inside the run; run-loop.sh's 2h stale-lock reclaim is the coarser backstop.
     timeout = _int_env(env, "CADENCE_SCHEDULER_RUN_TIMEOUT", 3600) or None
     projects = read_projects(projects_file(env))
-    ran = 0
     failed = 0
 
     if not projects:
@@ -613,8 +625,13 @@ def tick(env, now=None, run=subprocess.run):
         print(f"scheduler: {due} projects due but max_runs={max_runs} — raise "
               f"CADENCE_SCHEDULER_MAX_RUNS so none are starved", file=sys.stderr)
 
+    # Admission (serial): walk candidates in fairness order and pick at most one
+    # due stage per project until max_runs picks are collected. Selecting per
+    # project *before* dispatching is what guarantees a project never runs twice
+    # in one tick — run-loop.sh's per-project lock is only a backstop.
+    picks = []
     for item, values, state, _idx in candidates:
-        if ran >= max_runs:
+        if len(picks) >= max_runs:
             break
         project, config = item["project"], item["config"]
         # Dedup is per (stage, slot) only — a project is never excluded as a whole,
@@ -630,15 +647,36 @@ def tick(env, now=None, run=subprocess.run):
                 continue
             if not key or _already_ran(state, stage, key):
                 continue
-            proc = _run_stage(home, project, config, stage, run, timeout)
+            # Mark at admission, not completion: the marker means "this slot was
+            # served", which is true once the launch is committed. launchd
+            # coalesces ticks so they never overlap, and run-loop.sh skips a
+            # duplicate launch of a stage already in flight, so a run spanning
+            # several tick intervals cannot be double-launched for its slot.
+            # Marking here also stamps _last_served at selection time, which is
+            # what the fairness rotation keys on. (The old code marked after the
+            # child returned, but wrote the marker even on failure — semantics
+            # are unchanged for every case except a crash inside run() itself.)
             _mark_ran(state, stage, key)
-            ran += 1
-            print(f"{project}: {stage} exit {proc.returncode}")
-            if proc.returncode:
-                failed = 1
+            picks.append((project, config, stage))
             break
-    if ran == 0:
+
+    if not picks:
         print("scheduler: nothing due")
+        return failed
+
+    # Dispatch (parallel): the pool is fed in admission order, so when width is
+    # scarce the least-recently-served projects still start first. The tick
+    # blocks until every run finishes — launchd coalesces ticks, so a long tick
+    # delays the next wake rather than overlapping it, and the exit code can
+    # honestly report every run it launched.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures = [pool.submit(_execute, home, project, config, stage, run, timeout)
+                   for project, config, stage in picks]
+        outcomes = [f.result() for f in futures]
+    for (project, _config, stage), (line, bad) in zip(picks, outcomes):
+        print(f"{project}: {stage} {line}")
+        if bad:
+            failed = 1
     return failed
 
 
