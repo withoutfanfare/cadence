@@ -380,10 +380,12 @@ cadence overview --json   # machine-readable (the menu-bar plugin consumes this)
 `overview` is read-only and reads each project's own state directory; a project
 shows as `paused`, `failed` (a recent run reported errors), `ok`, or `idle`.
 
-Each tick runs at most `CADENCE_SCHEDULER_MAX_RUNS` stages across all projects
-(default 1), so many projects share the scheduler fairly rather than one project
-starving the rest. `cadence pause` is per state directory — pausing one project
-does not pause the others.
+Each tick launches at most `CADENCE_SCHEDULER_MAX_RUNS` stages across all
+projects (default 1), running up to `CADENCE_SCHEDULER_CONCURRENCY` of them at
+once (default 4), so many projects share the scheduler fairly rather than one
+project starving the rest. Raise `MAX_RUNS` as the fleet grows; keep
+`CONCURRENCY` modest to bound simultaneous model spend. `cadence pause` is per
+state directory — pausing one project does not pause the others.
 
 ### Adding and removing projects
 

@@ -279,9 +279,15 @@ due stages with `cadence --config <project>/cadence/.env ...`.
 
 Scheduling is opt-in per project. Add the project folder to
 `CADENCE_PROJECTS_FILE`, then set `CADENCE_SCHEDULED=1` in that project's
-`cadence/.env`. The global tick runs at most `CADENCE_SCHEDULER_MAX_RUNS`
-stages per wake, default `1`, so adding projects does not create an unbounded
-fan-out.
+`cadence/.env`. The global tick launches at most `CADENCE_SCHEDULER_MAX_RUNS`
+stages per wake (default `1`), dispatching them through a bounded pool of at most
+`CADENCE_SCHEDULER_CONCURRENCY` simultaneous runs (default `4`). `MAX_RUNS` is
+the per-tick throughput ceiling and `CONCURRENCY` the parallel width: a fleet
+of twenty projects raises `MAX_RUNS` to cover demand and keeps `CONCURRENCY`
+small for API-rate and cost safety. A tick lasts roughly
+`ceil(MAX_RUNS / CONCURRENCY)` times the longest run, and each run is capped
+at `CADENCE_SCHEDULER_RUN_TIMEOUT` seconds so a hung run cannot hold a pool
+slot forever.
 
 `cadence schedule` with no argument prints the stage cadence for the active
 config. `cadence schedule status` prints the projects file and whether each
