@@ -49,6 +49,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SwiftBar "Mark merged" (and "Release hold") silently did nothing. SwiftBar
+  drops a menu param whose value is empty, shifting every later positional arg
+  one slot left — and these are the only actions that send an empty "labels to
+  add" slot. So a merge click re-added `agent:pr-open` and dropped the status
+  change instead of closing the task, all with a success exit code. The plugin
+  now sends `-` for any empty value and `cadence-grant.sh` maps it back to empty.
+
 - Multi-project scheduler fairness: the tick served registered projects in
   registry order and stopped after `max_runs`, so several projects sharing the
   same `SCHED_*` offsets would starve the ones behind them — a later project with

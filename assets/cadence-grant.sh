@@ -20,6 +20,13 @@ export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 
 backend="${1:-linear}"; cfg="${2:-}"; id="$3"; adds="${4:-}"; rems="${5:-}"; close_to="${6:-}"
 
+# "-" is the placeholder the SwiftBar plugin sends for an empty value: SwiftBar
+# drops empty params, which would shift these positional args. Map it back.
+[ "$cfg" = "-" ] && cfg=""
+[ "$adds" = "-" ] && adds=""
+[ "$rems" = "-" ] && rems=""
+[ "$close_to" = "-" ] && close_to=""
+
 cfg_args=()
 [ -n "$cfg" ] && cfg_args=(--config "$cfg")
 

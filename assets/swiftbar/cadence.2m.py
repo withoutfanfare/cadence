@@ -225,11 +225,15 @@ def section_of(it):
 def action(pre, title, add, remove, config, ident, backend, done=""):
     # param6 (`done`) closes the task to record a human-merged PR: file backend
     # sets `status: <done>`, Linear moves to the `<done>`-type workflow state.
+    # SwiftBar drops params whose value is empty, which shifts every later
+    # positional arg one slot left — so send "-" for any empty value (the grant
+    # script maps "-" back to empty). Without this, "Mark merged" (empty add)
+    # shifted agent:pr-open into the add slot and lost the status change.
     return (
         '%s%s | bash="%s" param1=%s param2="%s" param3="%s" param4="%s" param5="%s" '
         'param6="%s" terminal=false refresh=true'
-        % (pre, title, GRANT, backend, config or "", ident,
-           ",".join(add), ",".join(remove), done)
+        % (pre, title, GRANT, backend, config or "-", ident,
+           ",".join(add) or "-", ",".join(remove) or "-", done or "-")
     )
 
 
