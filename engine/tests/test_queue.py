@@ -10,14 +10,19 @@ def _issue(ident, labels, **extra):
 
 class TestBucket(unittest.TestCase):
     def test_single_label_goes_to_its_bucket(self):
-        b = cli.bucket([_issue("P-1", ["agent:specced"])])
-        self.assertEqual([i["identifier"] for i in b["specced"]], ["P-1"])
+        b = cli.bucket([_issue("P-1", ["agent:proposed"])])
+        self.assertEqual([i["identifier"] for i in b["proposed"]], ["P-1"])
 
     def test_most_advanced_lifecycle_label_wins(self):
         # triaged + specced -> specced (the issue's true next gate)
         b = cli.bucket([_issue("P-2", ["agent:triaged", "agent:specced"])])
         self.assertEqual([i["identifier"] for i in b["specced"]], ["P-2"])
         self.assertEqual(b["triaged"], [])
+
+    def test_later_human_action_outranks_proposal(self):
+        b = cli.bucket([_issue("P-2", ["agent:proposed", "agent:specced"])])
+        self.assertEqual([i["identifier"] for i in b["specced"]], ["P-2"])
+        self.assertEqual(b["proposed"], [])
 
     def test_parked_label_removes_from_play(self):
         # hold beats an actionable label -> parked only
@@ -42,10 +47,10 @@ class TestRender(unittest.TestCase):
         self.assertIn("Nothing waiting on you.", out)
 
     def test_actionable_line_shows_label_count_and_keys(self):
-        issues = [_issue("P-1", ["agent:specced"]), _issue("P-2", ["agent:specced"])]
+        issues = [_issue("P-1", ["agent:proposed"]), _issue("P-2", ["agent:proposed"])]
         out = cli.render(cli.bucket(issues))
-        self.assertIn("Grant build", out)
-        self.assertIn("(agent:specced)", out)
+        self.assertIn("Review proposal", out)
+        self.assertIn("(agent:proposed)", out)
         self.assertIn("  2   P-1, P-2", out)  # count column then keys
         self.assertIn("P-1, P-2", out)
         self.assertIn("YOUR MOVE", out)
