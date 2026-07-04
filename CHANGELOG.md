@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- One-command project onboarding and offboarding. `cadence onboard [path]` does
+  everything that was manual — fills a per-project `CADENCE_STATE_DIR` (refusing a
+  dir another registered project already uses), sets `CADENCE_SCHEDULED=1`,
+  registers the project, loads the launchd scheduler, and runs doctor — leaving
+  the project **paused** so a human resumes deliberately. `cadence offboard [path]`
+  reverses it (pause, `CADENCE_SCHEDULED=0`, unregister) and unloads the scheduler
+  job once the registry empties; `--purge` also deletes the project's own state
+  dir, never the config or the shared default. New `cadence schedule unregister`
+  primitive mirrors `register`, and a `cadence-offboard` skill drives the
+  conversational path. Documented in `INSTALL.md`, `OPERATING.md`, and the
+  cheatsheet.
+
 - `ORCH_TIMEOUT` (default `2700` = 45m): a hard cap on any single orchestrator
   run, applied to **every existing and new project by default** (was a hard-coded
   3600s). Bounds a hung or wedged run — e.g. a model idling in a self-monitoring
