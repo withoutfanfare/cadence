@@ -425,5 +425,44 @@ class TestUpsertEnvVar(unittest.TestCase):
                 self.assertEqual(f.read(), "CADENCE_SCHEDULED=1\n")
 
 
+class TestUnregister(unittest.TestCase):
+    def test_removes_project_preserving_other_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            keep = os.path.join(tmp, "keep")
+            drop = os.path.join(tmp, "drop")
+            os.makedirs(keep); os.makedirs(drop)
+            reg = os.path.join(tmp, "projects.txt")
+            with open(reg, "w", encoding="utf-8") as f:
+                f.write(f"# my projects\n{keep}\n{drop}\n")
+            lines = []
+            self.assertEqual(cli.unregister(env, [drop], out=lines.append), 0)
+            self.assertTrue(any("unregistered:" in x for x in lines))
+            with open(reg, encoding="utf-8") as f:
+                txt = f.read()
+            self.assertEqual(txt, f"# my projects\n{keep}\n")
+
+    def test_accepts_env_path_and_matches_dir_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            project = os.path.join(tmp, "app")
+            os.makedirs(os.path.join(project, "cadence"))
+            reg = os.path.join(tmp, "projects.txt")
+            with open(reg, "w", encoding="utf-8") as f:
+                f.write(project + "\n")
+            config = os.path.join(project, "cadence", ".env")
+            self.assertEqual(cli.unregister(env, [config], out=lambda *_: None), 0)
+            with open(reg, encoding="utf-8") as f:
+                self.assertEqual(f.read(), "")
+
+    def test_idempotent_when_absent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            lines = []
+            self.assertEqual(
+                cli.unregister(env, [os.path.join(tmp, "ghost")], out=lines.append), 0)
+            self.assertTrue(any("not registered" in x for x in lines))
+
+
 if __name__ == "__main__":
     unittest.main()

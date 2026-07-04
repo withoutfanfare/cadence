@@ -219,6 +219,9 @@ def main(argv):
     if cmd == "register":
         return register(os.environ, argv[1:])
 
+    if cmd == "unregister":
+        return unregister(os.environ, argv[1:])
+
     if cmd == "tick":
         return tick(os.environ)
 
@@ -239,7 +242,7 @@ def main(argv):
             return 1
         return 0
 
-    print("usage: cadence schedule [show|status|register|tick|apply]", file=sys.stderr)
+    print("usage: cadence schedule [show|status|register|unregister|tick|apply]", file=sys.stderr)
     return 2
 
 
@@ -277,6 +280,32 @@ def register(env, args, out=print):
     out(f"  registry: {reg}")
     out(f"  config:   {config}")
     out("Next: set CADENCE_SCHEDULED=1 in that config, then run `cadence schedule apply`.")
+    return 0
+
+
+def unregister(env, args, out=print):
+    """Remove a project from the scheduler registry (idempotent). `args[0]` is a
+    project directory or a config .env path; defaults to the current directory.
+    Other lines — comments, blanks, other projects — pass through untouched."""
+    given = args[0] if args else os.getcwd()
+    project, _ = _project_dir_for(given)
+    reg = projects_file(env)
+    kept, removed = [], False
+    if os.path.exists(reg):
+        with open(reg, encoding="utf-8") as f:
+            for line in f:
+                raw = line.strip()
+                if raw and not raw.startswith("#") and _project_dir_for(raw)[0] == project:
+                    removed = True
+                    continue
+                kept.append(line)
+    if not removed:
+        out(f"not registered: {project}")
+        return 0
+    with open(reg, "w", encoding="utf-8") as f:
+        f.writelines(kept)
+    out(f"unregistered: {project}")
+    out(f"  registry: {reg}")
     return 0
 
 
