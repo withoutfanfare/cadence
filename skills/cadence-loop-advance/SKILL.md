@@ -99,9 +99,11 @@ nothing). Still write the dry-run-titled dated run files.
      issue-get <ID>`), take its `description`, and run
      `printf '%s' "<description>" | cadence advance criteria` — non-empty means the
      triage acceptance-criteria stub is present.
-   - **specced** → `criteria_present` = locate the issue's linked spec **document**
-     (from `issue-get`), fetch its body, and run `cadence advance criteria` on it —
-     non-empty means real, checkable criteria (not an empty stub).
+   - **specced** → `criteria_present` = take the first entry of the issue's
+     `documents` (from `issue-get`), fetch its body with
+     `cadence linear doc-get <doc-id>`, and run `cadence advance criteria` on that
+     `content` — non-empty means real, checkable criteria (not an empty stub). No
+     linked document means `criteria_present` is false.
    - **pr-open / revised** → `gates` = true (build/revise escalate on gate failure
      rather than resting here, so resting here means the gates passed). Find the PR:
      the branch is the issue identifier lowercased (e.g. `stu-1799`); `gh pr view
@@ -123,7 +125,9 @@ nothing). Still write the dry-run-titled dated run files.
    advanced this run.
 6. **Act** on `action` (skip all writes in `--dry-run`):
    - `grant-spec` → `cadence linear issue-update <ID> --add-label agent:spec`
-   - `grant-build` → `--add-label agent:build`
+   - `grant-build` → `--add-label agent:build --remove-label agent:specced`
+     (the specced status is now consumed; leaving it behind strands the issue on
+     two lifecycle labels once the build loop adds `agent:pr-open`)
    - `repair` → `--add-label agent:revise`; then `cadence advance repairs bump <ID>`;
      post a brief comment naming what failed (which criterion / which review finding).
    - `accept` → if resting `agent:revised`:

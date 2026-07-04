@@ -130,7 +130,9 @@ in `docs/ARCHITECTURE.md` §5a, then exit without touching Linear, git, or files
    resolved and the tests guard the change. Post a follow-up PR comment that lists
    each finding with its disposition. Never approve/merge.
 8. **Linear.**
-   `cadence linear issue-update <ID> --remove-label agent:revise --remove-label agent:claimed --add-label agent:revised`.
+   `cadence linear issue-update <ID> --remove-label agent:revise --remove-label agent:claimed --remove-label agent:pr-open --add-label agent:revised`
+   (drop the superseded `agent:pr-open` — `agent:revised` is now the resting label;
+   leaving both strands the issue on two lifecycle labels).
 9. **Log.** Append the **Revisions pushed** digest to the dated run files (see
    "On finishing"): the per-issue line
    `🤖 **Revisions pushed** · [PR #N](<pr-url>) · [<ID> — <title>](<issue-url>)`,
