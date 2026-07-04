@@ -247,6 +247,40 @@ class TestSchedulerTick(unittest.TestCase):
             # Never-served first, then oldest-served; registry order breaks ties only.
             self.assertEqual(served, [c, a, b])
 
+    def test_tick_reports_a_timed_out_run_without_killing_the_tick(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+            projects = []
+            for name in ("a", "b"):
+                config_dir = os.path.join(tmp, name, "cadence")
+                os.makedirs(config_dir)
+                with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                    f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n"
+                            % os.path.join(tmp, name, "state"))
+                projects.append(os.path.join(tmp, name))
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write("\n".join(projects) + "\n")
+
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
+                # subprocess.run RAISES on timeout expiry — the tick must report
+                # that run as failed, not crash and drop its siblings' outcomes.
+                if cwd == projects[0]:
+                    raise subprocess.TimeoutExpired(cmd, timeout or 0)
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "2"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                rc = cli.tick(env, now=now, run=fake_run)
+
+            self.assertEqual(rc, 1)                      # the timeout counts as a failure
+            out = buf.getvalue()
+            self.assertIn("timed out", out)              # ...and is reported as one
+            self.assertIn(f"{projects[1]}: triage exit 0", out)  # sibling outcome survives
+
     def test_tick_launches_at_most_one_run_per_project_per_tick(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = os.path.join(tmp, "app")
@@ -456,6 +490,66 @@ class TestSchedulerTick(unittest.TestCase):
         self.assertEqual(values.get("EXPORTED"), "yes")
         # `KEY = value` is not a bash assignment, so the scheduler must skip it too.
         self.assertNotIn("CADENCE_STATE_DIR", values)
+
+    def _two_project_registry(self, tmp, names):
+        registry = os.path.join(tmp, "projects.txt")
+        paths = []
+        for name in names:
+            config_dir = os.path.join(tmp, name, "cadence")
+            os.makedirs(config_dir)
+            with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n"
+                        % os.path.join(tmp, name, "state"))
+            paths.append(os.path.join(tmp, name))
+        with open(registry, "w", encoding="utf-8") as f:
+            f.write("\n".join(paths) + "\n")
+        return registry, paths
+
+    def test_tick_isolates_a_crashing_run_and_reports_it_failed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry, paths = self._two_project_registry(tmp, ("boom", "fine"))
+            served = []
+
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
+                served.append(cwd)
+                if "boom" in cwd:
+                    raise RuntimeError("model runner fell over")
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "2"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                rc = cli.tick(env, now=now, run=fake_run)
+
+            self.assertEqual(rc, 1)                          # the crash is a failure...
+            self.assertEqual(sorted(served), sorted(paths))  # ...but the other run still ran
+            self.assertIn("failed (model runner fell over)", out.getvalue())
+            self.assertIn("exit 0", out.getvalue())
+
+    def test_tick_records_a_timed_out_run_as_failed_without_sinking_the_tick(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry, paths = self._two_project_registry(tmp, ("slow", "fine"))
+            served = []
+
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
+                served.append(cwd)
+                if "slow" in cwd:
+                    raise subprocess.TimeoutExpired(cmd="cadence run triage",
+                                                    timeout=timeout or 3600)
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "2"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                rc = cli.tick(env, now=now, run=fake_run)
+
+            self.assertEqual(rc, 1)
+            self.assertEqual(sorted(served), sorted(paths))
+            self.assertIn("timed out", out.getvalue())
 
 
 class TestScheduleApplyScript(unittest.TestCase):

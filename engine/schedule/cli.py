@@ -572,9 +572,17 @@ def _run_stage(home, project, config, stage, run, timeout=None):
 
 
 def _execute(home, project, config, stage, run, timeout):
-    """Run one admitted pick; return (outcome description, failed?)."""
-    proc = _run_stage(home, project, config, stage, run, timeout)
-    return ("exit %d" % proc.returncode, proc.returncode != 0)
+    """Run one admitted pick and describe the outcome. Never raises: one
+    crashed or hung run must not sink the tick or the other pool slots.
+    subprocess.run kills the child itself on timeout, so a timed-out run frees
+    its slot at once — the fast path in front of run-loop.sh's 2h lock reclaim."""
+    try:
+        proc = _run_stage(home, project, config, stage, run, timeout)
+        return ("exit %d" % proc.returncode, proc.returncode != 0)
+    except subprocess.TimeoutExpired as e:
+        return ("failed (timed out after %ss; child killed)" % e.timeout, True)
+    except Exception as e:  # isolation is the point: report it, never propagate
+        return ("failed (%s)" % e, True)
 
 
 def tick(env, now=None, run=subprocess.run):
