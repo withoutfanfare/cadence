@@ -322,6 +322,31 @@ def read_env_file(path):
     return values
 
 
+def upsert_env_var(path, key, value):
+    """Set KEY=value in a config file in place, preserving everything else.
+
+    Replaces every uncommented assignment of the key (including `export KEY=`
+    forms — lib-env sources with allexport, so the plain form is equivalent);
+    appends when absent; creates the file when missing. Mirrors the in-place
+    edit `autonomous.sh` performs for AUTONOMOUS.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            txt = f.read()
+    except FileNotFoundError:
+        txt = ""
+    line = f"{key}={value}"
+    pattern = re.compile(r"(?m)^\s*(?:export\s+)?" + re.escape(key) + r"=.*$")
+    if pattern.search(txt):
+        txt = pattern.sub(line, txt)
+    else:
+        if txt and not txt.endswith("\n"):
+            txt += "\n"
+        txt += line + "\n"
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(txt)
+
+
 def _path_value(value, default):
     return os.path.expanduser(os.path.expandvars(value or default))
 

@@ -392,5 +392,38 @@ class TestRegister(unittest.TestCase):
             self.assertEqual(projects[0]["project"], os.path.join(tmp, "app"))
 
 
+class TestUpsertEnvVar(unittest.TestCase):
+    def test_appends_when_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, ".env")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("LINEAR_TEAM_ID=abc\n")
+            cli.upsert_env_var(path, "CADENCE_SCHEDULED", "1")
+            with open(path, encoding="utf-8") as f:
+                txt = f.read()
+            self.assertIn("LINEAR_TEAM_ID=abc\n", txt)
+            self.assertIn("CADENCE_SCHEDULED=1\n", txt)
+
+    def test_replaces_existing_value_and_export_form(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, ".env")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("# comment stays\nexport CADENCE_SCHEDULED=0\nOTHER=x\n")
+            cli.upsert_env_var(path, "CADENCE_SCHEDULED", "1")
+            with open(path, encoding="utf-8") as f:
+                txt = f.read()
+            self.assertIn("# comment stays\n", txt)
+            self.assertIn("OTHER=x\n", txt)
+            self.assertIn("CADENCE_SCHEDULED=1\n", txt)
+            self.assertNotIn("CADENCE_SCHEDULED=0", txt)
+
+    def test_creates_file_when_absent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, ".env")
+            cli.upsert_env_var(path, "CADENCE_SCHEDULED", "1")
+            with open(path, encoding="utf-8") as f:
+                self.assertEqual(f.read(), "CADENCE_SCHEDULED=1\n")
+
+
 if __name__ == "__main__":
     unittest.main()
