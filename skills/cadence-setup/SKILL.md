@@ -176,30 +176,33 @@ Resolve any red doctor findings before moving on.
 ## Step 10 — scheduling (opt-in, macOS)
 
 Ask **"Do you want this project to run on the scheduler?"** Scheduled runs are
-macOS-only (launchd). If yes:
+macOS-only (launchd). If yes, one command handles everything — state dir,
+registry, `CADENCE_SCHEDULED=1`, the launchd scheduler job, and a final doctor
+pass:
 
 ```bash
-cadence schedule register "<PROJECT_DIR>"          # add to the registry
+cadence onboard "<PROJECT_DIR>"
 ```
 
-Then set `CADENCE_SCHEDULED=1` in the project config and load the single global
-scheduler:
+It leaves a newly onboarded project **paused**; nothing runs until the user
+resumes. Confirm the result with:
 
 ```bash
-cadence schedule apply
 cadence schedule status
 ```
 
 Adjust per-stage timing later with the `SCHED_*` values
-(`docs/CONFIGURATION.md#schedule`).
+(`docs/CONFIGURATION.md#schedule`). To take the project off the scheduler
+later, `cadence offboard "<PROJECT_DIR>"` (or the cadence-offboard skill)
+reverses this step.
 
 ## Step 11 — hand back safely
 
-Leave the system paused until the user is ready, and tell them the deliberate
-first run:
+If the user skipped scheduling, pause explicitly so nothing runs by surprise;
+onboarded projects are already paused. Tell them the deliberate first run:
 
 ```bash
-cadence --config <PROJECT_DIR>/cadence/.env pause
+cadence --config <PROJECT_DIR>/cadence/.env pause    # only if Step 10 was skipped
 cadence --config <PROJECT_DIR>/cadence/.env run triage   # only when they choose to
 ```
 
