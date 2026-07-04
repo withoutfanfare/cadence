@@ -262,10 +262,24 @@ else echo "  ⚠️  PROJECT_DIR unset or missing (spec/build/revise cd here)"; 
 if [ -n "${WORKTREE_BASE:-}" ] && [ -w "$(dirname "$WORKTREE_BASE")" ]; then pass "WORKTREE_BASE parent writable"
 else echo "  ⚠️  WORKTREE_BASE unset or parent not writable (build/revise create worktrees here)"; fi
 
-# Worktree tool: git needs nothing extra; grove must be installed when selected.
+# Worktree tool: git needs nothing extra; grove must be installed AND know the
+# repo. The repo name defaults to PROJECT_DIR's basename but can differ from it
+# (grove `repos` name), so validate the resolved name actually resolves — a
+# mismatch silently fails every build at worktree creation.
 case "${WORKTREE_TOOL:-git}" in
   git)   pass "worktree tool: git (default)" ;;
-  grove) if command -v grove >/dev/null; then pass "worktree tool: grove found"; else fail "WORKTREE_TOOL=grove but grove not on PATH"; fi ;;
+  grove)
+    if ! command -v grove >/dev/null; then
+      fail "WORKTREE_TOOL=grove but grove not on PATH"
+    else
+      grove_repo="${WORKTREE_REPO:-$(basename "${PROJECT_DIR:-}")}"
+      if grove ls "$grove_repo" >/dev/null 2>&1; then
+        pass "worktree tool: grove, repo '$grove_repo' resolves"
+      else
+        fail "WORKTREE_TOOL=grove but grove has no repo '$grove_repo' (every build fails at worktree creation) — set WORKTREE_REPO to the grove \`repos\` name, or clone the bare repo"
+      fi
+    fi
+    ;;
   *)     fail "WORKTREE_TOOL='${WORKTREE_TOOL}' invalid (use git or grove)" ;;
 esac
 

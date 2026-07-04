@@ -104,6 +104,7 @@ back-fill. Use `file` when a local `cadence/tasks.md` board is enough.
 | `PROJECT_DIR` | Build/revise | Main checkout of the app repo Cadence works on. |
 | `WORKTREE_BASE` | Build/revise | Directory where build/revise create temporary worktrees. Exported into the loop's environment so external tooling (for example user git hooks) can recognise Cadence's own worktrees. |
 | `WORKTREE_TOOL` | Build/revise | `git` (default) or `grove` — how worktrees are created. |
+| `WORKTREE_REPO` | Build/revise (grove only) | Grove `repos` name of the repo, when it differs from `PROJECT_DIR`'s basename. Defaults to that basename. |
 
 `PROJECT_DIR` should be a normal checkout of the application repo. This is the
 base repo whose `cadence/.env` Cadence normally reads. `WORKTREE_BASE` should be
@@ -118,7 +119,12 @@ worktrees:
   dev site per worktree (its own `.test` URL). Choose this only if you already use
   grove; it requires the `grove` command on `PATH` and is intended for the author's
   team. With `grove`, keep branch identifiers short so the generated Herd domain
-  stays under Herd's SSL length limit.
+  stays under Herd's SSL length limit. Grove is invoked as `grove add <repo> …`,
+  where `<repo>` is the name from `grove repos`. Cadence uses `PROJECT_DIR`'s
+  basename by default; when the checkout directory differs from the grove repo
+  name (e.g. a `stuntrocketv3` checkout of the `stuntrocket` repo), set
+  `WORKTREE_REPO` to the grove name. `cadence doctor` fails if the resolved repo
+  does not resolve, rather than letting every build fail at worktree creation.
 
 Either way the loops drive worktrees through `cadence worktree add|remove|path`, so
 the skills themselves stay tool-agnostic. The generated worktree path is

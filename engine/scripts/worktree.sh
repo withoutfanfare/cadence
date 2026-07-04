@@ -6,6 +6,8 @@
 #   remove <branch>       remove the worktree and delete its branch
 #   path <branch>         print the worktree path (no side effects)
 # Paths come from .env (PROJECT_DIR, WORKTREE_BASE, BASE_BRANCH, WORKTREE_TOOL).
+# WORKTREE_REPO overrides the grove repo name when it differs from the project
+# directory's basename (e.g. a `stuntrocketv3` worktree off a `stuntrocket` repo).
 # `add` prints ONLY the worktree path on stdout; all tool chatter goes to stderr,
 # so callers can do:  WT="$(cadence worktree add stu-1799 develop)"; cd "$WT"
 set -u
@@ -20,7 +22,10 @@ base="${3:-$BASE_BRANCH}"
 : "${PROJECT_DIR:?PROJECT_DIR not set in .env}"
 : "${WORKTREE_BASE:?WORKTREE_BASE not set in .env}"
 WT="$WORKTREE_BASE/$branch"
-SITE="$(basename "$PROJECT_DIR")"
+# The grove repo name. Defaults to the project dir's basename, but a project
+# whose directory differs from its bare repo (grove `repos` name) sets
+# WORKTREE_REPO. Only grove uses this; the git backend works off PROJECT_DIR.
+SITE="${WORKTREE_REPO:-$(basename "$PROJECT_DIR")}"
 tool="${WORKTREE_TOOL:-git}"
 
 case "$tool" in
