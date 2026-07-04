@@ -11,7 +11,7 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
-STAGES = ["triage", "spec", "build", "revise", "advance", "conduct"]
+STAGES = ["triage", "spec", "build", "revise", "advance", "roadmap", "conduct"]
 
 # stage -> list of (ledger_field, display label). build's PRs are special-cased.
 PRODUCED = {
@@ -21,6 +21,7 @@ PRODUCED = {
     "revise": [("revised", "revised")],
     "advance": [("advanced", "advanced"), ("accepted", "accepted"),
                 ("repaired", "repaired"), ("escalated", "escalated")],
+    "roadmap": [("proposed", "proposed"), ("skipped", "skipped")],
     "conduct": [("tagged", "tagged"), ("blocked", "blocked")],
 }
 
