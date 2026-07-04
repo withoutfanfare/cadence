@@ -31,6 +31,8 @@ cadence run triage      # run one stage now; live unless paused
 cadence restart         # reload launchd jobs
 cadence schedule apply  # regenerate and reload the single scheduler plist
 cadence schedule register [path]  # add a project to the scheduler registry
+cadence onboard [path]  # put a project on the scheduler in one step (registry, CADENCE_SCHEDULED=1, scheduler job, doctor); new projects start paused
+cadence offboard [path] [--purge]  # take a project off the scheduler: pause, CADENCE_SCHEDULED=0, unregister; deletes nothing without --purge
 ```
 
 Autonomous and maintainer commands:
@@ -382,6 +384,16 @@ Each tick runs at most `CADENCE_SCHEDULER_MAX_RUNS` stages across all projects
 (default 1), so many projects share the scheduler fairly rather than one project
 starving the rest. `cadence pause` is per state directory — pausing one project
 does not pause the others.
+
+### Adding and removing projects
+
+`cadence onboard /path/to/app` puts a project on the scheduler in one step and
+leaves it paused; `cadence offboard /path/to/app` takes it off again (pause,
+`CADENCE_SCHEDULED=0`, unregister — nothing deleted). `--purge` also removes
+the project's run history; the config (`cadence/.env`) always stays. When the
+last project is offboarded the scheduler job itself is unloaded;
+`cadence schedule apply` restores it. The registry primitives remain available
+as `cadence schedule register|unregister [path]`.
 
 ## Menu bar (SwiftBar)
 
