@@ -197,8 +197,10 @@ the diff, the red→green test, and the scope yourself.
    AGENTS.md` (and any other unrelated grove-imported file) so those never ride into
    the PR. (The default `git` tool imports nothing, so this restore is a no-op there.)
    Conventional commit (no AI mention). Push the branch.
-   `base="${BASE_BRANCH:-develop}"; gh pr create --draft --base "$base"`
-   with a full in-house description:
+   `base="${BASE_BRANCH:-develop}"; gh pr create --draft --base "$base" --title "<ID> — <title>"`.
+   **Always pass an explicit `--title` of `<ID> — <title>`** (the issue identifier
+   and its title) so the PR is trackable at a glance from the PR list — never let
+   `gh` infer the title from the commit. Add a full in-house `--body`:
    problem, approach, the reproduce-or-not finding, test evidence (gate results),
    leftover bug-check notes, risks, rollback, and the issue ID for Linear linking.
 8. **Linear.** Status → **In Review**.

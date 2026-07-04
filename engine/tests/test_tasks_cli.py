@@ -129,6 +129,23 @@ class TestTasksCli(unittest.TestCase):
         self.assertIn("Acceptance criteria here.", updated)
         self.assertIn("labels: Bug, agent:spec", updated)
 
+    def test_completing_a_task_clears_workflow_labels(self):
+        # marking done drops every agent:* label but keeps user labels (Bug)
+        result, updated = self._run(["update", "TASK-1", "--status", "completed"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        task = json.loads(result.stdout)
+        self.assertEqual(task["status"], "completed")
+        self.assertEqual(task["labels"], ["Bug"])
+        self.assertIn("labels: Bug", updated)
+
+    def test_touching_a_done_task_self_heals_stale_labels(self):
+        done = TASKS_MD.replace(
+            "## TASK-1: First task\nstatus: open\nlabels: agent:triaged, Bug",
+            "## TASK-1: First task\nstatus: completed\nlabels: agent:triaged, agent:specced, Bug")
+        result, _ = self._run(["update", "TASK-1", "--add-label", "agent:pr-open"], tasks_text=done)
+        task = json.loads(result.stdout)
+        self.assertEqual(task["labels"], ["Bug"])   # all agent:* dropped, done task
+
     def test_update_can_replace_body_from_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             task_file = os.path.join(tmp, "cadence", "tasks.md")

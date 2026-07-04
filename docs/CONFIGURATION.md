@@ -373,7 +373,7 @@ turn, then escalates to `agent:needs-attention` if it still fails.
 | `NOTIFY` | `on` | macOS notifications for runs that did work, paused, or **failed**. Failures (non-zero exit or reported errors) use a distinct title and "Basso" sound and are always also recorded in the dated digest and activity feed. `off` silences the notifications only; the digest/feed records are kept. |
 | `RUNNER_PATH_PREPEND` | unset | Optional directory prepended to `PATH` for loop runners. |
 | `ORCH_TIMEOUT` | `2700` | Max seconds for any single orchestrator run (all stages). Caps a hung or wedged run — e.g. a model idling in a self-monitoring loop — so it cannot hold the shared build/revise worktree lock indefinitely. Applies to every existing and new project by default; override per profile for unusually slow build+gate cycles. |
-| `CADENCE_LOCK_MAX_AGE_SECONDS` | `7200` | Hard ceiling after which a build/revise worktree lock is reclaimed even if its holder PID is still alive (guards against PID recycling and wedged holders). Kept well above `ORCH_TIMEOUT` so a legitimate in-flight build is never stolen. |
+| `CADENCE_LOCK_MAX_AGE_SECONDS` | `7200` | Stale-lock age for **every** loop lock: a lock a live holder stops refreshing (a heartbeat re-touches it every ~600s) is reclaimed after this long, even if its recorded PID is alive again (macOS recycles PIDs). Applies to all stages — build/revise merely share one `worktree` lock; triage/spec/advance are self-exclusive. Because a live holder keeps its lock fresh, a legitimate in-flight run is never stolen; kept well above `ORCH_TIMEOUT`. |
 
 `ORCH_TIMEOUT` is the primary robustness lever against a stuck run: the build/revise
 worktree lock is released when the run ends, so a lower cap bounds how long a wedged

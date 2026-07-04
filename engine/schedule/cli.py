@@ -363,6 +363,26 @@ def onboard(env, args, out=print):
     return 0
 
 
+def _purge_unsafe(state, env):
+    """Return a refusal message if `state` must not be deleted, else None. A
+    misconfigured CADENCE_STATE_DIR pointing at the shared default root or a dir
+    another registered project still uses would otherwise let --purge wipe state
+    it does not own. Call after unregister so the offboarded project excludes
+    itself from the shared-use check."""
+    canon = os.path.realpath(state)
+    if canon == os.path.realpath(os.path.expanduser("~/.cadence")):
+        return f"  refused purge: {state} is the shared default state root"
+    others = [
+        p["project"] for p in read_projects(projects_file(env))
+        if os.path.realpath(_path_value(
+            read_env_file(p["config"]).get("CADENCE_STATE_DIR"),
+            os.path.expanduser("~/.cadence"))) == canon
+    ]
+    if others:
+        return f"  refused purge: {state} still used by {', '.join(others)}"
+    return None
+
+
 def offboard(env, args, out=print):
     """Take a project off the scheduler: pause it, set CADENCE_SCHEDULED=0,
     unregister. Deletes nothing unless --purge, which removes only the project's
@@ -388,8 +408,12 @@ def offboard(env, args, out=print):
         out(f"  CADENCE_SCHEDULED=0 written to {config}")
     unregister(env, [project], out=out)
     if purge and state:
-        shutil.rmtree(state, ignore_errors=True)
-        out(f"  purged state dir: {state}")
+        refusal = _purge_unsafe(state, env)
+        if refusal:
+            out(refusal)
+        else:
+            shutil.rmtree(state)  # no ignore_errors: a failed delete must surface
+            out(f"  purged state dir: {state}")
     elif state:
         out(f"  left in place: {state}")
     out(f"  left in place: {config}")

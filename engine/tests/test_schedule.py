@@ -801,6 +801,22 @@ class TestOffboard(unittest.TestCase):
             self.assertFalse(os.path.exists(state))
             self.assertTrue(os.path.exists(config))  # config always survives
 
+    def test_purge_refused_when_state_dir_shared_with_another_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, project, config, state = self._onboarded(tmp)
+            # a second registered project pointed at the same state dir
+            other = os.path.join(tmp, "other")
+            os.makedirs(os.path.join(other, "cadence"))
+            other_config = os.path.join(other, "cadence", ".env")
+            with open(other_config, "w", encoding="utf-8") as f:
+                f.write(f"CADENCE_STATE_DIR={state}\n")
+            cli.register(env, [other], out=lambda *_: None)
+            lines = []
+            self.assertEqual(
+                cli.offboard(env, [project, "--purge"], out=lines.append), 0)
+            self.assertTrue(any("refused purge" in x for x in lines))
+            self.assertTrue(os.path.isdir(state))  # shared dir survives
+
     def test_skips_pause_and_purge_without_own_state_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = {"CADENCE_STATE_DIR": tmp}

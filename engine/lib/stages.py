@@ -81,3 +81,19 @@ def resolve_labels(existing, add=None, remove=None):
     added_pos = [lbl for lbl in add if lbl in _POSITION_RANK]
     keep = max(added_pos or present, key=_POSITION_RANK.__getitem__)
     return [lbl for lbl in out if lbl not in _POSITION_RANK or lbl == keep]
+
+
+# Terminal states — a done/cancelled issue is out of play. Matches the Linear
+# workflow-state types and the file backend's status values.
+TERMINAL_STATES = {"completed", "canceled", "cancelled", "done", "closed"}
+
+
+def is_terminal(state):
+    return (state or "").strip().lower() in TERMINAL_STATES
+
+
+def strip_workflow_labels(labels):
+    """Drop the agent:* workflow labels — a done/cancelled issue holds no live
+    workflow state, so completing it should clear its gates, status, and flags.
+    Non-agent labels (Bug, priority, …) are kept."""
+    return [lbl for lbl in labels if not str(lbl).startswith("agent:")]

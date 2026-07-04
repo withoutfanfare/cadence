@@ -28,10 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - One-command project onboarding and offboarding. `cadence onboard [path]` does
-  everything that was manual — fills a per-project `CADENCE_STATE_DIR` (refusing a
-  dir another registered project already uses), sets `CADENCE_SCHEDULED=1`,
+  everything that was manual — auto-fills a blank per-project `CADENCE_STATE_DIR`
+  (refusing a dir another registered project already uses), sets `CADENCE_SCHEDULED=1`,
   registers the project, loads the launchd scheduler, and runs doctor — leaving
-  the project **paused** so a human resumes deliberately. `cadence offboard [path]`
+  newly registered projects **paused** so a human resumes deliberately. `cadence offboard [path]`
   reverses it (pause, `CADENCE_SCHEDULED=0`, unregister) and unloads the scheduler
   job once the registry empties; `--purge` also deletes the project's own state
   dir, never the config or the shared default. New `cadence schedule unregister`
@@ -95,6 +95,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scoped examples and the baseline fallback.
 
 ### Fixed
+
+- A timed-out orchestrator run no longer orphans the provider's children.
+  `run-orchestrator.sh` now launches the provider in its own session and kills
+  the whole process group on timeout (SIGTERM, then SIGKILL after a grace
+  period) — previously only the direct provider process was killed, leaving gate
+  children (cargo/pnpm/git) mutating the worktree after `run-loop.sh` released
+  the lock and started the next run.
+
+- `cadence offboard --purge` now refuses to delete a `CADENCE_STATE_DIR` that is
+  the shared default state root or is still used by another registered project,
+  and no longer swallows delete failures — guarding against a misconfigured
+  config wiping `~/.cadence` or another project's state.
 
 - The folded reviewer ran with **no tools**. `run-reviewer.sh` invokes the
   orchestrator with stage `review`, which has no loop skill, so the allowed-tools
