@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 import importlib.util
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -225,6 +226,9 @@ def main(argv):
     if cmd == "onboard":
         return onboard(os.environ, argv[1:])
 
+    if cmd == "offboard":
+        return offboard(os.environ, argv[1:])
+
     if cmd == "tick":
         return tick(os.environ)
 
@@ -355,6 +359,39 @@ def onboard(env, args, out=print):
             pass
         out("  paused — resume with: cadence --config " + config + " resume")
     register(env, [project], out=out, hint=False)
+    return 0
+
+
+def offboard(env, args, out=print):
+    """Take a project off the scheduler: pause it, set CADENCE_SCHEDULED=0,
+    unregister. Deletes nothing unless --purge, which removes only the project's
+    own state dir (never the config, never the shared default state dir).
+    Pausing/purging is skipped when the project has no CADENCE_STATE_DIR of its
+    own — touching the shared default would hit every project at once."""
+    purge = "--purge" in args
+    paths = [a for a in args if not a.startswith("--")]
+    given = paths[0] if paths else os.getcwd()
+    project, config = _project_dir_for(given)
+    values = read_env_file(config)
+    state = _path_value(values.get("CADENCE_STATE_DIR"), "")
+    if state:
+        os.makedirs(os.path.join(state, "runs"), exist_ok=True)
+        with open(os.path.join(state, "runs", "PAUSED"), "w", encoding="utf-8"):
+            pass
+        out(f"  paused: {os.path.join(state, 'runs', 'PAUSED')}")
+    else:
+        out("  no own CADENCE_STATE_DIR in config — skipping pause"
+            + (" and purge" if purge else ""))
+    if os.path.exists(config):
+        upsert_env_var(config, "CADENCE_SCHEDULED", "0")
+        out(f"  CADENCE_SCHEDULED=0 written to {config}")
+    unregister(env, [project], out=out)
+    if purge and state:
+        shutil.rmtree(state, ignore_errors=True)
+        out(f"  purged state dir: {state}")
+    elif state:
+        out(f"  left in place: {state}")
+    out(f"  left in place: {config}")
     return 0
 
 

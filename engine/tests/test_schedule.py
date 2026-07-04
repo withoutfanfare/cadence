@@ -527,5 +527,56 @@ class TestOnboard(unittest.TestCase):
                              cli.read_env_file(config))  # nothing written
 
 
+class TestOffboard(unittest.TestCase):
+    def _onboarded(self, tmp):
+        env = {"CADENCE_STATE_DIR": tmp}
+        project = os.path.join(tmp, "app")
+        os.makedirs(os.path.join(project, "cadence"))
+        config = os.path.join(project, "cadence", ".env")
+        with open(config, "w", encoding="utf-8") as f:
+            f.write("LINEAR_TEAM_ID=t\n")
+        cli.onboard(env, [project], out=lambda *_: None)
+        state = os.path.join(tmp, "projects", "app")
+        return env, project, config, state
+
+    def test_pauses_deschedules_and_unregisters(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, project, config, state = self._onboarded(tmp)
+            os.remove(os.path.join(state, "runs", "PAUSED"))  # human had resumed
+            self.assertEqual(cli.offboard(env, [project], out=lambda *_: None), 0)
+            self.assertTrue(os.path.isfile(os.path.join(state, "runs", "PAUSED")))
+            values = cli.read_env_file(config)
+            self.assertEqual(values.get("CADENCE_SCHEDULED"), "0")
+            self.assertEqual(values.get("LINEAR_TEAM_ID"), "t")  # untouched
+            self.assertEqual(cli.read_projects(cli.projects_file(env)), [])
+            self.assertTrue(os.path.isdir(state))  # nothing deleted
+
+    def test_purge_removes_own_state_dir_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, project, config, state = self._onboarded(tmp)
+            self.assertEqual(
+                cli.offboard(env, [project, "--purge"], out=lambda *_: None), 0)
+            self.assertFalse(os.path.exists(state))
+            self.assertTrue(os.path.exists(config))  # config always survives
+
+    def test_skips_pause_and_purge_without_own_state_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            project = os.path.join(tmp, "app")
+            os.makedirs(os.path.join(project, "cadence"))
+            config = os.path.join(project, "cadence", ".env")
+            with open(config, "w", encoding="utf-8") as f:
+                f.write("CADENCE_SCHEDULED=1\n")  # no CADENCE_STATE_DIR
+            cli.register(env, [project], out=lambda *_: None)
+            lines = []
+            self.assertEqual(
+                cli.offboard(env, [project, "--purge"], out=lines.append), 0)
+            self.assertTrue(any("own CADENCE_STATE_DIR" in x for x in lines))
+            self.assertEqual(cli.read_projects(cli.projects_file(env)), [])
+            # the shared default state dir was neither paused nor deleted
+            self.assertFalse(os.path.exists(
+                os.path.join(tmp, "runs", "PAUSED")))
+
+
 if __name__ == "__main__":
     unittest.main()
