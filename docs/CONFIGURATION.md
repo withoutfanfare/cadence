@@ -100,7 +100,7 @@ back-fill. Use `file` when a local `cadence/tasks.md` board is enough.
 | Variable | Required | Description |
 | --- | --- | --- |
 | `REPO_SLUG` | Build/revise | GitHub repository slug, for example `owner/app`. |
-| `BASE_BRANCH` | Build/revise | Branch used as the base for generated worktrees and draft PRs. Defaults to `develop`. |
+| `BASE_BRANCH` | Build/revise | Branch used as the base for generated worktrees and PRs. Defaults to `develop`. |
 | `PROJECT_DIR` | Build/revise | Main checkout of the app repo Cadence works on. |
 | `WORKTREE_BASE` | Build/revise | Directory where build/revise create temporary worktrees. Exported into the loop's environment so external tooling (for example user git hooks) can recognise Cadence's own worktrees. |
 | `WORKTREE_TOOL` | Build/revise | `git` (default) or `grove` — how worktrees are created. |

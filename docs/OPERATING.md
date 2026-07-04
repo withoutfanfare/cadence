@@ -173,7 +173,7 @@ macOS notifications only — the digest and feed records are kept regardless.
 3. Add `agent:spec` when you want a spec.
 4. Read the generated spec document.
 5. Add `agent:build` when you approve implementation.
-6. Review the draft PR opened by the build loop.
+6. Review the PR opened by the build loop.
 7. Merge manually if satisfied, or add `agent:revise` for changes.
 
 Agents do not add downstream gate labels. If an issue is not moving, check which
@@ -208,10 +208,10 @@ cadence doctor --labels
 ## Autonomous mode (opt-in)
 
 Autonomous mode lets the advancer grant gates on `agent:auto` issues, carrying
-them spec → build → self-review → draft PR with no human in the loop. It is OFF
+them spec → build → self-review → PR with no human in the loop. It is OFF
 unless `AUTONOMOUS` is enabled, and independent of `PAUSED` (which still halts
 everything). The advancer grants gates only; the existing loops do the work on
-their schedule, and it stops at a draft PR for you to merge.
+their schedule, and it stops at an open PR for you to merge.
 
 Roll it out carefully:
 

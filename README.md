@@ -3,7 +3,7 @@
 Most automation does too little — pinging you with reminders — or too much,
 quietly merging code you never read. Cadence sits in between. It runs a small
 team of AI agents that pick up your Linear issues, triage them, write the spec,
-build the change in an isolated branch, and open a draft pull request — then
+build the change in an isolated branch, and open a pull request — then
 stop and hand the decision back to you. Every gate between stages is yours to
 grant. The agents do the legwork around the clock; you stay the one who says
 "ship it".
@@ -17,8 +17,8 @@ triage -> spec -> build -> revise
 ```
 
 The loops can run unattended, but authority stays with a person. Agents can tidy
-issues, write specs, create draft PRs, and push revisions; they do not approve
-their own work, grant the next gate, mark PRs ready, merge PRs, or act outside
+issues, write specs, open PRs, and push revisions; they do not approve
+their own work, grant the next gate, merge PRs, or act outside
 the configured project.
 
 ## What it does
@@ -27,8 +27,8 @@ the configured project.
 | --- | --- | --- | --- |
 | `triage` | No human gate | Fills missing metadata, flags stale work, proposes duplicate clusters | `agent:triaged` or `agent:needs-human` |
 | `spec` | Human adds `agent:spec` | Writes a spec document and validates duplicate candidates | `agent:specced` |
-| `build` | Human adds `agent:build` | Creates an isolated worktree, delegates code changes, runs gates, opens a draft PR | `agent:pr-open` |
-| `revise` | Human adds `agent:revise` | Pushes review changes to the same draft PR | `agent:revised` |
+| `build` | Human adds `agent:build` | Creates an isolated worktree, delegates code changes, runs gates, opens a PR | `agent:pr-open` |
+| `revise` | Human adds `agent:revise` | Pushes review changes to the same PR | `agent:revised` |
 | `roadmap` (optional) | Enabled per project via `SCHED_ROADMAP` | Scouts the codebase read-only (steered by an optional goal, else a standing quality rubric) and files a capped number of proposal issues | `agent:proposed` |
 
 Each loop consumes its trigger and leaves a "your move" label. A human decides
@@ -44,7 +44,7 @@ triage   →  agent fills metadata, leaves `agent:triaged`          ·  you revi
 you      →  add `agent:spec`
 spec     →  agent writes a spec document, leaves `agent:specced`  ·  you read it
 you      →  add `agent:build`
-build    →  agent codes in a worktree, opens a DRAFT PR,
+build    →  agent codes in a worktree, opens a PR,
             leaves `agent:pr-open`                                ·  you review the PR
 you      →  merge it yourself — or add `agent:revise` for changes
 revise   →  agent pushes fixes to the same PR, leaves `agent:revised`
@@ -65,7 +65,7 @@ cadence autonomous off     # set AUTONOMOUS=0 and remove legacy autonomous jobs
 ```
 
 The advancer grants gates on your behalf and the conductor decides what to work on
-next, but the safety floor is unchanged: work still stops at a **draft** PR for you
+next, but the safety floor is unchanged: work still stops at an **open** PR for you
 to merge, and nothing acts outside the configured project. Off by default. Full
 rollout guidance is in
 [docs/OPERATING.md](docs/OPERATING.md#autonomous-mode-opt-in).

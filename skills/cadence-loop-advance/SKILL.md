@@ -65,7 +65,7 @@ already-built decision core through `cadence advance …` (`decide`, `criteria`,
 - **Never write code, never open/merge/ready/touch a PR, never push, never run app
   code / tests / git** beyond read-only `gh pr view` / `gh pr diff`.
 - **Never set a gate on a non-`agent:auto` issue**, and never mark a PR ready or
-  merge — the endpoint is a draft PR for the human.
+  merge — the endpoint is an open PR for the human to merge.
 - Never overwrite a human's field.
 
 ## Step 0 — pause checks (before any read, write, or claim)

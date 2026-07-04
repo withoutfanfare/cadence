@@ -69,7 +69,7 @@ class TestPromptRender(unittest.TestCase):
         # criteria filter rejects every task and autonomous mode never advances.
         self.assertIn("Acceptance Criteria", text)
 
-    def test_file_backend_build_prompt_keeps_worktree_and_draft_pr_contract(self):
+    def test_file_backend_build_prompt_keeps_worktree_and_pr_contract(self):
         # Regression: the file-backend build rules once said only "implement
         # inside the configured project/worktree", so the orchestrator edited
         # the main checkout directly and set agent:pr-open with no PR at all.
@@ -86,9 +86,10 @@ class TestPromptRender(unittest.TestCase):
             text = out.read_text(encoding="utf-8")
 
         self.assertIn("cadence worktree add", text)
-        self.assertIn("gh pr create --draft", text)
+        self.assertIn("gh pr create --base", text)
+        self.assertNotIn("--draft", text)
         self.assertIn("Never edit the main project checkout", text)
-        self.assertIn("only after the draft PR exists", text)
+        self.assertIn("only after the PR exists", text)
         self.assertNotIn("cadence linear", text)
 
     def test_file_backend_revise_prompt_pushes_to_existing_pr_only(self):

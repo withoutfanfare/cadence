@@ -31,7 +31,7 @@ creation step. See [TASKS.md](TASKS.md) for that format.
 | `agent:needs-human` | Triage loop | Human | All loops skip the issue; surface to human for manual classification |
 | `agent:dupe-candidate` | Triage loop | Spec loop (on validation) or human | Spec loop validates the duplicate proposal; either supersedes siblings or clears this flag |
 | `agent:specced` | Spec loop | Human (sets `agent:build` to proceed) | Signals spec is complete; waiting for human to approve and advance |
-| `agent:pr-open` | Build loop | Human (sets `agent:revise` or merges); triage clears it once the PR is merged | Signals a draft PR is open and reviewed; waiting for human gate 3. After a human merges the PR into `BASE_BRANCH`, triage's PR back-fill clears this label and moves the task/issue to a done state (recording the merge, not granting it) |
+| `agent:pr-open` | Build loop | Human (sets `agent:revise` or merges); triage clears it once the PR is merged | Signals a PR is open and reviewed; waiting for human gate 3. After a human merges the PR into `BASE_BRANCH`, triage's PR back-fill clears this label and moves the task/issue to a done state (recording the merge, not granting it) |
 | `agent:revised` | Revise loop | Human (re-reviews PR) | Signals revise loop has pushed; waiting for human to re-review |
 | `agent:superseded` | Spec loop | Human (rarely) | Hard suppressor: all loops skip this issue; the canonical issue covers it |
 | `agent:needs-attention` | Any loop | Human | A run failed; human must investigate the run log before proceeding |

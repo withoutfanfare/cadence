@@ -1,6 +1,6 @@
 ---
 name: cadence-loop-build
-description: Build loop for the configured Linear project — implements a human-gated, spec'd issue in an isolated worktree off the configured base branch, runs the gates, opens a DRAFT PR against that base branch, and folds in a code review. Never merges, never marks a PR ready, never moves an issue past In Review. Runs unattended on a schedule. Triggers include "run the build loop", "cadence-loop-build", or a scheduled routine invoking it.
+description: Build loop for the configured Linear project — implements a human-gated, spec'd issue in an isolated worktree off the configured base branch, runs the gates, opens a PR (ready for review) against that base branch, and folds in a code review. Never merges, never moves an issue past In Review. Runs unattended on a schedule. Triggers include "run the build loop", "cadence-loop-build", or a scheduled routine invoking it.
 version: 1.2.0
 model: opus
 argument-hint: "[--limit=N] [--dry-run] [--implementer=claude|kimi|opencode|codex]"
@@ -19,7 +19,7 @@ allowed-tools:
 
 You are the **build loop**. You take an issue the human has
 authorised (`agent:build`, with an approved spec) and implement it in an isolated
-worktree, open a **draft** PR against `$BASE_BRANCH`, and fold in a code review — then
+worktree, open a PR against `$BASE_BRANCH`, and fold in a code review — then
 hand it back for the human's GATE 3 decision. You run unattended, on a schedule.
 Read `docs/ARCHITECTURE.md` for the full model; this skill implements the Build +
 Review stages.
@@ -49,15 +49,14 @@ agents would write the same fix.
 
 ## Hard limits — never cross these
 
-- **Never merge, never mark a PR ready-for-review, never move an issue past
-  In Review.** The PR is always a **draft**.
+- **Never merge, never move an issue past In Review.** PRs are opened **ready for
+  review** (non-draft) against `$BASE_BRANCH` so CI runs immediately; merging is
+  always the human's decision.
 - **`$REPO_SLUG` owner is Danny's own GitHub account, and your own git/PR actions
   run as that account too** — so the actor on an event never tells you whether it was
-  you, the human, or another tool. Only ever set draft state on the **one PR you open
-  this run** (as a draft). Never touch any other PR's draft/ready state: a PR marked
-  **ready-for-review** is the human acting (to trigger Copilot review / CI, or to
-  merge — a draft can't be merged). Leave it — never revert it to draft, never raise
-  it as an "external automation" alarm.
+  you, the human, or another tool. Never change any PR's draft/ready state — you open
+  PRs ready and leave them. Any state change you observe is the human acting; leave
+  it, never raise it as an "external automation" alarm.
 - Never set `agent:revise` or any later gate — that is the human's GATE 3.
 - Push only to the issue's own branch. Never push to `$BASE_BRANCH`/`main`.
 - No "Claude"/"AI" mention in any commit, branch, or PR text (project rule).
@@ -70,7 +69,7 @@ agents would write the same fix.
   the fresh base, or uncommitted changes) and there is **no open PR**, a previous
   run was interrupted: **resume it**, don't re-skip it every run. Verify the
   leftover diff implements *this* issue's spec, then continue from step 5
-  (gates → commit → push → draft PR) so the work actually ships. Only if the
+  (gates → commit → push → PR) so the work actually ships. Only if the
   leftover diff clearly belongs to a different issue: release the claim and add
   `agent:needs-attention` with a comment saying why.
 
@@ -190,14 +189,14 @@ the diff, the red→green test, and the scope yourself.
 6. **Self bug-check.** Run `/pre-pr-review` on the diff; fix clear/trivial issues,
    note the rest for the PR body. (This is necessary but not sufficient — the
    folded review below is the real check.)
-7. **Commit → push → DRAFT PR.** **Stage only the files the spec targeted (the
+7. **Commit → push → PR.** **Stage only the files the spec targeted (the
    implementer's task files) — never `git add -A`.** With `WORKTREE_TOOL=grove`, the
    grove `ai-files` hook rsyncs an external `CLAUDE.md`/`AGENTS.md` over the worktree
    at setup, so before committing run `git restore --worktree --staged CLAUDE.md
    AGENTS.md` (and any other unrelated grove-imported file) so those never ride into
    the PR. (The default `git` tool imports nothing, so this restore is a no-op there.)
    Conventional commit (no AI mention). Push the branch.
-   `base="${BASE_BRANCH:-develop}"; gh pr create --draft --base "$base"`
+   `base="${BASE_BRANCH:-develop}"; gh pr create --base "$base"`
    with a full in-house description:
    problem, approach, the reproduce-or-not finding, test evidence (gate results),
    leftover bug-check notes, risks, rollback, and the issue ID for Linear linking.
@@ -221,7 +220,7 @@ the diff, the red→green test, and the scope yourself.
     - Append a section to `$CADENCE_STATE_DIR/runs/<YYYY-MM-DD>.md` in `$PROJECT_DIR`,
       headed `## build · <mode> · <live|dry-run> · <UTC timestamp>`, followed by the
       counts line and the per-issue digest. For each built issue include:
-      **Draft PR** — `🤖 **Draft PR [#N](<pr-url>)** · [<ID> — <title>](<issue-url>)`,
+      **PR** — `🤖 **PR [#N](<pr-url>)** · [<ID> — <title>](<issue-url>)`,
       a one-line of what was built + `gates ✅`, **Your move:** review → merge or
       `agent:revise`; then **Review** — `🤖 **Review on [PR #N](<pr-url>)** ·
       [<ID> — <title>](<issue-url>)`, verdict + N findings. Fold the review verdict

@@ -36,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lock for an hour. Override per profile for unusually slow build+gate cycles.
   Documented in `CONFIGURATION.md` alongside `CADENCE_LOCK_MAX_AGE_SECONDS`.
 
-- Merged-PR reconciliation: once a human merges a task's draft PR into
+- Merged-PR reconciliation: once a human merges a task's PR into
   `BASE_BRANCH`, the task/issue is closed and `agent:pr-open` cleared — two ways.
   A **"✓ Mark merged"** button appears on PR-open items in the SwiftBar menu, and
   **triage's PR back-fill** now also closes any tracked `agent:pr-open` item whose
@@ -71,7 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compared against a stale origin ref, so base history looked like branch work
   and an issue with stranded, unpushed implementation was re-skipped every run
   with no PR. The loop now fetches the base before comparing, and leftover work
-  with no open PR is carried through gates → commit → push → draft PR.
+  with no open PR is carried through gates → commit → push → PR.
   `lib-env.sh` also exports `WORKTREE_BASE` so external tooling (e.g. user git
   hooks) can recognise the loop's own worktrees.
 
@@ -120,8 +120,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Autonomous mode (Layer 1 — the advancer): the `advance` loop, the `agent:auto`
   opt-in label, `cadence run advance [--dry-run]`, and the `AUTONOMOUS`,
   `AUTO_MAX_ISSUES_PER_RUN`, `AUTO_MAX_REPAIRS`, and `MODEL_ADVANCE` settings. On
-  `agent:auto` issues it grants the next gate (spec → build → draft PR) without a
-  human, but still stops at a draft PR. Off by default.
+  `agent:auto` issues it grants the next gate (spec → build → PR) without a
+  human, but still stops at an open PR for a human to merge. Off by default.
 - The conductor (Layer 2): a deterministic, WIP-limited feeder — `cadence conduct
   [--dry-run]` and the `CONDUCT_WIP` cap. It ranks the ready backlog (priority →
   current cycle → oldest), skips blocked issues, and tops up `agent:auto` to the
@@ -163,6 +163,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **PRs are now opened ready for review (non-draft)** so GitHub Actions run
+  immediately, instead of as drafts. The safety model is otherwise unchanged:
+  PRs still only ever target `BASE_BRANCH` (an integration branch such as
+  develop or staging, never main/master), agents never merge, and Gate 3 —
+  a human reviewing and merging — still stands.
 - Failed runs are now alerted, not silent: a loop that exits non-zero or reports
   errors fires a macOS notification titled `Cadence <stage> — FAILED` (distinct
   "Basso" sound) and is recorded in the dated digest as well as the activity feed.
@@ -182,24 +187,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- File-backend build and revise loops now carry the full worktree/draft-PR
+- File-backend build and revise loops now carry the full worktree/PR
   contract. The rendered file prompts told build only to "implement inside the
   configured project/worktree" and flip `agent:build` to `agent:pr-open`, so
   orchestrators edited the main checkout directly and labelled tasks as having
   a PR that never existed (the advance loop then escalated
   `agent:needs-attention` on phantom PRs). Build now creates an isolated
-  worktree off the base branch, runs gates there, opens a draft PR, and records
+  worktree off the base branch, runs gates there, opens a PR, and records
   the PR URL in the task body before setting `agent:pr-open`; revise pushes to
   the task's existing PR branch only.
 - `cadence tasks validate` (and therefore `cadence doctor`) flags a task
-  labelled `agent:pr-open` whose body has no PR URL — the tell that no draft PR
+  labelled `agent:pr-open` whose body has no PR URL — the tell that no PR
   actually exists and the workflow state needs repair.
 - Autonomous queue no longer freezes on one stuck issue. The conductor counted
   every `agent:auto` issue against `CONDUCT_WIP`, including ones parked in
   `agent:needs-attention`/`agent:hold`/terminal states — so a single failed
   issue could hold the only WIP slot indefinitely, reporting "queue full" every
   run while nothing progressed. A parked issue now releases its slot (active and
-  `agent:pr-open` issues still count, capping concurrent draft PRs).
+  `agent:pr-open` issues still count, capping concurrent open PRs).
 - Loop-runner crashes are no longer silent. Any non-zero exit that happens
   before a run's normal logging (a script error, an early failure after the
   pause/backend guards) now appends a `CRASHED (exit N)` line to both the stage

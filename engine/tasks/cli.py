@@ -151,7 +151,7 @@ def validate(text):
                         f"not its header; move it directly under the "
                         f"'## {current}: …' line with no blank line between"
                     )
-    # Workflow truth, not just format: agent:pr-open claims a draft PR exists,
+    # Workflow truth, not just format: agent:pr-open claims a PR exists,
     # and the build loop records its URL in the body. A pr-open task with no
     # PR reference is the tell that build never opened one.
     for task in parse(text):
@@ -159,7 +159,7 @@ def validate(text):
                 r"/pull/\d+", task["description"]):
             problems.append(
                 f"task '{task['identifier']}': labelled agent:pr-open but the body "
-                "has no PR URL (…/pull/<n>) — the draft PR may not exist; the build "
+                "has no PR URL (…/pull/<n>) — the PR may not exist; the build "
                 "loop records the PR URL when it opens one"
             )
     return problems

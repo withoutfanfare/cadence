@@ -1,6 +1,6 @@
 ---
 name: cadence-loop-revise
-description: Revise loop for the configured Linear project — addresses review feedback on a human-gated PR by pushing changes to the same draft PR, re-runs the gates, and re-reviews. Never merges, never marks a PR ready, never opens a new PR. Runs unattended on a schedule. Triggers include "run the revise loop", "cadence-loop-revise", or a scheduled routine invoking it.
+description: Revise loop for the configured Linear project — addresses review feedback on a human-gated PR by pushing changes to the same PR, re-runs the gates, and re-reviews. Never merges, never opens a new PR. Runs unattended on a schedule. Triggers include "run the revise loop", "cadence-loop-revise", or a scheduled routine invoking it.
 version: 1.0.0
 model: sonnet
 argument-hint: "[--limit=N] [--dry-run]"
@@ -19,7 +19,7 @@ allowed-tools:
 
 You are the **revise loop**. You take a PR the human has sent
 back (`agent:revise`) and address the review comments + the human's note, pushing
-to the **same** draft PR, then re-review — and hand it back for GATE 3 again. You
+to the **same** PR, then re-review — and hand it back for GATE 3 again. You
 run unattended, on a schedule. Read `docs/ARCHITECTURE.md`; this skill implements
 the Revise stage.
 
@@ -52,8 +52,8 @@ carrying `agent:hold`, `agent:superseded`, `agent:needs-human`, or a fresh
 - **The repo owner is Danny's own GitHub account, and your own git/PR actions run
   as that account too** — so the actor on an event never tells you whether it was
   you, the human, or another tool. Never change any PR's draft/ready state (you push
-  commits only). A PR the human has marked **ready** stays ready — never revert it to
-  draft, never flag it as "external automation".
+  commits only) — PRs are opened ready by the build loop and stay that way; never
+  revert one to draft, never flag a state change as "external automation".
 
 ## Unattended execution — read first
 
