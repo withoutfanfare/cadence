@@ -89,8 +89,9 @@ it again (`--purge` also deletes its run history). The underlying registry
 primitives are `cadence schedule register|unregister [path]` (idempotent). A
 project only runs when its own config contains `CADENCE_SCHEDULED=1`. The global
 tick is capped by
-`CADENCE_SCHEDULER_MAX_RUNS`, default `1`, so adding projects does not create
-unbounded fan-out. See
+`CADENCE_SCHEDULER_MAX_RUNS`, default `1`, and dispatches through a bounded
+concurrency pool (`CADENCE_SCHEDULER_CONCURRENCY`), so adding projects does
+not create unbounded fan-out. See
 [Running multiple projects](OPERATING.md#running-multiple-projects).
 
 ## State and Logs

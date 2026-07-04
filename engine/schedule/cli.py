@@ -692,6 +692,7 @@ def print_status(env):
     path = projects_file(env)
     print(f"projects: {path}")
     print(f"max runs/tick: {env.get('CADENCE_SCHEDULER_MAX_RUNS') or 1}")
+    print(f"concurrency: {env.get('CADENCE_SCHEDULER_CONCURRENCY') or 4}")
     projects = read_projects(path)
     if not projects:
         print("  (none)")

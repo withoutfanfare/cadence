@@ -31,7 +31,11 @@ tidy or to read what the agents produced.
    `cadence schedule tick`.
 2. The scheduler reads the explicit projects file, skips any project without
    `CADENCE_SCHEDULED=1`, and launches at most `CADENCE_SCHEDULER_MAX_RUNS`
-   due stages per tick.
+   due stages per tick — at most one per project, admitted in
+   least-recently-served order and dispatched through a pool of at most
+   `CADENCE_SCHEDULER_CONCURRENCY` simultaneous runs. A run that crashes or
+   exceeds `CADENCE_SCHEDULER_RUN_TIMEOUT` is recorded as failed without
+   sinking the rest of the tick.
 3. Due stages run through `cadence --config <project>/cadence/.env run <stage>`
    (or `cadence --config ... conduct`), so the same run path handles manual and
    scheduled work.
