@@ -16,13 +16,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dormant (paused/idle), and every state has a distinct shape as well as colour
   for a clear glance and colour-blind legibility.
 
+- The single-position label invariant is now **engine-enforced on every write**,
+  not reconstructed by prose in each skill. `agent:specced`, `agent:pr-open` and
+  `agent:revised` are mutually exclusive; a shared `resolve_labels` (used by
+  `linear issue-update`, `bulk-label`, and `tasks update`) drops the superseded
+  label whenever a new position is added, and self-heals stray residue on any
+  write. A forgotten `--remove-label` — by a loop or a human on the CLI — can no
+  longer strand an issue on two lifecycle labels (the corruption that accumulated
+  silently until the queue's conflict check surfaced it). Documented in `LABELS.md`.
+
 ### Added
 
 - One-command project onboarding and offboarding. `cadence onboard [path]` does
-  everything that was manual — fills a per-project `CADENCE_STATE_DIR` (refusing a
-  dir another registered project already uses), sets `CADENCE_SCHEDULED=1`,
+  everything that was manual — auto-fills a blank per-project `CADENCE_STATE_DIR`
+  (refusing a dir another registered project already uses), sets `CADENCE_SCHEDULED=1`,
   registers the project, loads the launchd scheduler, and runs doctor — leaving
-  the project **paused** so a human resumes deliberately. `cadence offboard [path]`
+  newly registered projects **paused** so a human resumes deliberately. `cadence offboard [path]`
   reverses it (pause, `CADENCE_SCHEDULED=0`, unregister) and unloads the scheduler
   job once the registry empties; `--purge` also deletes the project's own state
   dir, never the config or the shared default. New `cadence schedule unregister`
@@ -56,7 +65,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cadence linear issue-update --state-type` (no state name hard-coded in the
   engine); file tasks close to `status: completed`.
 
+- `cadence queue --why`: failed (`agent:needs-attention`) issues grouped by root
+  cause, each with a one-line fix. A systemic problem parks many issues with the
+  same failure (a broken worktree killed 8; an engine gap killed 4) but they
+  surface as N separate red items. This reads each issue's reason (a file task's
+  run note, or a Linear issue's last comment), classifies it, and groups
+  largest-cause-first — turning "17 items to triage" into "3 things to fix once".
+  Documented in the cheatsheet.
+
+- `cadence linear doc-get <id>` plus a `documents` list on `issue-get`, so the
+  advance loop can fetch a linked spec document and verify its acceptance criteria
+  at the specced gate. Previously the adapter could only *write* documents
+  (`doc-upsert`), so the autonomous advancer could not confirm a spec and parked
+  the issue as `agent:needs-attention`. `doc-get` is scope-checked to the
+  configured team.
+
+- `WORKTREE_REPO` overrides the grove repo name when the checkout directory
+  differs from the bare repo (e.g. a `stuntrocketv3` worktree off the
+  `stuntrocket` grove repo). Previously the grove repo name was hard-derived from
+  `PROJECT_DIR`'s basename, so such a project's every build failed at worktree
+  creation. `cadence doctor` now probes `grove ls <repo>` and fails at setup if
+  the repo does not resolve, instead of letting it fail silently on every build.
+  Documented in `CONFIGURATION.md`.
+
+- `cadence doctor` warns when a verification gate looks repo-wide (a full test
+  suite, or a linter/analyser over the whole tree). Such a gate fails on
+  pre-existing debt unrelated to a change and blocks every build from opening a
+  PR. `CONFIGURATION.md` documents the change-scope rule with per-ecosystem
+  scoped examples and the baseline fallback.
+
 ### Fixed
+
+- A timed-out orchestrator run no longer orphans the provider's children.
+  `run-orchestrator.sh` now launches the provider in its own session and kills
+  the whole process group on timeout (SIGTERM, then SIGKILL after a grace
+  period) — previously only the direct provider process was killed, leaving gate
+  children (cargo/pnpm/git) mutating the worktree after `run-loop.sh` released
+  the lock and started the next run.
+
+- `cadence offboard --purge` now refuses to delete a `CADENCE_STATE_DIR` that is
+  the shared default state root or is still used by another registered project,
+  and no longer swallows delete failures — guarding against a misconfigured
+  config wiping `~/.cadence` or another project's state.
+
+- The folded reviewer ran with **no tools**. `run-reviewer.sh` invokes the
+  orchestrator with stage `review`, which has no loop skill, so the allowed-tools
+  lookup hit a missing file and returned an empty list — the reviewer then could
+  not inspect the diff and never confirmed `review_clean`, parking the issue. It
+  now falls back to a read-only toolset (`Bash,Read,Grep,Glob`) when a stage has
+  no skill.
+
+- Two label transitions leaked a superseded label: `grant-build` left
+  `agent:specced` and `revise` left `agent:pr-open`, stranding issues on two
+  lifecycle labels. Both skills now drop the old label — and the engine-level
+  invariant above makes the whole class impossible regardless.
+
+- `cadence queue` flagged healthy issues as "inconsistent labels". The check
+  counted the deliberately-sticky `agent:triaged` as a conflict, so nearly every
+  advanced issue tripped it, burying real crash residue in noise. It now flags
+  only two-or-more mutually-exclusive position labels.
+
+- `cadence overview` reported projects as "paused" after the pause was lifted. A
+  paused run is a skipped tick, not a stage result; it no longer masks a stage's
+  real last outcome (current pause is shown by the `PAUSED` flag).
 
 - SwiftBar "Mark merged" (and "Release hold") silently did nothing. SwiftBar
   drops a menu param whose value is empty, shifting every later positional arg

@@ -44,6 +44,8 @@ _run_with_timeout() {
   shift 3
 
   python3 - "$timeout" "$workdir" "$stdin_file" "$@" <<'PY'
+import os
+import signal
 import subprocess
 import sys
 
@@ -56,16 +58,34 @@ stdin_handle = None
 try:
     if stdin_path:
         stdin_handle = open(stdin_path, "rb")
-    proc = subprocess.Popen(cmd, cwd=workdir, stdin=stdin_handle)
+    # Own session/process group: a provider (claude/codex) spawns gate children
+    # (cargo, pnpm, git). Killing only the direct child on timeout would orphan
+    # those grandchildren, which keep mutating the worktree after run-loop.sh
+    # releases the build/revise lock and the next run starts. start_new_session
+    # makes the child the group leader (pid == pgid) so we can kill the whole tree.
+    proc = subprocess.Popen(cmd, cwd=workdir, stdin=stdin_handle,
+                            start_new_session=True)
 except FileNotFoundError:
     print(f"run-orchestrator: command not found: {cmd[0]}", file=sys.stderr)
     sys.exit(127)
 
+
+def _kill_group(sig):
+    try:
+        os.killpg(proc.pid, sig)
+    except ProcessLookupError:
+        pass
+
+
 try:
     rc = proc.wait(timeout=timeout)
 except subprocess.TimeoutExpired:
-    proc.kill()
-    proc.wait()
+    _kill_group(signal.SIGTERM)
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        _kill_group(signal.SIGKILL)  # escalate if the group ignores SIGTERM
+        proc.wait()
     sys.exit(124)
 except Exception as exc:  # pragma: no cover - runtime guardrail
     print(f"run-orchestrator: unexpected error running provider: {exc}", file=sys.stderr)

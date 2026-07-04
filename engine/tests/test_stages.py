@@ -1,6 +1,6 @@
 import os, sys, unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
-from stages import resolve_labels, stage_of  # noqa: E402
+from stages import is_terminal, resolve_labels, stage_of, strip_workflow_labels  # noqa: E402
 
 
 class TestStageOf(unittest.TestCase):
@@ -78,6 +78,21 @@ class TestResolveLabels(unittest.TestCase):
         out = resolve_labels(["agent:triaged", "agent:pr-open", "agent:hold"],
                              add=["agent:pr-open"], remove=["agent:hold"])
         self.assertEqual(out, ["agent:triaged", "agent:pr-open"])
+
+
+class TestTerminal(unittest.TestCase):
+    def test_is_terminal(self):
+        self.assertTrue(is_terminal("completed"))
+        self.assertTrue(is_terminal("Canceled"))
+        self.assertTrue(is_terminal("done"))
+        self.assertFalse(is_terminal("open"))
+        self.assertFalse(is_terminal(""))
+        self.assertFalse(is_terminal(None))
+
+    def test_strip_workflow_labels_keeps_non_agent(self):
+        out = strip_workflow_labels(
+            ["agent:pr-open", "agent:specced", "Bug", "priority:high", "agent:auto"])
+        self.assertEqual(out, ["Bug", "priority:high"])
 
 
 if __name__ == "__main__":

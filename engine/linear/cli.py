@@ -14,7 +14,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from cadence_env import load_env  # noqa: E402
-from stages import resolve_labels  # noqa: E402
+from stages import resolve_labels, strip_workflow_labels  # noqa: E402
 from stages import stage_of  # noqa: E402
 
 API_URL = "https://api.linear.app/graphql"
@@ -452,18 +452,37 @@ def _guard_gate_removal(remove_labels, env):
             % (stage, ", ".join(illegal)))
 
 
-def _enforced_label_ids(issue_id, add_names, rem_names, env, post):
+def _enforced_label_ids(issue_id, add_names, rem_names, env, post, strip_agent=False):
     """Current labels ± the requested changes, with the single-position invariant
     enforced by resolve_labels (adding a lifecycle label drops the others; stray
-    residue self-heals). Returns the labelIds to set. Shared by issue-update and
-    bulk-label so neither path can leave an issue on two lifecycle labels."""
+    residue self-heals). With strip_agent, also drop every agent:* workflow label
+    (used when the issue moves to a terminal state). Returns the labelIds to set.
+    Shared by issue-update and bulk-label."""
     nodes = post(_ISSUE_GET_LABELS_Q, {"id": issue_id}, env)["issue"]["labels"]["nodes"]
     name2id = {n["name"]: n["id"] for n in nodes}
     final = resolve_labels([n["name"] for n in nodes], add=add_names, remove=rem_names)
+    if strip_agent:
+        final = strip_workflow_labels(final)
     need = [n for n in final if n not in name2id]
     for nm, _id in zip(need, _resolve_label_ids(need, env, post)):
         name2id[nm] = _id
     return [name2id[n] for n in final]
+
+
+def _target_state_is_terminal(args, env, post):
+    """Does this update move the issue to a done/cancelled state? Checks the
+    --state-type arg directly, or resolves a --state name to its type."""
+    stype = (getattr(args, "state_type", None) or "").lower()
+    if stype:
+        return stype in _TERMINAL_STATE_TYPES
+    name = getattr(args, "state", None)
+    if not name:
+        return False
+    data = post(_STATES_Q, {"teamId": env.get("LINEAR_TEAM_ID")}, env)
+    for n in data["workflowStates"]["nodes"]:
+        if n["name"].lower() == name.lower():
+            return (n.get("type") or "").lower() in _TERMINAL_STATE_TYPES
+    return False
 
 
 def cmd_issue_update(args, env, post=graphql):
@@ -484,9 +503,14 @@ def cmd_issue_update(args, env, post=graphql):
         inp["cycleId"] = args.cycle  # caller passes a cycle id
     add_names = getattr(args, "add_label", None) or []
     rem_names = getattr(args, "remove_label", None) or []
-    if add_names or rem_names:
+    # Moving an issue to a done/cancelled state clears its agent:* workflow labels
+    # — a completed issue holds no live gate/status/flag. So a "Mark merged" close
+    # tidies the board without a separate label sweep.
+    terminal = _target_state_is_terminal(args, env, post)
+    if add_names or rem_names or terminal:
         _resolve_label_ids(add_names, env, post)   # fail fast on an unknown add label
-        inp["labelIds"] = _enforced_label_ids(args.id, add_names, rem_names, env, post)
+        inp["labelIds"] = _enforced_label_ids(args.id, add_names, rem_names, env, post,
+                                              strip_agent=terminal)
     if not inp:
         raise LinearError("issue-update: no fields to change")
     res = post(_ISSUE_UPDATE_M, {"id": args.id, "input": inp}, env)["issueUpdate"]

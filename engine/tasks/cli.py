@@ -8,7 +8,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
-from stages import resolve_labels, stage_of  # noqa: E402
+from stages import is_terminal, resolve_labels, stage_of, strip_workflow_labels  # noqa: E402
 
 
 HEADER_RE = re.compile(r"^##\s+([^:\n]+):\s*(.+)$")
@@ -249,6 +249,10 @@ def cmd_update(args, env=None):
         task["status"] = args.status
     task["labels"] = resolve_labels(task.get("labels") or [],
                                     add=args.add_label, remove=args.remove_label)
+    # Completing a task clears its workflow labels — a done task carries no live
+    # gate/status/flag. Self-heals: any update to an already-done task tidies it.
+    if is_terminal(task.get("status")):
+        task["labels"] = strip_workflow_labels(task["labels"])
     if args.body_file:
         with open(args.body_file, encoding="utf-8") as f:
             description = f.read().strip()

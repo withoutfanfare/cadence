@@ -112,6 +112,23 @@ class TestConflicts(unittest.TestCase):
         self.assertIn("⚠ inconsistent labels: P-2 (agent:specced + agent:pr-open)", out)
 
 
+class TestDropTerminal(unittest.TestCase):
+    def test_completed_and_cancelled_issues_are_dropped(self):
+        issues = [
+            _issue("P-1", ["agent:specced"]),
+            _issue("P-2", ["agent:build"], status="completed"),
+            _issue("P-3", ["agent:pr-open"], state_type="canceled"),
+        ]
+        kept = [i["identifier"] for i in cli.drop_terminal(issues)]
+        self.assertEqual(kept, ["P-1"])
+
+    def test_closed_task_with_stale_labels_leaves_the_board(self):
+        # the SR3-7 case: status done but agent:build still attached
+        issues = [_issue("DONE", ["agent:build", "agent:specced"], status="completed")]
+        out = cli.render(cli.bucket(cli.drop_terminal(issues)))
+        self.assertIn("Nothing waiting on you.", out)
+
+
 class TestFailureClustering(unittest.TestCase):
     def test_classify_matches_known_signatures(self):
         self.assertEqual(cli.classify_failure(

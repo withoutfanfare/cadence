@@ -3,6 +3,7 @@ import pathlib
 import stat
 import subprocess
 import tempfile
+import time
 import unittest
 
 
@@ -161,6 +162,24 @@ printf 'codex:%s:%s\\n' "${#stdin}" "$last"
 
         self.assertEqual(result.returncode, 124, result.stderr)
         self.assertIn("timed out after 1s", result.stderr)
+
+    def test_timeout_kills_orphaned_grandchildren(self):
+        marker = pathlib.Path(self.tmp.name) / "grandchild-ran"
+        # The provider spawns a detached child that would touch the marker after
+        # 3s, then blocks. On timeout the whole process group must die before the
+        # grandchild writes — proving it isn't orphaned into the worktree.
+        self._write_exe(
+            "claude",
+            f"#!/bin/sh\n( sleep 3; : > '{marker}' ) &\nsleep 10\n",
+        )
+
+        result = self._run("claude", "sonnet", orch_timeout="1")
+
+        self.assertEqual(result.returncode, 124, result.stderr)
+        time.sleep(4)  # past the grandchild's 3s delay
+        self.assertFalse(
+            marker.exists(),
+            "grandchild survived the timeout and kept mutating state")
 
 
 if __name__ == "__main__":

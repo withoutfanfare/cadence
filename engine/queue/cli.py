@@ -39,6 +39,21 @@ ASSIGN_ORDER = [
 _LABEL = {bid: lbl for bid, _disp, lbl in YOUR_MOVE + IN_FLIGHT + PARKED}
 
 
+# A done/cancelled issue never needs you, even if it still carries workflow
+# labels (a close may leave them behind). Mirrors the conductor's terminal check.
+_TERMINAL = {"completed", "canceled", "cancelled", "done", "closed"}
+
+
+def _is_terminal(issue):
+    return (issue.get("state_type") or issue.get("status") or "").lower() in _TERMINAL
+
+
+def drop_terminal(issues):
+    """Filter out done/cancelled issues before bucketing — the queue is 'what
+    needs you now', and a closed task never does (even with stale labels)."""
+    return [i for i in issues if not _is_terminal(i)]
+
+
 def bucket(issues):
     """Assign each issue to at most one bucket by ASSIGN_ORDER precedence."""
     out = {bid: [] for bid in _LABEL}
@@ -281,7 +296,7 @@ def main(argv=None):
                     help="cluster the failed (agent:needs-attention) issues by root cause, "
                          "each with a one-line fix, so a shared cause is fixed once")
     args = ap.parse_args(argv)
-    issues = fetch_issues()
+    issues = drop_terminal(fetch_issues())
     if args.why:
         failed = bucket(issues)["needs_attention"]
         items = [(i.get("identifier", "?"), _failure_reason(i, os.environ)) for i in failed]
