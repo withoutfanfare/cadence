@@ -41,6 +41,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Multi-project scheduler fairness: the tick served registered projects in
+  registry order and stopped after `max_runs`, so several projects sharing the
+  same `SCHED_*` offsets would starve the ones behind them — a later project with
+  identical offsets could get **zero** runs indefinitely while earlier ones ran
+  dozens of times. The tick now orders due projects **least-recently-served
+  first**, warns when more projects are due than `max_runs` can serve in one tick,
+  and `cadence schedule status` shows each project's last-run age with a starved
+  flag.
+
+- Human gate labels are now protected in the engine, not just in prompt text. A
+  scheduled loop could remove a human-granted `agent:spec` / `agent:build` /
+  `agent:revise` (a triage run did exactly this, reverting granted work to
+  `agent:triaged`). `cadence tasks update` and `cadence linear
+  issue-update`/`bulk-label` now refuse to remove a gate label unless the caller
+  is a human (no `CADENCE_STAGE`) or the stage that owns the gate; `run-loop.sh`
+  exports `CADENCE_STAGE` for every run.
+
 - Build loop: interrupted work is now resumed instead of skipped. The skip rule
   treated "branch has commits ahead of `BASE_BRANCH`" as in-progress work but
   compared against a stale origin ref, so base history looked like branch work
