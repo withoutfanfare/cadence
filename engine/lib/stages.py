@@ -48,3 +48,36 @@ def stage_of(labels):
         "exception": exception,
         "advance": advance,
     }
+
+
+# Lifecycle position labels are mutually exclusive: an issue rests at exactly one.
+# agent:triaged is excluded on purpose — it is sticky (only a human clears it) and
+# legitimately coexists with any later position. Order is lifecycle order.
+POSITION_LABELS = ["agent:specced", "agent:pr-open", "agent:revised"]
+_POSITION_RANK = {lbl: i for i, lbl in enumerate(POSITION_LABELS)}
+
+
+def resolve_labels(existing, add=None, remove=None):
+    """Apply add/remove to a label set, then enforce the single-position invariant
+    so an issue can never carry two lifecycle labels at once (the corruption the
+    queue's conflict check surfaces).
+
+    Adding a position label makes it the resting one and drops the other two —
+    respecting an explicit move, including the backwards revised→pr-open accept
+    step. If the caller adds none but two survive (residue from a crashed loop, or
+    a human editing labels directly in the tracker), the furthest is kept: any
+    write self-heals stray residue. Returns a de-duplicated, order-stable list.
+    """
+    add = list(add or [])
+    remove = set(remove or [])
+    out = []
+    for lbl in list(existing) + add:
+        if lbl in remove or lbl in out:
+            continue
+        out.append(lbl)
+    present = [lbl for lbl in out if lbl in _POSITION_RANK]
+    if len(present) <= 1:
+        return out
+    added_pos = [lbl for lbl in add if lbl in _POSITION_RANK]
+    keep = max(added_pos or present, key=_POSITION_RANK.__getitem__)
+    return [lbl for lbl in out if lbl not in _POSITION_RANK or lbl == keep]

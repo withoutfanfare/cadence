@@ -8,7 +8,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
-from stages import stage_of  # noqa: E402
+from stages import resolve_labels, stage_of  # noqa: E402
 
 
 HEADER_RE = re.compile(r"^##\s+([^:\n]+):\s*(.+)$")
@@ -247,13 +247,8 @@ def cmd_update(args, env=None):
     task = _find(tasks, args.identifier)
     if args.status is not None:
         task["status"] = args.status
-    labels = list(task.get("labels") or [])
-    for label in args.remove_label or []:
-        labels = [existing for existing in labels if existing != label]
-    for label in args.add_label or []:
-        if label not in labels:
-            labels.append(label)
-    task["labels"] = labels
+    task["labels"] = resolve_labels(task.get("labels") or [],
+                                    add=args.add_label, remove=args.remove_label)
     if args.body_file:
         with open(args.body_file, encoding="utf-8") as f:
             description = f.read().strip()

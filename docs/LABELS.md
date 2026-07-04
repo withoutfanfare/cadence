@@ -77,3 +77,11 @@ NEW ─(triage)→ agent:triaged
 `agent:claimed` rides along during any active run.
 `agent:hold` / `agent:superseded` / `agent:needs-human` take an issue out of play.
 `agent:needs-attention` flags a failed run for the human.
+
+**Single-position invariant (engine-enforced).** `agent:specced`, `agent:pr-open`
+and `agent:revised` are mutually exclusive — an issue rests at exactly one.
+Every label write through `cadence linear issue-update` / `bulk-label` /
+`cadence tasks update` enforces this: adding one of these drops the others, and a
+write that finds two already present heals to the furthest. `agent:triaged` is
+exempt — it is sticky (only a human clears it) and coexists with any later
+position. So a loop or a human can never strand an issue on two lifecycle labels.

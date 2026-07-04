@@ -320,6 +320,35 @@ class TestWriteVerbs(unittest.TestCase):
         with self.assertRaises(cli.LinearError):
             cli.cmd_issue_update(args, ENV, post=post)
 
+    def test_issue_update_enforces_single_position_label(self):
+        # Adding agent:pr-open to an issue that still carries agent:specced must
+        # persist only pr-open (+ non-position labels) — the engine drops the
+        # superseded specced even though the caller forgot to remove it.
+        sent = {}
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            if "issueLabels(" in query:
+                return {"issueLabels": {"nodes": [
+                    {"id": "lt", "name": "agent:triaged"},
+                    {"id": "ls", "name": "agent:specced"},
+                    {"id": "lp", "name": "agent:pr-open"}]}}
+            if "labels{ nodes{ id name } }" in query:
+                return {"issue": {"labels": {"nodes": [
+                    {"id": "lt", "name": "agent:triaged"},
+                    {"id": "ls", "name": "agent:specced"}]}}}
+            if "issueUpdate(" in query:
+                sent["ids"] = variables["input"]["labelIds"]
+                return {"issueUpdate": {"success": True, "issue": {"id": "i1"}}}
+            return {"issue": {"labels": {"nodes": []}}}
+        args = types.SimpleNamespace(
+            id="i1", priority=None, title=None, estimate=None, state=None,
+            state_type=None, cycle=None, add_label=["agent:pr-open"], remove_label=None)
+        cli.cmd_issue_update(args, ENV, post=post)
+        self.assertEqual(set(sent["ids"]), {"lt", "lp"})   # specced (ls) dropped
+
     def test_issue_update_rejects_empty_payload(self):
         def post(query, variables, env):
             if "team { id } project" in query:
