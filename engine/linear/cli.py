@@ -181,7 +181,8 @@ def _shape_issue(n):
     if n.get("cycle"):
         out["cycle"] = n["cycle"].get("number")
     for rel, key in (("comments", "comments"), ("relations", "relations"),
-                     ("inverseRelations", "inverseRelations"), ("children", "children")):
+                     ("inverseRelations", "inverseRelations"), ("children", "children"),
+                     ("documents", "documents")):
         if n.get(rel):
             out[key] = n[rel].get("nodes", [])
     out["stage"] = stage_of(out.get("labels") or [])
@@ -246,6 +247,7 @@ query($id: String!) {
     relations { nodes { type relatedIssue { identifier url state { type } } } }
     inverseRelations { nodes { type issue { identifier url state { type } } } }
     children { nodes { identifier title url } }
+    documents { nodes { id title url } }
   }
 }""" % _ISSUE_FIELDS
 
@@ -264,6 +266,27 @@ query($teamId: ID!) {
     nodes { id number name startsAt endsAt }
   }
 }"""
+
+
+_DOC_GET_Q = """
+query($id: String!) {
+  document(id: $id) { id title url content issue { team { id } } }
+}"""
+
+
+def cmd_doc_get(args, env, post=graphql):
+    """Fetch a spec document's body by id. Scoped: refuses a document whose issue
+    is outside the configured team, so the advance loop can read a spec to verify
+    acceptance criteria without reaching across the workspace."""
+    _require_env(env, "LINEAR_TEAM_ID")
+    doc = post(_DOC_GET_Q, {"id": args.id}, env).get("document")
+    if not doc:
+        raise LinearError(f"document {args.id} not found")
+    team = ((doc.get("issue") or {}).get("team") or {}).get("id")
+    if team != env.get("LINEAR_TEAM_ID"):
+        raise LinearError(f"document {args.id} is outside the configured team")
+    return {"id": doc["id"], "title": doc.get("title"),
+            "url": doc.get("url"), "content": doc.get("content")}
 
 
 def cmd_cycles_list(args, env, post=graphql):
@@ -671,6 +694,7 @@ def _build_parser():
     d = sub.add_parser("doc-upsert"); d.add_argument("--issue", required=True)
     d.add_argument("--title", required=True); d.add_argument("--body", required=True)
     d.add_argument("--doc-id", dest="doc_id")
+    dg = sub.add_parser("doc-get"); dg.add_argument("id")
     sub.add_parser("cycles-list")
     ic = sub.add_parser("issue-create")
     ic.add_argument("--title", required=True)
@@ -687,7 +711,8 @@ _DISPATCH = {
     "issue-comment": cmd_issue_comment,
     "issue-relate": cmd_issue_relate, "label-ensure": cmd_label_ensure,
     "labels-list": cmd_labels_list, "labels-init": cmd_labels_init,
-    "doc-upsert": cmd_doc_upsert, "cycles-list": cmd_cycles_list,
+    "doc-upsert": cmd_doc_upsert, "doc-get": cmd_doc_get,
+    "cycles-list": cmd_cycles_list,
     "issue-create": cmd_issue_create,
 }
 

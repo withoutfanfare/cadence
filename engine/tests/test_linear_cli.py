@@ -99,6 +99,37 @@ class TestReadVerbs(unittest.TestCase):
         self.assertEqual(out["labels"], ["Bug"])
         self.assertEqual(out["cycle"], 5)
 
+    def test_issue_get_surfaces_linked_documents(self):
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            return {"issue": {
+                "id": "i1", "identifier": "STU-1", "title": "T", "url": "u",
+                "documents": {"nodes": [{"id": "doc-9", "title": "Spec — STU-1", "url": "du"}]}}}
+        out = cli.cmd_issue_get(types.SimpleNamespace(id="STU-1"), ENV, post=post)
+        self.assertEqual(out["documents"], [{"id": "doc-9", "title": "Spec — STU-1", "url": "du"}])
+
+    def test_doc_get_returns_body_when_in_scope(self):
+        cap = {"response": {"document": {
+            "id": "doc-9", "title": "Spec", "url": "du", "content": "## Problem\n...",
+            "issue": {"team": {"id": "team-1"}}}}}
+        out = cli.cmd_doc_get(types.SimpleNamespace(id="doc-9"), ENV, post=fake_post(cap))
+        self.assertEqual(out["content"], "## Problem\n...")
+        self.assertEqual(out["id"], "doc-9")
+
+    def test_doc_get_rejects_out_of_team_scope(self):
+        cap = {"response": {"document": {
+            "id": "doc-9", "content": "x", "issue": {"team": {"id": "other-team"}}}}}
+        with self.assertRaises(cli.LinearError):
+            cli.cmd_doc_get(types.SimpleNamespace(id="doc-9"), ENV, post=fake_post(cap))
+
+    def test_doc_get_rejects_missing_document(self):
+        with self.assertRaises(cli.LinearError):
+            cli.cmd_doc_get(types.SimpleNamespace(id="nope"), ENV,
+                            post=fake_post({"response": {"document": None}}))
+
     def test_issue_get_rejects_out_of_assignee_scope(self):
         def post(query, variables, env):
             if "team { id } project" in query:

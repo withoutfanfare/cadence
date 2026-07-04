@@ -82,6 +82,26 @@ class TestOverview(unittest.TestCase):
             self.assertEqual(data["projects"][0]["health"], "failed")
             self.assertEqual(data["projects"][0]["stages"]["build"]["errors"], 2)
 
+    def test_stale_paused_entry_does_not_mask_stage_result(self):
+        # Project was paused, then resumed; spec ran once (paused) and hasn't run
+        # since. No PAUSED flag now -> health ok, and the stale paused entry must
+        # not show as the spec result. triage's real run still shows through.
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+            p1 = self._project(
+                tmp, "app", scheduled=True, state=os.path.join(tmp, "s"),
+                ledger=[
+                    {"stage": "triage", "errors": 0, "ts": "2026-07-02T07:00:00Z"},
+                    {"stage": "spec", "paused": True, "reason": "manual", "ts": "2026-07-02T08:00:00Z"},
+                ])
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(p1 + "\n")
+            data = cli.overview({"CADENCE_PROJECTS_FILE": registry})
+            p = data["projects"][0]
+            self.assertEqual(p["health"], "ok")
+            self.assertIsNone(p["stages"]["spec"])          # paused entry ignored
+            self.assertEqual(p["stages"]["triage"]["result"], "ok")
+
     def test_empty_registry(self):
         with tempfile.TemporaryDirectory() as tmp:
             registry = os.path.join(tmp, "projects.txt")

@@ -50,14 +50,23 @@ def bucket(issues):
     return out
 
 
+# Lifecycle position labels that are mutually exclusive on a clean board: the
+# build loop swaps specced→pr-open, revise swaps pr-open→revised. Two of these at
+# once means a loop crashed mid-transition. agent:triaged is deliberately sticky
+# (only a human clears it — docs/LABELS.md) so it coexists with any position by
+# design, and the exception flags (needs-attention/needs-human) ride alongside a
+# position too — none of those are conflicts.
+_CONFLICT_LABELS = ["agent:specced", "agent:pr-open", "agent:revised"]
+
+
 def conflicts(issues):
-    """Issues carrying more than one bucket label — a sign of a crashed loop
-    leaving inconsistent board state. Precedence still decides the bucket; this
-    just surfaces the inconsistency. Returns [(identifier, [labels]), ...]."""
+    """Issues carrying two or more mutually-exclusive lifecycle position labels —
+    a sign of a loop that crashed mid-transition, leaving stale board state.
+    Returns [(identifier, [labels]), ...]."""
     out = []
     for issue in issues:
         labels = set(issue.get("labels") or [])
-        matched = [_LABEL[bid] for bid in ASSIGN_ORDER if _LABEL[bid] in labels]
+        matched = [lbl for lbl in _CONFLICT_LABELS if lbl in labels]
         if len(matched) > 1:
             out.append((issue.get("identifier", "?"), matched))
     return out
