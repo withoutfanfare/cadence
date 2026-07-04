@@ -172,6 +172,47 @@ class TestFailureClustering(unittest.TestCase):
         self.assertIn("gate failed", cli._salient_line(body))
 
 
+class TestPrUrl(unittest.TestCase):
+    def test_taken_from_task_body(self):
+        issue = _issue("T-1", ["agent:pr-open"],
+                       description="Draft PR: https://github.com/o/r/pull/42 opened.")
+        self.assertEqual(cli._pr_url(issue, {"TASK_BACKEND": "file"}),
+                         "https://github.com/o/r/pull/42")
+
+    def test_file_backend_without_url_is_empty(self):
+        issue = _issue("T-2", ["agent:pr-open"], description="no link here")
+        self.assertEqual(cli._pr_url(issue, {"TASK_BACKEND": "file"}), "")
+
+    def test_linear_falls_back_to_newest_comment(self):
+        issue = _issue("SR3-9", ["agent:pr-open"], description="")
+        detail = {"comments": [
+            {"body": "🤖 Draft PR [#7](https://github.com/o/r/pull/7)"},
+            {"body": "🤖 Review on [PR #7](https://github.com/o/r/pull/7) · clean"},
+        ]}
+        old = cli._issue_detail
+        cli._issue_detail = lambda ident, env: detail
+        try:
+            self.assertEqual(cli._pr_url(issue, {}), "https://github.com/o/r/pull/7")
+        finally:
+            cli._issue_detail = old
+
+    def test_render_shows_pr_link_under_review_bucket(self):
+        issue = _issue("T-3", ["agent:pr-open"],
+                       description="see https://github.com/o/r/pull/9")
+        buckets = cli.bucket([issue])
+        cli.attach_pr_urls(buckets, {"TASK_BACKEND": "file"})
+        out = cli.render(buckets)
+        self.assertIn("↳ T-3  https://github.com/o/r/pull/9", out)
+
+    def test_verbose_shows_pr_line(self):
+        issue = _issue("T-4", ["agent:revised"],
+                       description="see https://github.com/o/r/pull/11")
+        buckets = cli.bucket([issue])
+        cli.attach_pr_urls(buckets, {"TASK_BACKEND": "file"})
+        out = cli.render(buckets, verbose=True)
+        self.assertIn("PR: https://github.com/o/r/pull/11", out)
+
+
 class TestFetchIssues(unittest.TestCase):
     def test_file_backend_reads_tasks_file(self):
         with tempfile.TemporaryDirectory() as tmp:
