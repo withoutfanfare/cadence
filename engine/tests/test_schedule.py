@@ -247,40 +247,6 @@ class TestSchedulerTick(unittest.TestCase):
             # Never-served first, then oldest-served; registry order breaks ties only.
             self.assertEqual(served, [c, a, b])
 
-    def test_tick_reports_a_timed_out_run_without_killing_the_tick(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            registry = os.path.join(tmp, "projects.txt")
-            projects = []
-            for name in ("a", "b"):
-                config_dir = os.path.join(tmp, name, "cadence")
-                os.makedirs(config_dir)
-                with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
-                    f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n"
-                            % os.path.join(tmp, name, "state"))
-                projects.append(os.path.join(tmp, name))
-            with open(registry, "w", encoding="utf-8") as f:
-                f.write("\n".join(projects) + "\n")
-
-            def fake_run(cmd, cwd=None, env=None, timeout=None):
-                # subprocess.run RAISES on timeout expiry — the tick must report
-                # that run as failed, not crash and drop its siblings' outcomes.
-                if cwd == projects[0]:
-                    raise subprocess.TimeoutExpired(cmd, timeout or 0)
-                return type("Proc", (), {"returncode": 0})()
-
-            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
-                   "CADENCE_SCHEDULER_MAX_RUNS": "2"}
-            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
-            buf = io.StringIO()
-            with contextlib.redirect_stdout(buf), \
-                    contextlib.redirect_stderr(io.StringIO()):
-                rc = cli.tick(env, now=now, run=fake_run)
-
-            self.assertEqual(rc, 1)                      # the timeout counts as a failure
-            out = buf.getvalue()
-            self.assertIn("timed out", out)              # ...and is reported as one
-            self.assertIn(f"{projects[1]}: triage exit 0", out)  # sibling outcome survives
-
     def test_tick_launches_at_most_one_run_per_project_per_tick(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = os.path.join(tmp, "app")
@@ -550,6 +516,8 @@ class TestSchedulerTick(unittest.TestCase):
             self.assertEqual(rc, 1)
             self.assertEqual(sorted(served), sorted(paths))
             self.assertIn("timed out", out.getvalue())
+            # The sibling's outcome line survives the timeout in full.
+            self.assertIn(f"{paths[1]}: triage exit 0", out.getvalue())
 
 
 class TestScheduleApplyScript(unittest.TestCase):
