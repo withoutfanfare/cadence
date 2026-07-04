@@ -8,6 +8,7 @@ YOUR MOVE / IN FLIGHT / PARKED tiers. Pure read; performs no writes.
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -70,6 +71,107 @@ def conflicts(issues):
         if len(matched) > 1:
             out.append((issue.get("identifier", "?"), matched))
     return out
+
+
+# ── Failure clustering ───────────────────────────────────────────────────────
+# A systemic problem (a broken worktree, a repo-wide gate, an engine gap) parks
+# many issues with the same failure. Grouping them by root cause turns "17 red
+# items to triage one by one" into "3 things to fix once". First signature wins;
+# order most-specific first.
+_FAILURE_SIGNATURES = [
+    (("bare repo", "could not find bare", "grove add' failed", "worktree add failed",
+      "worktree creation failed", "could not create worktree"),
+     "Worktree setup",
+     "the worktree backend can't create a tree — check WORKTREE_TOOL and that the git/grove repo exists (`cadence doctor`)"),
+    (("doc-get", "doc-list", "criteria_present", "linked-document", "linked spec document"),
+     "Spec-doc verification",
+     "engine gap now fixed — clear agent:needs-attention to let advance retry"),
+    (("review_clean", "run-reviewer", "reviewer stage", "stage name"),
+     "Reviewer",
+     "engine bug now fixed — clear agent:needs-attention to let advance retry"),
+    (("empty diff", "no implementation diff", "nothing to ship"),
+     "Empty diff",
+     "no change was produced — likely already done; verify and close, or re-spec"),
+    (("already present", "already on", "already exists", "already done", "already merged"),
+     "Work already on base",
+     "the change is already on the base branch — close it as done"),
+    (("lint", "phpstan", "duster", "pre-existing", "full test suite", "gate failed", "gate failure"),
+     "Gate on pre-existing debt",
+     "scope the gate to the change or add a baseline (`cadence doctor` flags repo-wide gates)"),
+]
+
+_REASON_HINT_WORDS = ("build note", "gate", "worktree", "fail", "block", "no pr",
+                      "empty diff", "cannot", "could not", "parked", "already",
+                      "review", "criteria", "needs-attention", "doc-")
+
+
+def classify_failure(reason):
+    """Map a failure reason (a run note or last comment) to a (cluster, fix-hint)."""
+    low = (reason or "").lower()
+    for needles, label, hint in _FAILURE_SIGNATURES:
+        if any(n in low for n in needles):
+            return label, hint
+    return "Other", "read the run note / last comment and decide"
+
+
+def cluster_failures(items):
+    """items: iterable of (identifier, reason). Returns clusters
+    [{"label","hint","ids"}], largest first, so the biggest shared cause leads."""
+    groups = {}
+    for ident, reason in items:
+        label, hint = classify_failure(reason)
+        groups.setdefault(label, {"label": label, "hint": hint, "ids": []})["ids"].append(ident)
+    return sorted(groups.values(), key=lambda g: (-len(g["ids"]), g["label"]))
+
+
+def _salient_line(text):
+    """The most failure-relevant one-liner from a run note or comment."""
+    if not text:
+        return ""
+    best = ""
+    for para in re.split(r"\n\s*\n", text):
+        if any(w in para.lower() for w in _REASON_HINT_WORDS):
+            best = " ".join(para.split())
+    if not best:
+        for line in text.splitlines():
+            if line.strip():
+                best = " ".join(line.split())
+                break
+    return best[:200]
+
+
+def render_failures(clusters, team_name=None):
+    head = "── Run failures%s ──────────────" % (" · " + team_name if team_name else "")
+    if not clusters:
+        return head + "\n  None — nothing is in agent:needs-attention."
+    out = [head, "grouped by root cause — fix each once:"]
+    for c in clusters:
+        out.append("  ⚠ %-26s %2d   %s" % (c["label"], len(c["ids"]), ", ".join(c["ids"])))
+        out.append("      ↳ %s" % c["hint"])
+    return "\n".join(out)
+
+
+def _failure_reason(issue, env):
+    """One-line reason a needs-attention issue failed: the run note in a file
+    task's body, or a Linear issue's last comment."""
+    if _backend(env) == "file":
+        return _salient_line(issue.get("description") or issue.get("body") or "")
+    ident = issue.get("identifier")
+    if not ident:
+        return ""
+    adapter = os.path.join(os.path.dirname(__file__), "..", "linear", "cli.py")
+    run_env = os.environ.copy()
+    run_env.update(env)
+    proc = subprocess.run([sys.executable, adapter, "issue-get", ident],
+                          capture_output=True, text=True, env=run_env)
+    if proc.returncode != 0:
+        return ""
+    try:
+        data = json.loads(proc.stdout or "{}")
+    except json.JSONDecodeError:
+        return ""
+    comments = data.get("comments") or []
+    return _salient_line(comments[-1].get("body", "") if comments else "")
 
 
 def _keys(issues, cap=15):
@@ -175,8 +277,16 @@ def main(argv=None):
                                  description="What needs you now, grouped by agent state.")
     ap.add_argument("-v", "--verbose", action="store_true",
                     help="expand each actionable issue to title, priority, cycle and URL")
+    ap.add_argument("--why", action="store_true",
+                    help="cluster the failed (agent:needs-attention) issues by root cause, "
+                         "each with a one-line fix, so a shared cause is fixed once")
     args = ap.parse_args(argv)
     issues = fetch_issues()
+    if args.why:
+        failed = bucket(issues)["needs_attention"]
+        items = [(i.get("identifier", "?"), _failure_reason(i, os.environ)) for i in failed]
+        print(render_failures(cluster_failures(items), os.environ.get("LINEAR_TEAM_NAME")))
+        return
     print(render(bucket(issues), os.environ.get("LINEAR_TEAM_NAME"), args.verbose,
                  conflicts(issues)))
 
