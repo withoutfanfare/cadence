@@ -80,6 +80,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the issue as `agent:needs-attention`. `doc-get` is scope-checked to the
   configured team.
 
+- `WORKTREE_REPO` overrides the grove repo name when the checkout directory
+  differs from the bare repo (e.g. a `stuntrocketv3` worktree off the
+  `stuntrocket` grove repo). Previously the grove repo name was hard-derived from
+  `PROJECT_DIR`'s basename, so such a project's every build failed at worktree
+  creation. `cadence doctor` now probes `grove ls <repo>` and fails at setup if
+  the repo does not resolve, instead of letting it fail silently on every build.
+  Documented in `CONFIGURATION.md`.
+
 - `cadence doctor` warns when a verification gate looks repo-wide (a full test
   suite, or a linter/analyser over the whole tree). Such a gate fails on
   pre-existing debt unrelated to a change and blocks every build from opening a
