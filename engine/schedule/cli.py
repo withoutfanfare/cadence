@@ -559,7 +559,7 @@ def _due_stage_count(values, now, window):
     return n
 
 
-def _run_stage(home, project, config, stage, run):
+def _run_stage(home, project, config, stage, run, timeout=None):
     cmd = [os.path.join(home, "bin", "cadence"), "--config", config]
     if stage == "conduct":
         cmd.append("conduct")
@@ -567,7 +567,7 @@ def _run_stage(home, project, config, stage, run):
         cmd.extend(["run", stage])
     env = os.environ.copy()
     env["CADENCE_CONFIG"] = config
-    return run(cmd, cwd=project, env=env)
+    return run(cmd, cwd=project, env=env, timeout=timeout)
 
 
 def tick(env, now=None, run=subprocess.run):
@@ -575,6 +575,11 @@ def tick(env, now=None, run=subprocess.run):
     now = now or datetime.now(timezone.utc)
     window = max(1, _int_env(env, "CADENCE_SCHEDULER_WINDOW_MINUTES", 5))
     max_runs = _int_env(env, "CADENCE_SCHEDULER_MAX_RUNS", 1)
+    # Wall-clock cap per run; 0 disables it. subprocess.run kills the child on
+    # expiry, so a hung model call cannot hold the scheduler indefinitely. This
+    # sits above ORCH_TIMEOUT (default 2700s), which bounds only the model call
+    # inside the run; run-loop.sh's 2h stale-lock reclaim is the coarser backstop.
+    timeout = _int_env(env, "CADENCE_SCHEDULER_RUN_TIMEOUT", 3600) or None
     projects = read_projects(projects_file(env))
     ran = 0
     failed = 0
@@ -625,7 +630,7 @@ def tick(env, now=None, run=subprocess.run):
                 continue
             if not key or _already_ran(state, stage, key):
                 continue
-            proc = _run_stage(home, project, config, stage, run)
+            proc = _run_stage(home, project, config, stage, run, timeout)
             _mark_ran(state, stage, key)
             ran += 1
             print(f"{project}: {stage} exit {proc.returncode}")

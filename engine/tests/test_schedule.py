@@ -137,7 +137,7 @@ class TestSchedulerTick(unittest.TestCase):
                 f.write(project + "\n")
             calls = []
 
-            def fake_run(cmd, cwd=None, env=None):
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
                 calls.append((cmd, cwd, env))
                 return type("Proc", (), {"returncode": 0})()
 
@@ -159,6 +159,34 @@ class TestSchedulerTick(unittest.TestCase):
         self.assertEqual(cwd, project)
         self.assertEqual(run_env["CADENCE_CONFIG"], os.path.join(config_dir, ".env"))
 
+    def test_tick_passes_run_timeout_through_the_run_seam(self):
+        # (raw env value, timeout the run seam must receive)
+        for raw, expected in (("120", 120), ("0", None), (None, 3600)):
+            with tempfile.TemporaryDirectory() as tmp:
+                project = os.path.join(tmp, "app")
+                config_dir = os.path.join(project, "cadence")
+                registry = os.path.join(tmp, "projects.txt")
+                os.makedirs(config_dir)
+                with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                    f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n"
+                            % os.path.join(tmp, "state"))
+                with open(registry, "w", encoding="utf-8") as f:
+                    f.write(project + "\n")
+                seen = []
+
+                def fake_run(cmd, cwd=None, env=None, timeout=None):
+                    seen.append(timeout)
+                    return type("Proc", (), {"returncode": 0})()
+
+                env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry}
+                if raw is not None:
+                    env["CADENCE_SCHEDULER_RUN_TIMEOUT"] = raw
+                now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+                with contextlib.redirect_stdout(io.StringIO()), \
+                        contextlib.redirect_stderr(io.StringIO()):
+                    cli.tick(env, now=now, run=fake_run)
+                self.assertEqual(seen, [expected])
+
     def test_tick_serves_least_recently_served_project_first(self):
         with tempfile.TemporaryDirectory() as tmp:
             registry = os.path.join(tmp, "projects.txt")
@@ -179,7 +207,7 @@ class TestSchedulerTick(unittest.TestCase):
 
             served = []
 
-            def fake_run(cmd, cwd=None, env=None):
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
                 served.append(cwd)
                 return type("Proc", (), {"returncode": 0})()
 
@@ -257,7 +285,7 @@ class TestSchedulerTick(unittest.TestCase):
             with open(registry, "w", encoding="utf-8") as f:
                 f.write(project + "\n")
 
-            def fake_run(cmd, cwd=None, env=None):
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
                 return type("Proc", (), {"returncode": 0})()
 
             env = {
@@ -287,7 +315,7 @@ class TestSchedulerTick(unittest.TestCase):
 
             calls = []
 
-            def fake_run(cmd, cwd=None, env=None):
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
                 calls.append(cmd)
                 return type("Proc", (), {"returncode": 0})()
 
