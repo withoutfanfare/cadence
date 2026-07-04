@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `cadence queue` now shows the GitHub PR link on every issue awaiting PR
+  review (the "Review PR" and "Re-review PR" rows), inline by default and as a
+  `PR:` line under `-v`. The link is read from where the build loop already
+  records it: the task body on the file backend, or the newest matching comment
+  on Linear. Documented in `OPERATING.md`.
+
 - One-command project onboarding and offboarding. `cadence onboard [path]` does
   everything that was manual — auto-fills a blank per-project `CADENCE_STATE_DIR`
   (refusing a dir another registered project already uses), sets `CADENCE_SCHEDULED=1`,
