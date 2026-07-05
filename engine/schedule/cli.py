@@ -255,10 +255,36 @@ def main(argv):
     return 2
 
 
+def _root_config_path(env):
+    home = os.path.expanduser(os.path.expandvars(env.get("CADENCE_HOME") or HOME))
+    return os.path.abspath(os.path.join(home, ".env"))
+
+
+def _active_config_path(env):
+    path = env.get("CADENCE_CONFIG")
+    if not path:
+        return None
+    return os.path.abspath(os.path.expanduser(os.path.expandvars(path)))
+
+
+def _registry_env(env):
+    active = _active_config_path(env)
+    root = _root_config_path(env)
+    if active and active != root:
+        root_values = read_env_file(root)
+        root_values["CADENCE_HOME"] = os.path.dirname(root)
+        return root_values
+    return env
+
+
 def projects_file(env):
+    explicit = env.get("CADENCE_PROJECTS_FILE")
+    if explicit:
+        return os.path.expanduser(os.path.expandvars(explicit))
+    reg_env = _registry_env(env)
     return os.path.expanduser(os.path.expandvars(
-        env.get("CADENCE_PROJECTS_FILE")
-        or os.path.join(env.get("CADENCE_STATE_DIR") or os.path.expanduser("~/.cadence"), "projects.txt")
+        reg_env.get("CADENCE_PROJECTS_FILE")
+        or os.path.join(reg_env.get("CADENCE_STATE_DIR") or os.path.expanduser("~/.cadence"), "projects.txt")
     ))
 
 

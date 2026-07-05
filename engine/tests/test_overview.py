@@ -130,6 +130,32 @@ class TestOverview(unittest.TestCase):
             self.assertEqual(data["projects"], [])
             self.assertIn("Cadence overview", cli.render_human(data))
 
+    def test_project_local_config_uses_root_registry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, "cadence-home")
+            global_state = os.path.join(tmp, "global-state")
+            local_state = os.path.join(tmp, "local-state")
+            project = self._project(
+                tmp, "app", scheduled=True, state=local_state,
+                ledger=[{"stage": "triage", "errors": 0, "ts": "2026-07-02T08:00:00Z"}])
+            config = os.path.join(project, "cadence", ".env")
+            registry = os.path.join(global_state, "projects.txt")
+            os.makedirs(home)
+            os.makedirs(global_state)
+            with open(os.path.join(home, ".env"), "w", encoding="utf-8") as f:
+                f.write(f"CADENCE_STATE_DIR={global_state}\n")
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(project + "\n")
+
+            data = cli.overview({
+                "CADENCE_HOME": home,
+                "CADENCE_CONFIG": config,
+                "CADENCE_STATE_DIR": local_state,
+            })
+
+            self.assertEqual(data["registry"], registry)
+            self.assertEqual(data["projects"][0]["project"], project)
+
 
 if __name__ == "__main__":
     unittest.main()
