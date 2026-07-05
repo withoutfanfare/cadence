@@ -82,6 +82,15 @@ final class CadenceClientTests: XCTestCase {
         XCTAssertEqual(result.exitCode, 124)
         XCTAssertTrue(result.stderr.contains("timed out after 0.1s"))
     }
+
+    func testProcessRunnerCapturesLargeOutputWithoutBlocking() async throws {
+        let runner = ProcessRunner(timeout: 2)
+
+        let result = try await runner.run(["python3", "-c", "print('x' * 200_000)"])
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertEqual(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines).count, 200_000)
+    }
 }
 
 private actor FakeRunner: CommandRunning {

@@ -21,8 +21,23 @@ public struct ProcessRunner: CommandRunning {
     public func run(_ command: [String]) async throws -> CommandResult {
         try await Task.detached(priority: .utility) {
             let process = Process()
-            let stdout = Pipe()
-            let stderr = Pipe()
+            let token = UUID().uuidString
+            let stdoutURL = FileManager.default.temporaryDirectory.appendingPathComponent("cadence-\(token).out")
+            let stderrURL = FileManager.default.temporaryDirectory.appendingPathComponent("cadence-\(token).err")
+            FileManager.default.createFile(atPath: stdoutURL.path, contents: nil)
+            FileManager.default.createFile(atPath: stderrURL.path, contents: nil)
+            let stdout = try FileHandle(forWritingTo: stdoutURL)
+            let stderr = try FileHandle(forWritingTo: stderrURL)
+            defer {
+                try? stdout.close()
+                try? stderr.close()
+                try? FileManager.default.removeItem(at: stdoutURL)
+                try? FileManager.default.removeItem(at: stderrURL)
+            }
+            func output(_ url: URL, handle: FileHandle) -> String {
+                try? handle.close()
+                return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            }
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             process.arguments = command
             process.standardOutput = stdout
@@ -40,8 +55,8 @@ public struct ProcessRunner: CommandRunning {
                         kill(process.processIdentifier, SIGKILL)
                     }
                     process.waitUntilExit()
-                    let out = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                    let err = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                    let out = output(stdoutURL, handle: stdout)
+                    let err = output(stderrURL, handle: stderr)
                     let message = "timed out after \(Self.describe(timeout))"
                     return CommandResult(
                         stdout: out,
@@ -51,8 +66,8 @@ public struct ProcessRunner: CommandRunning {
                 }
                 usleep(50_000)
             }
-            let out = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            let err = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            let out = output(stdoutURL, handle: stdout)
+            let err = output(stderrURL, handle: stderr)
             return CommandResult(stdout: out, stderr: err, exitCode: process.terminationStatus)
         }.value
     }
