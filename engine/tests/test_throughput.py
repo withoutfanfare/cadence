@@ -66,6 +66,16 @@ class TestAggregate(unittest.TestCase):
         self.assertEqual(agg["stages"]["conduct"]["tagged"], 2)
         self.assertEqual(agg["stages"]["conduct"]["blocked"], 1)
 
+    def test_roadmap_stage_is_counted(self):
+        agg = cli.aggregate([
+            {"stage": "roadmap", "ts": "2026-06-29T14:00:00Z",
+             "proposed": 2, "skipped": 1, "errors": 1},
+        ])
+        self.assertEqual(agg["stages"]["roadmap"]["runs"], 1)
+        self.assertEqual(agg["stages"]["roadmap"]["proposed"], 2)
+        self.assertEqual(agg["stages"]["roadmap"]["skipped"], 1)
+        self.assertEqual(agg["stages"]["roadmap"]["errors"], 1)
+
 
 class TestRender(unittest.TestCase):
     def test_shows_produced_and_pr_count(self):
@@ -103,6 +113,16 @@ class TestRender(unittest.TestCase):
         self.assertIn("conduct", out)
         self.assertIn("1 tagged", out)
         self.assertIn("1 blocked", out)
+
+    def test_render_shows_roadmap_activity(self):
+        agg = cli.aggregate([
+            {"stage": "roadmap", "ts": "2026-06-29T14:00:00Z",
+             "proposed": 2, "skipped": 1},
+        ])
+        out = cli.render(agg, 7)
+        self.assertIn("roadmap", out)
+        self.assertIn("2 proposed", out)
+        self.assertIn("1 skipped", out)
 
 
 if __name__ == "__main__":

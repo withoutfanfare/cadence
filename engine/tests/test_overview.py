@@ -18,7 +18,7 @@ cli = _load("cadence_overview_cli", "..", "overview", "cli.py")
 
 class TestOverview(unittest.TestCase):
     def _project(self, tmp, name, *, scheduled, state, ledger=None, paused=False, activity=None,
-                 autonomous=False):
+                 autonomous=False, roadmap_schedule=None):
         proj = os.path.join(tmp, name)
         os.makedirs(os.path.join(proj, "cadence"))
         with open(os.path.join(proj, "cadence", ".env"), "w", encoding="utf-8") as f:
@@ -26,6 +26,8 @@ class TestOverview(unittest.TestCase):
             f.write("AUTONOMOUS=%s\n" % ("on" if autonomous else "0"))
             f.write("CADENCE_STATE_DIR=%s\n" % state)
             f.write('LINEAR_TEAM_NAME="Team %s"\n' % name)
+            if roadmap_schedule:
+                f.write("SCHED_ROADMAP=%s\n" % roadmap_schedule)
         os.makedirs(os.path.join(state, "runs"))
         if paused:
             open(os.path.join(state, "runs", "PAUSED"), "w").close()
@@ -101,6 +103,25 @@ class TestOverview(unittest.TestCase):
             self.assertEqual(p["health"], "ok")
             self.assertIsNone(p["stages"]["spec"])          # paused entry ignored
             self.assertEqual(p["stages"]["triage"]["result"], "ok")
+
+    def test_roadmap_activity_is_reported_and_scheduled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+            p1 = self._project(
+                tmp, "app", scheduled=True, state=os.path.join(tmp, "s"),
+                roadmap_schedule="24h@20",
+                ledger=[{"stage": "roadmap", "proposed": 2, "errors": 0,
+                         "ts": "2026-07-02T09:00:00Z"}])
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(p1 + "\n")
+
+            data = cli.overview({"CADENCE_PROJECTS_FILE": registry})
+            project = data["projects"][0]
+
+            self.assertEqual(project["health"], "ok")
+            self.assertEqual(project["stages"]["roadmap"]["result"], "ok")
+            self.assertIsNotNone(project["schedule"]["roadmap"])
+            self.assertIn("roadmap=ok", cli.render_human(data))
 
     def test_empty_registry(self):
         with tempfile.TemporaryDirectory() as tmp:
