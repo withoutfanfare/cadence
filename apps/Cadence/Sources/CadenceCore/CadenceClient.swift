@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 public struct CommandResult: Sendable {
     public let stdout: String
@@ -11,7 +12,11 @@ public protocol CommandRunning: Sendable {
 }
 
 public struct ProcessRunner: CommandRunning {
-    public init() {}
+    private let timeout: TimeInterval
+
+    public init(timeout: TimeInterval = 30) {
+        self.timeout = timeout
+    }
 
     public func run(_ command: [String]) async throws -> CommandResult {
         try await Task.detached(priority: .utility) {
@@ -24,7 +29,28 @@ public struct ProcessRunner: CommandRunning {
             process.standardError = stderr
             process.environment = Self.environment()
             try process.run()
-            process.waitUntilExit()
+            let deadline = Date().addingTimeInterval(timeout)
+            while process.isRunning {
+                if Date() >= deadline {
+                    process.terminate()
+                    for _ in 0..<10 where process.isRunning {
+                        usleep(100_000)
+                    }
+                    if process.isRunning {
+                        kill(process.processIdentifier, SIGKILL)
+                    }
+                    process.waitUntilExit()
+                    let out = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                    let err = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                    let message = "timed out after \(Self.describe(timeout))"
+                    return CommandResult(
+                        stdout: out,
+                        stderr: err.isEmpty ? message : "\(err.trimmingCharacters(in: .whitespacesAndNewlines))\n\(message)",
+                        exitCode: 124
+                    )
+                }
+                usleep(50_000)
+            }
             let out = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
             let err = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
             return CommandResult(stdout: out, stderr: err, exitCode: process.terminationStatus)
@@ -42,6 +68,10 @@ public struct ProcessRunner: CommandRunning {
             env["PATH"] ?? ""
         ].joined(separator: ":")
         return env
+    }
+
+    private static func describe(_ timeout: TimeInterval) -> String {
+        timeout >= 1 ? "\(Int(timeout))s" : String(format: "%.1fs", timeout)
     }
 }
 

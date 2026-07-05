@@ -73,6 +73,15 @@ final class CadenceClientTests: XCTestCase {
         let commands = await runner.commands
         XCTAssertEqual(commands, [["cadence", "--config", "/p/cadence/.env", "tasks", "list"]])
     }
+
+    func testProcessRunnerTimesOutHungCommand() async throws {
+        let runner = ProcessRunner(timeout: 0.1)
+
+        let result = try await runner.run(["/bin/sh", "-c", "sleep 5"])
+
+        XCTAssertEqual(result.exitCode, 124)
+        XCTAssertTrue(result.stderr.contains("timed out after 0.1s"))
+    }
 }
 
 private actor FakeRunner: CommandRunning {
