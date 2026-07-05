@@ -250,34 +250,13 @@ esac
 PROVIDER="$(provider_from_pair "$PAIR")"
 MODEL="$(model_from_pair "$PAIR")"
 
-# Housekeeping: before a build/revise launch, remove worktrees whose branch is fully
-# merged into origin/<base> (their PR landed) so they don't pile up. Conservative —
-# never touches the base worktree, a fresh/unbuilt branch (tip == base), or one with
-# local changes; only one loop runs at a time (lock above), so no concurrent worktree ops.
+# Housekeeping: before a build/revise launch, remove clean worktrees whose branch
+# is fully merged into origin/<base> (their PR landed) so they don't pile up.
 if [ "$STAGE" = "build" ] || [ "$STAGE" = "revise" ]; then
-  if [ -n "${WORKTREE_BASE:-}" ] && [ -d "$WORKTREE_BASE" ] \
-     && git -C "$PROJECT_DIR" fetch --quiet origin "${BASE_BRANCH:-develop}" 2>/dev/null; then
-    _base="${BASE_BRANCH:-develop}"
-    _basetip="$(git -C "$PROJECT_DIR" rev-parse "origin/$_base" 2>/dev/null || echo)"
-    for _wt in "$WORKTREE_BASE"/*/; do
-      _wt="${_wt%/}"
-      [ "$_wt" = "$PROJECT_DIR" ] && continue
-      _br="$(git -C "$_wt" symbolic-ref --quiet --short HEAD 2>/dev/null)" || continue
-      [ "$_br" = "$_base" ] && continue
-      _tip="$(git -C "$_wt" rev-parse HEAD 2>/dev/null)" || continue
-      [ "$_tip" = "$_basetip" ] && continue                                            # fresh/unbuilt — leave
-      if ! git -C "$_wt" diff --quiet 2>/dev/null \
-         || ! git -C "$_wt" diff --cached --quiet 2>/dev/null; then
-        continue  # dirty — leave
-      fi
-      git -C "$PROJECT_DIR" merge-base --is-ancestor "$_tip" "origin/$_base" 2>/dev/null || continue          # unmerged — leave
-      # Remove via the engine's tool-aware verb (grove rm under WORKTREE_TOOL=grove —
-      # which also unregisters the Herd site + deletes the branch; plain git otherwise).
-      "$DIR/worktree.sh" remove "$_br" >/dev/null 2>&1 \
-        && echo "[$(date -u +%FT%TZ)] $STAGE — pruned merged worktree $_br" >> "$LOGDIR/$STAGE.log"
-    done
-    git -C "$PROJECT_DIR" worktree prune 2>/dev/null || true
-  fi
+  "$DIR/worktree.sh" cleanup "${BASE_BRANCH:-develop}" 2>/dev/null \
+    | while IFS= read -r _br; do
+        echo "[$(date -u +%FT%TZ)] $STAGE — pruned merged worktree $_br" >> "$LOGDIR/$STAGE.log"
+      done
 fi
 
 LOG="$LOGDIR/$STAGE.log"

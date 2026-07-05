@@ -838,6 +838,37 @@ class TestOffboard(unittest.TestCase):
             self.assertTrue(any("contains state for" in x for x in lines))
             self.assertTrue(os.path.isdir(broad_state))
 
+    def test_purge_refused_when_state_dir_is_inside_another_project_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, project, config, state = self._onboarded(tmp)
+            broad_state = os.path.join(tmp, "state-root")
+            nested_state = os.path.join(broad_state, "app")
+            cli.upsert_env_var(config, "CADENCE_STATE_DIR", nested_state)
+            os.makedirs(os.path.join(nested_state, "runs"))
+
+            other = os.path.join(tmp, "other")
+            os.makedirs(os.path.join(other, "cadence"))
+            other_config = os.path.join(other, "cadence", ".env")
+            with open(other_config, "w", encoding="utf-8") as f:
+                f.write(f"CADENCE_STATE_DIR={broad_state}\n")
+            cli.register(env, [other], out=lambda *_: None)
+
+            lines = []
+            self.assertEqual(
+                cli.offboard(env, [project, "--purge"], out=lines.append), 0)
+            self.assertTrue(any("overlaps state for" in x for x in lines))
+            self.assertTrue(os.path.isdir(nested_state))
+
+    def test_purge_allows_active_project_state_dir_loaded_in_env(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, project, config, state = self._onboarded(tmp)
+            active_env = {**env, "CADENCE_STATE_DIR": state}
+
+            self.assertEqual(
+                cli.offboard(active_env, [project, "--purge"], out=lambda *_: None), 0)
+
+            self.assertFalse(os.path.exists(state))
+
     def test_purge_refused_when_state_dir_is_project_root(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = {"CADENCE_STATE_DIR": tmp}

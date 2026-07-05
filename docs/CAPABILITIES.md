@@ -67,11 +67,13 @@ Code-writing loops are isolated from the base checkout:
   `$WORKTREE_BASE/<branch>`.
 - `WORKTREE_TOOL=grove` delegates add/remove to `grove` for Laravel Herd sites.
 
-The worktree helper is `cadence worktree add|remove|path`. For `git`, `add`
+The worktree helper is `cadence worktree add|remove|path|merged|cleanup`. For `git`, `add`
 reuses an existing local branch, recovers an existing remote branch when present,
 or creates a new branch from `BASE_BRANCH`. `remove` deletes the worktree, deletes
-the branch, and prunes stale worktree metadata. For `grove`, the same verbs call
-`grove add` and `grove rm`.
+the branch, and prunes stale worktree metadata. `merged <branch> [base]` exits
+successfully only when that worktree is clean and already merged into
+`origin/<base>`. `cleanup [base]` removes only those proven-merged clean
+worktrees. For `grove`, the same add/remove verbs call `grove add` and `grove rm`.
 
 The project config does not move into generated worktrees. Keep it in
 `<PROJECT_DIR>/cadence/.env`; generated worktrees are disposable code workspaces.

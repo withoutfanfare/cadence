@@ -64,7 +64,7 @@ project's config to use. `cadence help` prints the built-in summary.
 
 | Command | What it does |
 |---|---|
-| `cadence worktree add\|remove\|path` | Build-worktree helper (git or grove) |
+| `cadence worktree add\|remove\|path\|merged\|cleanup` | Build-worktree helper (git or grove) |
 | `cadence memory recall\|remember` | Memory adapter |
 | `cadence advance decide\|criteria\|repairs` | Advancer decision core |
 | `cadence prompt render <stage> … --output <file>` | Render a loop prompt without running it |

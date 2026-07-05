@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from cadence_env import load_env  # noqa: E402
 from stages import resolve_labels, strip_workflow_labels  # noqa: E402
 from stages import stage_of  # noqa: E402
+from worktrees import remove_worktree as _remove_worktree  # noqa: E402
 
 API_URL = "https://api.linear.app/graphql"
 
@@ -432,6 +433,7 @@ mutation($id: String!, $input: IssueUpdateInput!) {
 
 
 GATE_LABELS = {"agent:spec", "agent:build", "agent:revise"}
+DELIVERY_LABELS = {"agent:pr-open", "agent:revised"}
 _STAGE_MAY_REMOVE_GATE = {"spec": {"agent:spec"}, "build": {"agent:build"}, "revise": {"agent:revise"}}
 
 
@@ -452,13 +454,17 @@ def _guard_gate_removal(remove_labels, env):
             % (stage, ", ".join(illegal)))
 
 
+def _issue_label_nodes(issue_id, env, post):
+    return post(_ISSUE_GET_LABELS_Q, {"id": issue_id}, env)["issue"]["labels"]["nodes"]
+
+
 def _enforced_label_ids(issue_id, add_names, rem_names, env, post, strip_agent=False):
     """Current labels ± the requested changes, with the single-position invariant
     enforced by resolve_labels (adding a lifecycle label drops the others; stray
     residue self-heals). With strip_agent, also drop every agent:* workflow label
     (used when the issue moves to a terminal state). Returns the labelIds to set.
     Shared by issue-update and bulk-label."""
-    nodes = post(_ISSUE_GET_LABELS_Q, {"id": issue_id}, env)["issue"]["labels"]["nodes"]
+    nodes = _issue_label_nodes(issue_id, env, post)
     name2id = {n["name"]: n["id"] for n in nodes}
     final = resolve_labels([n["name"] for n in nodes], add=add_names, remove=rem_names)
     if strip_agent:
@@ -504,9 +510,11 @@ def cmd_issue_update(args, env, post=graphql):
     add_names = getattr(args, "add_label", None) or []
     rem_names = getattr(args, "remove_label", None) or []
     # Moving an issue to a done/cancelled state clears its agent:* workflow labels
-    # — a completed issue holds no live gate/status/flag. So a "Mark merged" close
+    # — a completed issue holds no live gate/status/flag. So a "Set as merged" close
     # tidies the board without a separate label sweep.
     terminal = _target_state_is_terminal(args, env, post)
+    had_delivery_label = terminal and any(
+        n["name"] in DELIVERY_LABELS for n in _issue_label_nodes(args.id, env, post))
     if add_names or rem_names or terminal:
         _resolve_label_ids(add_names, env, post)   # fail fast on an unknown add label
         inp["labelIds"] = _enforced_label_ids(args.id, add_names, rem_names, env, post,
@@ -514,6 +522,10 @@ def cmd_issue_update(args, env, post=graphql):
     if not inp:
         raise LinearError("issue-update: no fields to change")
     res = post(_ISSUE_UPDATE_M, {"id": args.id, "input": inp}, env)["issueUpdate"]
+    if not res["success"]:
+        raise LinearError("issue-update: Linear returned success=false")
+    if had_delivery_label:
+        _remove_worktree(args.id.lower(), env)
     return {"id": args.id, "success": res["success"]}
 
 

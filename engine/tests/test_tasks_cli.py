@@ -6,6 +6,7 @@ import tempfile
 import types
 import unittest
 import json
+from unittest import mock
 
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -145,6 +146,30 @@ class TestTasksCli(unittest.TestCase):
         result, _ = self._run(["update", "TASK-1", "--add-label", "agent:pr-open"], tasks_text=done)
         task = json.loads(result.stdout)
         self.assertEqual(task["labels"], ["Bug"])   # all agent:* dropped, done task
+
+    def test_completing_pr_open_task_removes_its_worktree(self):
+        done = TASKS_MD.replace("labels: agent:triaged, Bug", "labels: agent:pr-open, Bug")
+        args = types.SimpleNamespace(
+            identifier="TASK-1", status="completed", add_label=None,
+            remove_label=["agent:pr-open"], body_file=None)
+        env = {"TASK_FILE": "/tmp/tasks.md", "PROJECT_DIR": "/repo", "WORKTREE_BASE": "/wts"}
+        with mock.patch.object(cli, "load", return_value=cli.parse(done)), \
+             mock.patch.object(cli, "save"), \
+             mock.patch.object(cli, "_remove_worktree") as remove:
+            cli.cmd_update(args, env)
+        remove.assert_called_once_with("task-1", env)
+
+    def test_completing_revised_task_removes_its_worktree(self):
+        done = TASKS_MD.replace("labels: agent:triaged, Bug", "labels: agent:revised, Bug")
+        args = types.SimpleNamespace(
+            identifier="TASK-1", status="completed", add_label=None,
+            remove_label=["agent:revised"], body_file=None)
+        env = {"TASK_FILE": "/tmp/tasks.md", "PROJECT_DIR": "/repo", "WORKTREE_BASE": "/wts"}
+        with mock.patch.object(cli, "load", return_value=cli.parse(done)), \
+             mock.patch.object(cli, "save"), \
+             mock.patch.object(cli, "_remove_worktree") as remove:
+            cli.cmd_update(args, env)
+        remove.assert_called_once_with("task-1", env)
 
     def test_update_can_replace_body_from_file(self):
         with tempfile.TemporaryDirectory() as tmp:

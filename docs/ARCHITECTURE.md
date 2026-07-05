@@ -150,7 +150,8 @@ and write labels to record what they did. Full label vocabulary:
   and sets `agent:build`. This is the gate that lets code be written.
 - **Gate 3 (review)** — build loop stops at `agent:pr-open` with a draft PR. Human
   either merges (human-only) or sets `agent:revise`; the revise loop pushes to the
-  same draft PR and stops at `agent:revised` — back to Gate 3, repeatable.
+  same draft PR, posts a PR comment summarising the addressed review comments, and
+  stops at `agent:revised` — back to Gate 3, repeatable.
 
 ---
 
@@ -163,7 +164,8 @@ and write labels to record what they did. Full label vocabulary:
    One exception, reflecting reality rather than granting it: triage may close an
    `agent:pr-open` task/issue to a done state once its PR is merged into
    `BASE_BRANCH` — recording a merge the human already made, never advancing
-   unmerged work (triage's PR back-fill; see `skills/cadence-loop-triage`).
+   unmerged work (triage's PR back-fill; see `skills/cadence-loop-triage`). That
+   terminal update also removes the generated feature-branch worktree.
 3. **Write defaults differ per stage.** Triage is opt-in to writes: it analyses and
    writes nothing unless invoked with `--live`. Spec, build, and revise are live by
    default and opt *out* with `--dry-run`. `cadence run <stage>` invokes the live path

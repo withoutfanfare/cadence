@@ -83,6 +83,7 @@ SET_STAGE = [
 
 CLOSED_STATUS = {"done", "completed", "cancelled", "canceled", "closed"}
 CLOSED_STATE_TYPE = {"completed", "canceled", "cancelled"}
+PR_URL_RE = re.compile(r"https://github\.com/[^\s)>\"'`]+/pull/\d+")
 
 
 OUT = []  # menu lines are buffered so the menu-bar summary (first line) can be
@@ -208,6 +209,23 @@ def run_text(config, *args, timeout=15):
     return out.stdout.strip() if out.returncode == 0 else None
 
 
+def branch_name(ident):
+    return (ident or "").lower()
+
+
+def run_ok(config, *args, timeout=15):
+    cfg = (["--config", config] if config else [])
+    try:
+        out = subprocess.run([CADENCE, *cfg, *args], capture_output=True, text=True, timeout=timeout)
+    except Exception:
+        return False
+    return out.returncode == 0
+
+
+def worktree_merged(config, ident):
+    return run_ok(config, "worktree", "merged", branch_name(ident))
+
+
 def items_for(config, backend):
     cfg = (["--config", config] if config else [])
     if backend == "file":
@@ -236,12 +254,17 @@ def section_of(it):
     return st.get("exception") or st.get("name") or "backlog"
 
 
+def pr_url(it):
+    found = PR_URL_RE.findall(it.get("description") or it.get("body") or "")
+    return found[0] if found else None
+
+
 def action(pre, title, add, remove, config, ident, backend, done=""):
     # param6 (`done`) closes the task to record a human-merged PR: file backend
     # sets `status: <done>`, Linear moves to the `<done>`-type workflow state.
     # SwiftBar drops params whose value is empty, which shifts every later
     # positional arg one slot left — so send "-" for any empty value (the grant
-    # script maps "-" back to empty). Without this, "Mark merged" (empty add)
+    # script maps "-" back to empty). Without this, "Set as merged" (empty add)
     # shifted agent:pr-open into the add slot and lost the status change.
     return (
         '%s%s | bash="%s" param1=%s param2="%s" param3="%s" param4="%s" param5="%s" '
@@ -249,6 +272,16 @@ def action(pre, title, add, remove, config, ident, backend, done=""):
         % (pre, title, GRANT, backend, config or "-", ident,
            ",".join(add) or "-", ",".join(remove) or "-", done or "-")
     )
+
+
+def worktree_remove_action(pre, config, ident):
+    branch = branch_name(ident)
+    if config:
+        return ('%sClean up worktree | bash="%s" param1=--config param2="%s" '
+                'param3=worktree param4=remove param5="%s" terminal=false refresh=true'
+                % (pre, CADENCE, config, branch))
+    return ('%sClean up worktree | bash="%s" param1=worktree param2=remove '
+            'param3="%s" terminal=false refresh=true' % (pre, CADENCE, branch))
 
 
 def render_task(pre, it, config, backend, task_path):
@@ -266,10 +299,13 @@ def render_task(pre, it, config, backend, task_path):
     emit("%s%s  %s%s" % (pre, ident, disp, marker))
 
     sub = pre + "--"
-    if st.get("name") == "pr-open":
+    stage_name = st.get("name")
+    if stage_name in ("pr-open", "revised"):
         # Human merged the draft PR themselves — this only records that merge.
-        emit(action(sub, "✓ Mark merged", [], ["agent:pr-open"],
+        emit(action(sub, "Set as merged", [], ["agent:pr-open", "agent:revised"],
                     config, ident, backend, done="completed"))
+    if worktree_merged(config, ident):
+        emit(worktree_remove_action(sub, config, ident))
     adv = st.get("advance")
     if adv:
         emit(action(sub, "▶ Advance to %s" % STAGE_TITLE.get(adv, adv),
@@ -281,6 +317,9 @@ def render_task(pre, it, config, backend, task_path):
         emit(action(sub, "Release hold", [], ["agent:hold"], config, ident, backend))
     else:
         emit(action(sub, "Hold", ["agent:hold"], [], config, ident, backend))
+    pr = pr_url(it)
+    if pr:
+        emit("%sOpen PR | href=%s" % (sub, pr))
     url = it.get("url")
     if backend == "file" and task_path:
         emit('%sOpen tasks.md | bash="/usr/bin/open" param1="%s" terminal=false' % (sub, task_path))

@@ -212,6 +212,7 @@ check fails, emit the standard pause JSON and records described in
    - **Linked issue still at `agent:pr-open`** → the human has merged it, so record
      that: move it to a completed-type state and clear the label —
      `cadence linear issue-update <ID> --state-type completed --remove-label agent:pr-open`.
+     The engine also removes the issue's generated feature-branch worktree.
      This mirrors a merge a human already made; you are **not** granting a gate,
      marking a PR ready, or advancing unmerged work. Leave any issue whose PR is
      still open untouched.

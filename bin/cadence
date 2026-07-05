@@ -77,7 +77,7 @@ Usage: cadence [--config path|--profile name] <command> [args]
   prompt render <stage> [args...] --output <file>  Render a provider-neutral loop prompt
   advance <args>    Advancer decision core (decide, criteria, repairs)
   memory <args>     Memory adapter (recall, remember)
-  worktree <args>   Build worktree helper (add|remove|path; git or grove)
+  worktree <args>   Build worktree helper (add|remove|path|merged|cleanup; git or grove)
   help
 
 Home: $CADENCE_HOME   State: $CADENCE_STATE_DIR

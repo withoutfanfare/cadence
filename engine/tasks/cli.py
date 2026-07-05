@@ -9,6 +9,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from stages import is_terminal, resolve_labels, stage_of, strip_workflow_labels  # noqa: E402
+from worktrees import remove_worktree as _remove_worktree  # noqa: E402
 
 
 HEADER_RE = re.compile(r"^##\s+([^:\n]+):\s*(.+)$")
@@ -217,6 +218,7 @@ def cmd_get(args, env=None):
 
 
 GATE_LABELS = {"agent:spec", "agent:build", "agent:revise"}
+DELIVERY_LABELS = {"agent:pr-open", "agent:revised"}
 # Only the stage that owns a gate may retire it as part of its forward transition
 # (spec consumes agent:spec, build consumes agent:build, revise consumes agent:revise).
 _STAGE_MAY_REMOVE_GATE = {"spec": {"agent:spec"}, "build": {"agent:build"}, "revise": {"agent:revise"}}
@@ -245,6 +247,7 @@ def cmd_update(args, env=None):
     _guard_gate_removal(args.remove_label or [], env)
     tasks = load(env)
     task = _find(tasks, args.identifier)
+    had_delivery_label = bool(DELIVERY_LABELS.intersection(task.get("labels") or []))
     if args.status is not None:
         task["status"] = args.status
     task["labels"] = resolve_labels(task.get("labels") or [],
@@ -259,6 +262,8 @@ def cmd_update(args, env=None):
         _check_body(description)
         task["description"] = description
     save(tasks, env)
+    if had_delivery_label and is_terminal(task.get("status")):
+        _remove_worktree(task["identifier"].lower(), env)
     return task
 
 
