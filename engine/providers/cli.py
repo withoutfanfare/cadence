@@ -36,8 +36,8 @@ Cadence Provider Roles
 
 Provider Roles
   triage/spec/build/revise/advance/roadmap orchestrator
-    Controlled by ORCHESTRATOR_<STAGE>=provider:model. This is the lead model
-    running each Cadence loop.
+    Controlled by ORCHESTRATOR_<STAGE>=provider:model[:effort]. This is the
+    lead model running each Cadence loop.
 
   folded reviewer
     Controlled by REVIEW_PROVIDER and REVIEW_MODEL. This is separate from the
@@ -48,8 +48,10 @@ Provider Roles
     inside the build worktree.
 
 Rules
-  ORCHESTRATOR_* values use provider:model.
-  REVIEW_PROVIDER/REVIEW_MODEL combine into provider:model for folded review.
+  ORCHESTRATOR_* values use provider:model, optionally provider:model:effort
+  (effort applies to claude/codex only; kimi/opencode ignore it).
+  REVIEW_PROVIDER/REVIEW_MODEL combine into provider:model for folded review;
+  REVIEW_MODEL accepts the same :effort suffix.
   BUILD_IMPLEMENTER is provider-only, for example codex.
   MODEL_* values are model names only. Do not put provider:model values there.
 

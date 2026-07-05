@@ -1,6 +1,6 @@
 #!/bin/bash
 # run-orchestrator.sh - execute a chosen loop orchestrator provider.
-# Usage: run-orchestrator.sh <claude|codex|kimi|opencode> <model> <workdir> <prompt-file> <stage>
+# Usage: run-orchestrator.sh <claude|codex|kimi|opencode> <model[:effort]> <workdir> <prompt-file> <stage>
 set -u
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -22,6 +22,13 @@ export PATH="$RUNNER_PATH"
 
 PROVIDER="${1:?provider}"
 MODEL="${2:?model}"
+# Optional reasoning-effort suffix (ORCHESTRATOR_*=provider:model:effort). Split it
+# off here so scheduled runs pin their own effort instead of inheriting whatever
+# the machine's CLI default happens to be.
+EFFORT=""
+case "$MODEL" in
+  *:*) EFFORT="${MODEL##*:}"; MODEL="${MODEL%:*}" ;;
+esac
 WORKDIR="${3:?workdir}"
 PROMPT_FILE="${4:?prompt file}"
 STAGE="${5:?stage}"
@@ -35,7 +42,7 @@ TIMEOUT="${ORCH_TIMEOUT:-2700}"
 [ -d "$WORKDIR" ] || { echo "run-orchestrator: workdir not found: $WORKDIR" >&2; exit 3; }
 [ -f "$PROMPT_FILE" ] || { echo "run-orchestrator: prompt not found: $PROMPT_FILE" >&2; exit 3; }
 
-echo "run-orchestrator: $PROVIDER $STAGE model=$MODEL workdir=$WORKDIR timeout=${TIMEOUT}s" >&2
+echo "run-orchestrator: $PROVIDER $STAGE model=$MODEL${EFFORT:+ effort=$EFFORT} workdir=$WORKDIR timeout=${TIMEOUT}s" >&2
 
 _run_with_timeout() {
   local timeout="$1"
@@ -135,15 +142,21 @@ PY
 case "$PROVIDER" in
   claude)
     ALLOWED_TOOLS="$(claude_allowed_tools "$STAGE")"
-    _run_with_timeout "$TIMEOUT" "$WORKDIR" "$PROMPT_FILE" claude -p --model "$MODEL" --allowedTools "$ALLOWED_TOOLS" --dangerously-skip-permissions
+    CMD=(claude -p --model "$MODEL" --allowedTools "$ALLOWED_TOOLS" --dangerously-skip-permissions)
+    [ -n "$EFFORT" ] && CMD+=(--effort "$EFFORT")
+    _run_with_timeout "$TIMEOUT" "$WORKDIR" "$PROMPT_FILE" "${CMD[@]}"
     ;;
   codex)
-    _run_with_timeout "$TIMEOUT" "$WORKDIR" "$PROMPT_FILE" codex exec --model "$MODEL" --dangerously-bypass-approvals-and-sandbox -c 'mcp_servers={}' -C "$WORKDIR" --skip-git-repo-check -
+    CMD=(codex exec --model "$MODEL" --dangerously-bypass-approvals-and-sandbox -c 'mcp_servers={}' -C "$WORKDIR" --skip-git-repo-check)
+    [ -n "$EFFORT" ] && CMD+=(-c "model_reasoning_effort=\"$EFFORT\"")
+    _run_with_timeout "$TIMEOUT" "$WORKDIR" "$PROMPT_FILE" "${CMD[@]}" -
     ;;
   kimi)
+    [ -n "$EFFORT" ] && echo "run-orchestrator: effort '$EFFORT' not supported for kimi — ignored" >&2
     _run_with_timeout "$TIMEOUT" "$WORKDIR" "" kimi -m "$MODEL" --add-dir "$(dirname "$PROMPT_FILE")" -p "Read and follow the brief in this file: $PROMPT_FILE"
     ;;
   opencode)
+    [ -n "$EFFORT" ] && echo "run-orchestrator: effort '$EFFORT' not supported for opencode — ignored" >&2
     _run_with_timeout "$TIMEOUT" "$WORKDIR" "" opencode run --model "$MODEL" --dir "$WORKDIR" --dangerously-skip-permissions -f "$PROMPT_FILE" "Follow the attached brief exactly."
     ;;
   *)

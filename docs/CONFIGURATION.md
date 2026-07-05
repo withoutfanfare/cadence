@@ -166,6 +166,19 @@ Codex model name. Use `ORCHESTRATOR_BUILD=codex:gpt-5.4` instead.
 `BUILD_IMPLEMENTER` is also provider-only. Use `BUILD_IMPLEMENTER=codex`, not
 `BUILD_IMPLEMENTER=codex:gpt-5.4`.
 
+### Reasoning effort (optional third segment)
+
+Any `ORCHESTRATOR_*` value may carry an effort suffix:
+`ORCHESTRATOR_BUILD=claude:sonnet:medium`. Claude runs receive it as
+`--effort`; Codex runs as a `model_reasoning_effort` override. Kimi and
+OpenCode have no effort control, so the suffix is ignored with a logged
+warning. `REVIEW_MODEL` accepts the same suffix (`REVIEW_MODEL=opus:high`).
+
+Without a suffix the provider CLI's own default applies, which can differ per
+machine — pin the effort in config for scheduled runs where cost matters. The
+effort form requires the full `provider:model:effort` shape; do not combine it
+with a provider-less value.
+
 ### Provider Switching Examples
 
 Every orchestrator setting uses `provider:model` format. Supported provider

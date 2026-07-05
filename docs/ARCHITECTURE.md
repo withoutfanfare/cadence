@@ -49,7 +49,8 @@ tidy or to read what the agents produced.
    profiles render `skills/cadence-loop-<stage>/SKILL.md`; file profiles render
    the local `cadence tasks` contract.
 6. It invokes `engine/scripts/run-orchestrator.sh` with the configured
-   `provider:model`.
+   `provider:model`, plus an optional `:effort` suffix pinning the reasoning
+   effort for claude/codex runs.
 7. The run appends a human digest + a JSON line to `$CADENCE_STATE_DIR` (default
    `~/.cadence`): `runs/YYYY-MM-DD.md`, `runs/runs.jsonl`, `runs/activity.log`,
    `logs/<stage>.log`.
