@@ -25,7 +25,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer strand an issue on two lifecycle labels (the corruption that accumulated
   silently until the queue's conflict check surfaced it). Documented in `LABELS.md`.
 
+- Completing an issue now **clears its `agent:*` workflow labels automatically**.
+  A done/cancelled issue holds no live gate, status, or flag, so `tasks update
+  --status completed` and `linear issue-update` to a completed/cancelled state
+  strip every `agent:*` label (user labels like `Bug` are kept) — enforced in the
+  adapters, not left to a manual sweep. Any write to an already-done issue
+  self-heals leftover labels, so completed tasks stop appearing as phantom work.
+
+- Build **always titles its PR `<ID> — <title>`** (the task identifier and its
+  title) instead of letting `gh` infer the title from the commit, so every PR is
+  trackable from the GitHub PR list and links back to the task. Applies to both
+  the Linear skill and the file-backend build prompt.
+
 ### Added
+
+- `cadence queue` now shows the GitHub PR link on every issue awaiting PR
+  review (the "Review PR" and "Re-review PR" rows), inline by default and as a
+  `PR:` line under `-v`. The link is read from where the build loop already
+  records it: the task body on the file backend, or the newest matching comment
+  on Linear. Documented in `OPERATING.md`.
 
 - One-command project onboarding and offboarding. `cadence onboard [path]` does
   everything that was manual — auto-fills a blank per-project `CADENCE_STATE_DIR`
@@ -95,6 +113,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scoped examples and the baseline fallback.
 
 ### Fixed
+
+- Prompt rendering crashed under Python < 3.10. `render.py` used `str | None`
+  union hints evaluated at definition time, so the module raised `TypeError` on
+  import under Python 3.9 — breaking file-backend prompt rendering (and every
+  test that shells into it) on older interpreters. A `from __future__ import
+  annotations` keeps the hints lazy so they never evaluate at runtime.
 
 - A timed-out orchestrator run no longer orphans the provider's children.
   `run-orchestrator.sh` now launches the provider in its own session and kills

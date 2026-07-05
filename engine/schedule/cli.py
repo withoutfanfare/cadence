@@ -19,6 +19,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 ENGINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOME = os.path.dirname(ENGINE)
@@ -363,23 +364,51 @@ def onboard(env, args, out=print):
     return 0
 
 
-def _purge_unsafe(state, env):
+def _same_or_parent(parent, child):
+    try:
+        return os.path.commonpath([parent, child]) == parent
+    except ValueError:
+        return False
+
+
+def _purge_unsafe(state, env, project=None, config=None):
     """Return a refusal message if `state` must not be deleted, else None. A
-    misconfigured CADENCE_STATE_DIR pointing at the shared default root or a dir
+    misconfigured CADENCE_STATE_DIR pointing at a broad directory or a dir
     another registered project still uses would otherwise let --purge wipe state
     it does not own. Call after unregister so the offboarded project excludes
     itself from the shared-use check."""
     canon = os.path.realpath(state)
-    if canon == os.path.realpath(os.path.expanduser("~/.cadence")):
-        return f"  refused purge: {state} is the shared default state root"
-    others = [
-        p["project"] for p in read_projects(projects_file(env))
-        if os.path.realpath(_path_value(
-            read_env_file(p["config"]).get("CADENCE_STATE_DIR"),
-            os.path.expanduser("~/.cadence"))) == canon
-    ]
+    protected = {
+        os.path.realpath(os.path.expanduser("~")),
+        os.path.realpath(os.path.expanduser("~/.cadence")),
+        os.path.realpath(_path_value(env.get("CADENCE_STATE_DIR"), "~/.cadence")),
+        os.path.realpath(tempfile.gettempdir()),
+        os.path.realpath(os.sep),
+    }
+    if canon in protected:
+        return f"  refused purge: {state} is not a project-owned state dir"
+    home = os.path.realpath(os.path.expanduser("~"))
+    if _same_or_parent(home, canon):
+        parts = [p.lower() for p in canon.split(os.sep) if p]
+        if ".cadence" not in parts and not any("cadence" in p for p in parts[-2:]):
+            return f"  refused purge: {state} does not look like a Cadence state dir"
+    if project and _same_or_parent(canon, os.path.realpath(project)):
+        return f"  refused purge: {state} contains the project checkout"
+    if config and _same_or_parent(canon, os.path.realpath(os.path.dirname(config))):
+        return f"  refused purge: {state} contains the config directory"
+
+    others = []
+    for p in read_projects(projects_file(env)):
+        try:
+            other_values = read_env_file(p["config"])
+        except OSError as exc:
+            return f"  refused purge: cannot inspect {p['config']}: {exc}"
+        other = os.path.realpath(_path_value(
+            other_values.get("CADENCE_STATE_DIR"), os.path.expanduser("~/.cadence")))
+        if _same_or_parent(canon, other):
+            others.append(p["project"])
     if others:
-        return f"  refused purge: {state} still used by {', '.join(others)}"
+        return f"  refused purge: {state} contains state for {', '.join(others)}"
     return None
 
 
@@ -408,7 +437,7 @@ def offboard(env, args, out=print):
         out(f"  CADENCE_SCHEDULED=0 written to {config}")
     unregister(env, [project], out=out)
     if purge and state:
-        refusal = _purge_unsafe(state, env)
+        refusal = _purge_unsafe(state, env, project=project, config=config)
         if refusal:
             out(refusal)
         else:

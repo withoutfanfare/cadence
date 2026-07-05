@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Render Cadence loop skills into provider-neutral prompt files."""
 
+# Keep annotations lazy so `str | None`-style hints never evaluate at runtime;
+# the render step must work under whatever python runs the loop, incl. < 3.10.
+from __future__ import annotations
+
 import argparse
 import os
 import pathlib

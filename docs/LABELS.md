@@ -85,3 +85,11 @@ Every label write through `cadence linear issue-update` / `bulk-label` /
 write that finds two already present heals to the furthest. `agent:triaged` is
 exempt — it is sticky (only a human clears it) and coexists with any later
 position. So a loop or a human can never strand an issue on two lifecycle labels.
+
+**Completion clears workflow labels (engine-enforced).** Moving an issue to a
+done/cancelled state — `cadence tasks update --status completed` or `cadence
+linear issue-update` to a completed/cancelled workflow state — strips **every**
+`agent:*` label (gates, status, and flags); non-agent labels like `Bug` are
+kept. A done issue holds no live workflow state, so it drops off the board
+without a manual sweep, and any later write to an already-done issue self-heals
+leftover labels.

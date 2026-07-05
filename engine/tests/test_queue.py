@@ -10,14 +10,19 @@ def _issue(ident, labels, **extra):
 
 class TestBucket(unittest.TestCase):
     def test_single_label_goes_to_its_bucket(self):
-        b = cli.bucket([_issue("P-1", ["agent:specced"])])
-        self.assertEqual([i["identifier"] for i in b["specced"]], ["P-1"])
+        b = cli.bucket([_issue("P-1", ["agent:proposed"])])
+        self.assertEqual([i["identifier"] for i in b["proposed"]], ["P-1"])
 
     def test_most_advanced_lifecycle_label_wins(self):
         # triaged + specced -> specced (the issue's true next gate)
         b = cli.bucket([_issue("P-2", ["agent:triaged", "agent:specced"])])
         self.assertEqual([i["identifier"] for i in b["specced"]], ["P-2"])
         self.assertEqual(b["triaged"], [])
+
+    def test_later_human_action_outranks_proposal(self):
+        b = cli.bucket([_issue("P-2", ["agent:proposed", "agent:specced"])])
+        self.assertEqual([i["identifier"] for i in b["specced"]], ["P-2"])
+        self.assertEqual(b["proposed"], [])
 
     def test_parked_label_removes_from_play(self):
         # hold beats an actionable label -> parked only
@@ -42,10 +47,10 @@ class TestRender(unittest.TestCase):
         self.assertIn("Nothing waiting on you.", out)
 
     def test_actionable_line_shows_label_count_and_keys(self):
-        issues = [_issue("P-1", ["agent:specced"]), _issue("P-2", ["agent:specced"])]
+        issues = [_issue("P-1", ["agent:proposed"]), _issue("P-2", ["agent:proposed"])]
         out = cli.render(cli.bucket(issues))
-        self.assertIn("Grant build", out)
-        self.assertIn("(agent:specced)", out)
+        self.assertIn("Review proposal", out)
+        self.assertIn("(agent:proposed)", out)
         self.assertIn("  2   P-1, P-2", out)  # count column then keys
         self.assertIn("P-1, P-2", out)
         self.assertIn("YOUR MOVE", out)
@@ -170,6 +175,47 @@ class TestFailureClustering(unittest.TestCase):
     def test_salient_line_picks_the_failure_paragraph(self):
         body = "## Problem\nSomething.\n\nBuild note: gate failed on pre-existing lint.\n\nOther text."
         self.assertIn("gate failed", cli._salient_line(body))
+
+
+class TestPrUrl(unittest.TestCase):
+    def test_taken_from_task_body(self):
+        issue = _issue("T-1", ["agent:pr-open"],
+                       description="Draft PR: https://github.com/o/r/pull/42 opened.")
+        self.assertEqual(cli._pr_url(issue, {"TASK_BACKEND": "file"}),
+                         "https://github.com/o/r/pull/42")
+
+    def test_file_backend_without_url_is_empty(self):
+        issue = _issue("T-2", ["agent:pr-open"], description="no link here")
+        self.assertEqual(cli._pr_url(issue, {"TASK_BACKEND": "file"}), "")
+
+    def test_linear_falls_back_to_newest_comment(self):
+        issue = _issue("SR3-9", ["agent:pr-open"], description="")
+        detail = {"comments": [
+            {"body": "🤖 Draft PR [#7](https://github.com/o/r/pull/7)"},
+            {"body": "🤖 Review on [PR #7](https://github.com/o/r/pull/7) · clean"},
+        ]}
+        old = cli._issue_detail
+        cli._issue_detail = lambda ident, env: detail
+        try:
+            self.assertEqual(cli._pr_url(issue, {}), "https://github.com/o/r/pull/7")
+        finally:
+            cli._issue_detail = old
+
+    def test_render_shows_pr_link_under_review_bucket(self):
+        issue = _issue("T-3", ["agent:pr-open"],
+                       description="see https://github.com/o/r/pull/9")
+        buckets = cli.bucket([issue])
+        cli.attach_pr_urls(buckets, {"TASK_BACKEND": "file"})
+        out = cli.render(buckets)
+        self.assertIn("↳ T-3  https://github.com/o/r/pull/9", out)
+
+    def test_verbose_shows_pr_line(self):
+        issue = _issue("T-4", ["agent:revised"],
+                       description="see https://github.com/o/r/pull/11")
+        buckets = cli.bucket([issue])
+        cli.attach_pr_urls(buckets, {"TASK_BACKEND": "file"})
+        out = cli.render(buckets, verbose=True)
+        self.assertIn("PR: https://github.com/o/r/pull/11", out)
 
 
 class TestFetchIssues(unittest.TestCase):

@@ -163,11 +163,11 @@ printf 'codex:%s:%s\\n' "${#stdin}" "$last"
         self.assertEqual(result.returncode, 124, result.stderr)
         self.assertIn("timed out after 1s", result.stderr)
 
-    def test_timeout_kills_orphaned_grandchildren(self):
+    def test_timeout_kills_background_grandchildren(self):
         marker = pathlib.Path(self.tmp.name) / "grandchild-ran"
-        # The provider spawns a detached child that would touch the marker after
-        # 3s, then blocks. On timeout the whole process group must die before the
-        # grandchild writes — proving it isn't orphaned into the worktree.
+        # The provider spawns a background child that would touch the marker
+        # after 3s, then blocks. On timeout the whole process group must die
+        # before the child writes.
         self._write_exe(
             "claude",
             f"#!/bin/sh\n( sleep 3; : > '{marker}' ) &\nsleep 10\n",

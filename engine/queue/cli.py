@@ -14,6 +14,7 @@ import sys
 
 # (bucket_id, display label, agent label) — YOUR MOVE shown in lifecycle order.
 YOUR_MOVE = [
+    ("proposed",        "Review proposal", "agent:proposed"),
     ("triaged",         "Grant spec",   "agent:triaged"),
     ("specced",         "Grant build",  "agent:specced"),
     ("pr_open",         "Review PR",    "agent:pr-open"),
@@ -33,7 +34,7 @@ PARKED = [
 ASSIGN_ORDER = [
     "hold", "superseded", "stale",
     "needs_attention", "needs_human", "claimed",
-    "revised", "pr_open", "specced", "triaged",
+    "revised", "pr_open", "specced", "triaged", "proposed",
 ]
 
 _LABEL = {bid: lbl for bid, _disp, lbl in YOUR_MOVE + IN_FLIGHT + PARKED}
@@ -166,27 +167,56 @@ def render_failures(clusters, team_name=None):
     return "\n".join(out)
 
 
-def _failure_reason(issue, env):
-    """One-line reason a needs-attention issue failed: the run note in a file
-    task's body, or a Linear issue's last comment."""
-    if _backend(env) == "file":
-        return _salient_line(issue.get("description") or issue.get("body") or "")
-    ident = issue.get("identifier")
+def _issue_detail(ident, env):
+    """Full issue detail (description, comments) via the Linear adapter."""
     if not ident:
-        return ""
+        return {}
     adapter = os.path.join(os.path.dirname(__file__), "..", "linear", "cli.py")
     run_env = os.environ.copy()
     run_env.update(env)
     proc = subprocess.run([sys.executable, adapter, "issue-get", ident],
                           capture_output=True, text=True, env=run_env)
     if proc.returncode != 0:
-        return ""
+        return {}
     try:
-        data = json.loads(proc.stdout or "{}")
+        return json.loads(proc.stdout or "{}")
     except json.JSONDecodeError:
-        return ""
-    comments = data.get("comments") or []
+        return {}
+
+
+def _failure_reason(issue, env):
+    """One-line reason a needs-attention issue failed: the run note in a file
+    task's body, or a Linear issue's last comment."""
+    if _backend(env) == "file":
+        return _salient_line(issue.get("description") or issue.get("body") or "")
+    comments = _issue_detail(issue.get("identifier"), env).get("comments") or []
     return _salient_line(comments[-1].get("body", "") if comments else "")
+
+
+_PR_URL_RE = re.compile(r"https://github\.com/[^\s)>\"'`]+/pull/\d+")
+
+
+def _pr_url(issue, env):
+    """GitHub PR link for an issue awaiting review: the build loop records it
+    in the task body (file backend) or a Linear comment — newest match wins."""
+    found = _PR_URL_RE.findall(issue.get("description") or issue.get("body") or "")
+    if found:
+        return found[-1]
+    if _backend(env) == "file":
+        return ""
+    detail = _issue_detail(issue.get("identifier"), env)
+    for comment in reversed(detail.get("comments") or []):
+        found = _PR_URL_RE.findall(comment.get("body") or "")
+        if found:
+            return found[-1]
+    return ""
+
+
+def attach_pr_urls(buckets, env):
+    """Annotate the awaiting-review buckets with each issue's GitHub PR link."""
+    for bid in ("pr_open", "revised"):
+        for issue in buckets[bid]:
+            issue["pr_url"] = _pr_url(issue, env)
 
 
 def _keys(issues, cap=15):
@@ -217,6 +247,8 @@ def _verbose_lines(issues):
         tail = ("  ·  " + " / ".join(meta)) if meta else ""
         lines.append("      %s  %s%s" % (i.get("identifier", "?"), i.get("title", ""), tail))
         lines.append("        %s" % i.get("url", ""))
+        if i.get("pr_url"):
+            lines.append("        PR: %s" % i["pr_url"])
     return lines
 
 
@@ -236,6 +268,9 @@ def render(buckets, team_name=None, verbose=False, conflict_list=None):
             dupe_seen = True
         if verbose and items:
             out += _verbose_lines(items)
+        elif items:
+            out += ["      ↳ %s  %s" % (i.get("identifier", "?"), i["pr_url"])
+                    for i in items if i.get("pr_url")]
     if dupe_seen:
         out.append("  * = duplicate candidate")
 
@@ -302,7 +337,9 @@ def main(argv=None):
         items = [(i.get("identifier", "?"), _failure_reason(i, os.environ)) for i in failed]
         print(render_failures(cluster_failures(items), os.environ.get("LINEAR_TEAM_NAME")))
         return
-    print(render(bucket(issues), os.environ.get("LINEAR_TEAM_NAME"), args.verbose,
+    buckets = bucket(issues)
+    attach_pr_urls(buckets, os.environ)
+    print(render(buckets, os.environ.get("LINEAR_TEAM_NAME"), args.verbose,
                  conflicts(issues)))
 
 

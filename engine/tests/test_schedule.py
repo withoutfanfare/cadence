@@ -817,6 +817,64 @@ class TestOffboard(unittest.TestCase):
             self.assertTrue(any("refused purge" in x for x in lines))
             self.assertTrue(os.path.isdir(state))  # shared dir survives
 
+    def test_purge_refused_when_state_dir_contains_another_project_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, project, config, state = self._onboarded(tmp)
+            broad_state = os.path.join(tmp, "state-root")
+            nested_state = os.path.join(broad_state, "other")
+            cli.upsert_env_var(config, "CADENCE_STATE_DIR", broad_state)
+            os.makedirs(os.path.join(broad_state, "runs"))
+
+            other = os.path.join(tmp, "other")
+            os.makedirs(os.path.join(other, "cadence"))
+            other_config = os.path.join(other, "cadence", ".env")
+            with open(other_config, "w", encoding="utf-8") as f:
+                f.write(f"CADENCE_STATE_DIR={nested_state}\n")
+            cli.register(env, [other], out=lambda *_: None)
+
+            lines = []
+            self.assertEqual(
+                cli.offboard(env, [project, "--purge"], out=lines.append), 0)
+            self.assertTrue(any("contains state for" in x for x in lines))
+            self.assertTrue(os.path.isdir(broad_state))
+
+    def test_purge_refused_when_state_dir_is_project_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"CADENCE_STATE_DIR": tmp}
+            project = os.path.join(tmp, "app")
+            os.makedirs(os.path.join(project, "cadence"))
+            config = os.path.join(project, "cadence", ".env")
+            with open(config, "w", encoding="utf-8") as f:
+                f.write(f"CADENCE_STATE_DIR={project}\n")
+            cli.register(env, [project], out=lambda *_: None)
+
+            lines = []
+            self.assertEqual(
+                cli.offboard(env, [project, "--purge"], out=lines.append), 0)
+            self.assertTrue(any("contains the project checkout" in x for x in lines))
+            self.assertTrue(os.path.isdir(project))
+
+    def test_purge_refused_for_plain_home_subdir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            msg = cli._purge_unsafe(
+                os.path.join(os.path.expanduser("~"), "Documents"),
+                {"CADENCE_STATE_DIR": tmp})
+            self.assertIn("does not look like a Cadence state dir", msg)
+
+    def test_purge_refuses_instead_of_crashing_on_bad_sibling_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, project, config, state = self._onboarded(tmp)
+            other = os.path.join(tmp, "other")
+            bad_config = os.path.join(other, "cadence", ".env")
+            os.makedirs(bad_config)
+            cli.register(env, [other], out=lambda *_: None)
+
+            lines = []
+            self.assertEqual(
+                cli.offboard(env, [project, "--purge"], out=lines.append), 0)
+            self.assertTrue(any("cannot inspect" in x for x in lines))
+            self.assertTrue(os.path.isdir(state))
+
     def test_skips_pause_and_purge_without_own_state_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = {"CADENCE_STATE_DIR": tmp}

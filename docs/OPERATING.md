@@ -95,7 +95,8 @@ cadence queue [-v]
 
 Issues are grouped by agent state (grant spec, grant build, review PR, needs-you,
 failed), with in-flight and parked counts. Read-only — safe even while paused;
-`-v` expands each actionable issue to its title and URL.
+`-v` expands each actionable issue to its title and URL. Issues awaiting PR
+review show their GitHub PR link inline.
 
 Use the short feed for a glance:
 
