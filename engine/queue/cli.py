@@ -14,6 +14,7 @@ import sys
 
 # (bucket_id, display label, agent label) — YOUR MOVE shown in lifecycle order.
 YOUR_MOVE = [
+    ("proposed",        "Review proposal", "agent:proposed"),
     ("triaged",         "Grant spec",   "agent:triaged"),
     ("specced",         "Grant build",  "agent:specced"),
     ("pr_open",         "Review PR",    "agent:pr-open"),
@@ -33,7 +34,7 @@ PARKED = [
 ASSIGN_ORDER = [
     "hold", "superseded", "stale",
     "needs_attention", "needs_human", "claimed",
-    "revised", "pr_open", "specced", "triaged",
+    "revised", "pr_open", "specced", "triaged", "proposed",
 ]
 
 _LABEL = {bid: lbl for bid, _disp, lbl in YOUR_MOVE + IN_FLIGHT + PARKED}
