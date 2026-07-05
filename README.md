@@ -1,5 +1,9 @@
 # Cadence
 
+<p align="center">
+  <img src="assets/cadence-app-icon/cadence-app-icon-256.png" alt="Cadence app icon" width="144" height="144">
+</p>
+
 Most automation does too little — pinging you with reminders — or too much,
 quietly merging code you never read. Cadence sits in between. It runs a small
 team of AI agents that pick up your Linear issues, triage them, write the spec,

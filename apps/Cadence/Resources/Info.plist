@@ -11,6 +11,8 @@
   <string>Cadence</string>
   <key>CFBundleDisplayName</key>
   <string>Cadence</string>
+  <key>CFBundleIconFile</key>
+  <string>Cadence.icns</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
