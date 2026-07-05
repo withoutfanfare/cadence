@@ -391,6 +391,73 @@ exec {real_python} "$@"
             stage_log = f.read()
         self.assertIn("CRASHED (exit 1)", stage_log)
 
+    def test_live_worktree_lock_emits_blocked_summary(self):
+        lockdir = os.path.join(self.state, "logs", "worktree.lock.d")
+        os.makedirs(lockdir)
+        holder = str(os.getpid())
+        with open(os.path.join(lockdir, "pid"), "w", encoding="utf-8") as f:
+            f.write(holder)
+        self._write_exe("stat", """#!/bin/sh
+if [ "$1" = "-c" ] && [ "$2" = "%Y" ]; then
+  date +%s
+  exit 0
+fi
+if [ "$1" = "-f" ] && [ "$2" = "%m" ]; then
+  echo /mock/mount
+  exit 0
+fi
+exit 1
+""")
+
+        result = self._run("build")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["blocked"])
+        self.assertEqual(payload["reason"], "lock-held")
+        self.assertIn(holder, payload["detail"])
+        self.assertIn("age", payload["detail"])
+        with open(os.path.join(self.state, "runs", "runs.jsonl"), encoding="utf-8") as f:
+            ledger = f.read()
+        self.assertIn('"reason":"lock-held"', ledger)
+        with open(os.path.join(self.state, "logs", "build.log"), encoding="utf-8") as f:
+            stage_log = f.read()
+        self.assertIn(f"locked by {holder}", stage_log)
+
+    def test_dead_worktree_lock_is_reclaimed_immediately(self):
+        os.makedirs(os.path.join(self.project, "cadence"))
+        with open(os.path.join(self.project, "cadence", "tasks.md"), "w", encoding="utf-8") as f:
+            f.write("# Cadence Tasks\n")
+        os.makedirs(os.path.join(self.root, "skills", "cadence-loop-build"))
+        with open(os.path.join(self.root, "skills", "cadence-loop-build", "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: cadence-loop-build\n---\nLoop body\n")
+        shutil.copytree(os.path.join(ROOT, "engine", "prompts"),
+                        os.path.join(self.root, "engine", "prompts"))
+        self._write_exe("codex", "#!/bin/sh\n"
+                        "printf 'CADENCE_SUMMARY {\"stage\":\"build\",\"built\":1,\"errors\":0,\"pr_numbers\":[5]}\\n'\n")
+
+        lockdir = os.path.join(self.state, "logs", "worktree.lock.d")
+        os.makedirs(lockdir)
+        with open(os.path.join(lockdir, "pid"), "w", encoding="utf-8") as f:
+            f.write("999999")
+
+        result = self._run(
+            "build",
+            TASK_BACKEND="file",
+            ORCHESTRATOR_BUILD="codex:gpt-test",
+            LINEAR_TEAM_ID="",
+            LINEAR_PROJECT_ID="",
+            LINEAR_ASSIGNEE_ID="",
+            LINEAR_API_KEY="",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "")
+        with open(os.path.join(self.state, "runs", "activity.log"), encoding="utf-8") as f:
+            activity = f.read()
+        self.assertIn("build — LIVE 1 built, draft PR #5", activity)
+        self.assertFalse(os.path.exists(lockdir))
+
     def _read_today_digest(self):
         files = [x for x in os.listdir(os.path.join(self.state, "runs"))
                  if x.endswith(".md")]

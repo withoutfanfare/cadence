@@ -437,6 +437,25 @@ because it calls the Linear API once per project. Run
 `assets/swiftbar/cadence.2m.py selftest` to check the status and relative-time
 logic without touching cadence.
 
+### Native Cadence.app candidate
+
+`Cadence.app` is the native macOS replacement candidate for the SwiftBar menu.
+It must pass full parity against the SwiftBar plugin before it becomes the
+preferred menu-bar surface.
+
+```bash
+cadence app install
+```
+
+Parity gate:
+
+- same menu-bar status precedence and count
+- same project status lines and colour semantics
+- same task sections, row markers, `+N more`, and hidden closed/superseded tasks
+- same task actions: advance, set stage, merged, hold/release, cleanup worktree,
+  open PR, open Linear, open `tasks.md`
+- same project controls: pause/resume, run stage, logs, open board/tasks
+
 ### Controlling a task from the menu bar
 
 Every task in the gate inbox — Linear or file-backed alike — carries a submenu:
