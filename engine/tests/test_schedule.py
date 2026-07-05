@@ -390,6 +390,37 @@ class TestSchedulerTick(unittest.TestCase):
             # The isolated project's state dir is never flagged.
             self.assertNotIn(own, out)
 
+    def test_status_uses_root_registry_from_project_local_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, "cadence-home")
+            global_state = os.path.join(tmp, "global-state")
+            local_state = os.path.join(tmp, "local-state")
+            project = os.path.join(tmp, "app")
+            config = os.path.join(project, "cadence", ".env")
+            registry = os.path.join(global_state, "projects.txt")
+            os.makedirs(os.path.dirname(config))
+            os.makedirs(home)
+            os.makedirs(global_state)
+            with open(os.path.join(home, ".env"), "w", encoding="utf-8") as f:
+                f.write(f"CADENCE_STATE_DIR={global_state}\n")
+            with open(config, "w", encoding="utf-8") as f:
+                f.write(f"CADENCE_STATE_DIR={local_state}\nCADENCE_SCHEDULED=1\n")
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(project + "\n")
+            env = {
+                "CADENCE_HOME": home,
+                "CADENCE_CONFIG": config,
+                "CADENCE_STATE_DIR": local_state,
+            }
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                cli.print_status(env)
+
+            out = buf.getvalue()
+            self.assertIn(f"projects: {registry}", out)
+            self.assertNotIn(os.path.join(local_state, "projects.txt"), out)
+
     def test_tick_survives_non_numeric_scheduler_ints(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = os.path.join(tmp, "app")
@@ -632,6 +663,32 @@ class TestRegister(unittest.TestCase):
             # read_projects should see the same project dir the config lives under.
             projects = cli.read_projects(registry)
             self.assertEqual(projects[0]["project"], os.path.join(tmp, "app"))
+
+    def test_project_local_config_still_uses_root_registry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, "cadence-home")
+            project = os.path.join(tmp, "app")
+            config = os.path.join(project, "cadence", ".env")
+            global_state = os.path.join(tmp, "global-state")
+            local_state = os.path.join(tmp, "local-state")
+            os.makedirs(os.path.dirname(config))
+            os.makedirs(home)
+            with open(os.path.join(home, ".env"), "w", encoding="utf-8") as f:
+                f.write(f"CADENCE_STATE_DIR={global_state}\n")
+            with open(config, "w", encoding="utf-8") as f:
+                f.write(f"CADENCE_STATE_DIR={local_state}\n")
+            env = {
+                "CADENCE_HOME": home,
+                "CADENCE_CONFIG": config,
+                "CADENCE_STATE_DIR": local_state,
+            }
+
+            cli.register(env, [project], out=lambda *_: None)
+
+            self.assertEqual(cli.projects_file(env), os.path.join(global_state, "projects.txt"))
+            self.assertFalse(os.path.exists(os.path.join(local_state, "projects.txt")))
+            projects = cli.read_projects(os.path.join(global_state, "projects.txt"))
+            self.assertEqual(projects[0]["project"], project)
 
 
 class TestUpsertEnvVar(unittest.TestCase):
