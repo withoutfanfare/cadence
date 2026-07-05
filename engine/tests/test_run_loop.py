@@ -397,6 +397,17 @@ exec {real_python} "$@"
         holder = str(os.getpid())
         with open(os.path.join(lockdir, "pid"), "w", encoding="utf-8") as f:
             f.write(holder)
+        self._write_exe("stat", """#!/bin/sh
+if [ "$1" = "-c" ] && [ "$2" = "%Y" ]; then
+  date +%s
+  exit 0
+fi
+if [ "$1" = "-f" ] && [ "$2" = "%m" ]; then
+  echo /mock/mount
+  exit 0
+fi
+exit 1
+""")
 
         result = self._run("build")
 

@@ -60,7 +60,7 @@ LOCKDIR="$LOGDIR/$_LOCK.lock.d"
 # again (macOS recycles PIDs), matching the 2h agent:claimed reclaim window.
 _LOCK_MAX_AGE="${CADENCE_LOCK_MAX_AGE_SECONDS:-7200}"
 _lock_pid_mtime() {
-  stat -f %m "$LOCKDIR/pid" 2>/dev/null || stat -c %Y "$LOCKDIR/pid" 2>/dev/null || date +%s
+  stat -c %Y "$LOCKDIR/pid" 2>/dev/null || stat -f %m "$LOCKDIR/pid" 2>/dev/null || date +%s
 }
 _lock_age_seconds() {
   local now mtime
