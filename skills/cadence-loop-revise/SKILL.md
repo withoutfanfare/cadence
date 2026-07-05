@@ -127,8 +127,12 @@ in `docs/ARCHITECTURE.md` §5a, then exit without touching Linear, git, or files
    comments, the human's requested changes, and the new diff. Run:
    `"$CADENCE_HOME/engine/scripts/run-reviewer.sh" "${REVIEW_PROVIDER:-claude}"
    "${REVIEW_MODEL:-opus}" "$WT" "$WT/REVIEW.md"`. Confirm prior findings are
-   resolved and the tests guard the change. Post a follow-up PR comment that lists
-   each finding with its disposition. Never approve/merge.
+   resolved and the tests guard the change. After the push and re-review, post a
+   follow-up PR comment with `gh pr comment <n> --body-file <file>` so the human
+   can see the revise loop has run. The comment must include an "addressed review comments"
+   section listing each human/code-review/Copilot finding with its
+   disposition, plus any unresolved or out-of-scope item and why. Never
+   approve/merge.
 8. **Linear.**
    `cadence linear issue-update <ID> --remove-label agent:revise --remove-label agent:claimed --remove-label agent:pr-open --add-label agent:revised`
    (drop the superseded `agent:pr-open` — `agent:revised` is now the resting label;

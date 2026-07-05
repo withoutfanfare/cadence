@@ -381,10 +381,12 @@ def _purge_unsafe(state, env, project=None, config=None):
     protected = {
         os.path.realpath(os.path.expanduser("~")),
         os.path.realpath(os.path.expanduser("~/.cadence")),
-        os.path.realpath(_path_value(env.get("CADENCE_STATE_DIR"), "~/.cadence")),
         os.path.realpath(tempfile.gettempdir()),
         os.path.realpath(os.sep),
     }
+    current_state = os.path.realpath(_path_value(env.get("CADENCE_STATE_DIR"), "~/.cadence"))
+    if current_state != canon:
+        protected.add(current_state)
     if canon in protected:
         return f"  refused purge: {state} is not a project-owned state dir"
     home = os.path.realpath(os.path.expanduser("~"))
@@ -397,7 +399,8 @@ def _purge_unsafe(state, env, project=None, config=None):
     if config and _same_or_parent(canon, os.path.realpath(os.path.dirname(config))):
         return f"  refused purge: {state} contains the config directory"
 
-    others = []
+    contains = []
+    overlaps = []
     for p in read_projects(projects_file(env)):
         try:
             other_values = read_env_file(p["config"])
@@ -406,9 +409,13 @@ def _purge_unsafe(state, env, project=None, config=None):
         other = os.path.realpath(_path_value(
             other_values.get("CADENCE_STATE_DIR"), os.path.expanduser("~/.cadence")))
         if _same_or_parent(canon, other):
-            others.append(p["project"])
-    if others:
-        return f"  refused purge: {state} contains state for {', '.join(others)}"
+            contains.append(p["project"])
+        elif _same_or_parent(other, canon):
+            overlaps.append(p["project"])
+    if contains:
+        return f"  refused purge: {state} contains state for {', '.join(contains)}"
+    if overlaps:
+        return f"  refused purge: {state} overlaps state for {', '.join(overlaps)}"
     return None
 
 

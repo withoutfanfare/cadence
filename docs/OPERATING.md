@@ -43,7 +43,7 @@ cadence conduct --dry-run
 cadence labels init|list|ensure <name>
 cadence bakeoff <brief-file> <test-filter> [implementers]
 cadence memory recall
-cadence worktree add|remove|path
+cadence worktree add|remove|path|merged|cleanup
 ```
 
 ## Pause and Resume
@@ -448,7 +448,14 @@ Every task in the gate inbox — Linear or file-backed alike — carries a subme
   forwards or backwards. Setting a stage grants that gate and clears the others,
   so only one "go" is ever pending. "Triage" clears `agent:triaged` to force a
   clean re-triage.
+- **Set as merged** — shown for `agent:pr-open` and `agent:revised`; records a
+  human-merged PR by moving the task/issue to a done state.
 - **Hold / Release hold** — toggles `agent:hold`, the brake every loop honours.
+- **Clean up worktree** — shown only when the task's feature-branch worktree is
+  clean and already merged into `origin/BASE_BRANCH`; removes that generated
+  worktree through `cadence worktree remove`.
+- **Open PR** — shown when the task/issue description contains a GitHub pull
+  request URL.
 - **Open** — file tasks open `tasks.md` for hand-editing; Linear issues open in
   Linear.
 
@@ -462,6 +469,15 @@ so there is never any ambiguity about where a task actually is.
 `cadence inspect` is a read-only bundle for support and onboarding. It prints
 `doctor`, `status`, `autonomous status`, the schedule, `queue -v`, and the recent
 feed in one place.
+
+### Worktrees
+
+`cadence worktree merged <branch> [base]` exits successfully only when the
+generated worktree is clean and its branch is already merged into
+`origin/<base>` (default: `BASE_BRANCH`). `cadence worktree cleanup [base]`
+removes only those proven-merged clean generated worktrees. Marking an
+`agent:pr-open` or `agent:revised` task or issue as completed also removes that
+task's worktree.
 
 ### Implementer bake-off
 

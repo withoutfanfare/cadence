@@ -126,7 +126,7 @@ worktrees:
   `WORKTREE_REPO` to the grove name. `cadence doctor` fails if the resolved repo
   does not resolve, rather than letting every build fail at worktree creation.
 
-Either way the loops drive worktrees through `cadence worktree add|remove|path`, so
+Either way the loops drive worktrees through `cadence worktree add|remove|path|merged|cleanup`, so
 the skills themselves stay tool-agnostic. The generated worktree path is
 `$WORKTREE_BASE/<branch>`; keep the Cadence config in
 `$PROJECT_DIR/cadence/.env`, not in each generated worktree.

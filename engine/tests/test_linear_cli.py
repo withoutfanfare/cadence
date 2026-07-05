@@ -1,4 +1,5 @@
 import importlib.util, io, json, os, tempfile, types, unittest
+from unittest import mock
 
 
 def _load(name, *relpath):
@@ -351,7 +352,7 @@ class TestWriteVerbs(unittest.TestCase):
 
     def test_completing_an_issue_strips_agent_labels(self):
         # closing to a completed-type state clears every agent:* label but keeps
-        # user labels — no separate label sweep needed after "Mark merged".
+        # user labels — no separate label sweep needed after "Set as merged".
         sent = {}
         def post(query, variables, env):
             if "team { id } project" in query:
@@ -378,6 +379,84 @@ class TestWriteVerbs(unittest.TestCase):
         cli.cmd_issue_update(args, ENV, post=post)
         self.assertEqual(sent["ids"], ["lb"])   # only the non-agent label survives
 
+    def test_completing_pr_open_issue_removes_its_worktree(self):
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            if "workflowStates(" in query:
+                return {"workflowStates": {"nodes": [
+                    {"id": "done", "name": "Done", "type": "completed"}]}}
+            if "issueLabels(" in query:
+                return {"issueLabels": {"nodes": []}}
+            if "labels{ nodes{ id name } }" in query:
+                return {"issue": {"labels": {"nodes": [
+                    {"id": "lp", "name": "agent:pr-open"},
+                    {"id": "lb", "name": "Bug"}]}}}
+            if "issueUpdate(" in query:
+                return {"issueUpdate": {"success": True, "issue": {"id": "i1"}}}
+            return {"issue": {"labels": {"nodes": []}}}
+        args = types.SimpleNamespace(
+            id="STU-1", priority=None, title=None, estimate=None, state=None,
+            state_type="completed", cycle=None, add_label=None,
+            remove_label=["agent:pr-open"])
+        with mock.patch.object(cli, "_remove_worktree") as remove:
+            cli.cmd_issue_update(args, ENV, post=post)
+        remove.assert_called_once_with("stu-1", ENV)
+
+    def test_failed_terminal_issue_update_does_not_remove_worktree(self):
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            if "workflowStates(" in query:
+                return {"workflowStates": {"nodes": [
+                    {"id": "done", "name": "Done", "type": "completed"}]}}
+            if "issueLabels(" in query:
+                return {"issueLabels": {"nodes": []}}
+            if "labels{ nodes{ id name } }" in query:
+                return {"issue": {"labels": {"nodes": [
+                    {"id": "lp", "name": "agent:pr-open"}]}}}
+            if "issueUpdate(" in query:
+                return {"issueUpdate": {"success": False, "issue": {"id": "i1"}}}
+            return {"issue": {"labels": {"nodes": []}}}
+        args = types.SimpleNamespace(
+            id="STU-1", priority=None, title=None, estimate=None, state=None,
+            state_type="completed", cycle=None, add_label=None,
+            remove_label=["agent:pr-open"])
+        with mock.patch.object(cli, "_remove_worktree") as remove:
+            with self.assertRaises(cli.LinearError):
+                cli.cmd_issue_update(args, ENV, post=post)
+        remove.assert_not_called()
+
+    def test_completing_revised_issue_removes_its_worktree(self):
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            if "workflowStates(" in query:
+                return {"workflowStates": {"nodes": [
+                    {"id": "done", "name": "Done", "type": "completed"}]}}
+            if "issueLabels(" in query:
+                return {"issueLabels": {"nodes": []}}
+            if "labels{ nodes{ id name } }" in query:
+                return {"issue": {"labels": {"nodes": [
+                    {"id": "lr", "name": "agent:revised"},
+                    {"id": "lb", "name": "Bug"}]}}}
+            if "issueUpdate(" in query:
+                return {"issueUpdate": {"success": True, "issue": {"id": "i1"}}}
+            return {"issue": {"labels": {"nodes": []}}}
+        args = types.SimpleNamespace(
+            id="STU-1", priority=None, title=None, estimate=None, state=None,
+            state_type="completed", cycle=None, add_label=None,
+            remove_label=["agent:revised"])
+        with mock.patch.object(cli, "_remove_worktree") as remove:
+            cli.cmd_issue_update(args, ENV, post=post)
+        remove.assert_called_once_with("stu-1", ENV)
+
     def test_issue_update_rejects_empty_payload(self):
         def post(query, variables, env):
             if "team { id } project" in query:
@@ -392,7 +471,7 @@ class TestWriteVerbs(unittest.TestCase):
             cli.cmd_issue_update(args, ENV, post=post)
 
     def test_issue_update_state_type_resolves_completed_state(self):
-        # The "Mark merged" click and the triage back-fill move an issue to the
+        # The "Set as merged" click and the triage back-fill move an issue to the
         # done state by TYPE, not name — the name varies per workspace.
         seen = {}
         def post(query, variables, env):

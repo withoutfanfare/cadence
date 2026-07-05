@@ -37,6 +37,15 @@ class TestLoopPromptContracts(unittest.TestCase):
         self.assertNotIn("You (Opus) orchestrate", text)
         self.assertNotIn("headless `claude -p`", text)
 
+    def test_revise_prompt_posts_pr_comment_after_re_review(self):
+        path = os.path.join(SKILLS, "cadence-loop-revise", "SKILL.md")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+
+        self.assertIn("gh pr comment", text)
+        self.assertIn("addressed review comments", text)
+        self.assertRegex(text, r"After the push\s+and re-review")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -53,6 +53,13 @@ class TestWorktreeGit(unittest.TestCase):
         with open(os.path.join(self.tmp, ".env"), "a", encoding="utf-8") as f:
             f.write(f"WORKTREE_TOOL={tool}\n")
 
+    def _remote_develop(self):
+        bare = os.path.join(self.tmp, "remote.git")
+        self._git("init", "-q", "--bare", bare)
+        self._git("-C", self.proj, "remote", "add", "origin", bare)
+        self._git("-C", self.proj, "push", "-q", "-u", "origin", "develop")
+        return bare
+
     def test_add_creates_worktree_and_branch(self):
         rc, path, err = self._wt("add", "stu-1", "develop")
         self.assertEqual(rc, 0, err)
@@ -99,13 +106,49 @@ class TestWorktreeGit(unittest.TestCase):
         self.assertFalse(os.path.isdir(path), "worktree dir should be gone")
         self.assertFalse(self._branch_exists("stu-1"), "branch should be deleted")
 
+    def test_cleanup_removes_clean_worktree_merged_into_origin_base(self):
+        self._remote_develop()
+        _, path, _ = self._wt("add", "stu-1", "develop")
+        self._git("-c", "user.email=t@t", "-c", "user.name=t",
+                  "-C", path, "commit", "--allow-empty", "-qm", "work")
+        self._git("-C", self.proj, "merge", "-q", "--no-ff", "stu-1")
+        self._git("-C", self.proj, "push", "-q", "origin", "develop")
+
+        rc, out, err = self._wt("cleanup")
+
+        self.assertEqual(rc, 0, err)
+        self.assertIn("stu-1", out)
+        self.assertFalse(os.path.isdir(path), "merged worktree should be gone")
+        self.assertFalse(self._branch_exists("stu-1"), "merged branch should be deleted")
+
+    def test_merged_reports_unmerged_worktree_as_false(self):
+        self._remote_develop()
+        self._wt("add", "stu-1", "develop")
+
+        rc, out, err = self._wt("merged", "stu-1")
+
+        self.assertEqual(rc, 1)
+        self.assertEqual(out, "")
+        self.assertEqual(err, "")
+
+    def test_merged_reports_branch_merged_into_origin_base(self):
+        self._remote_develop()
+        _, path, _ = self._wt("add", "stu-1", "develop")
+        self._git("-c", "user.email=t@t", "-c", "user.name=t",
+                  "-C", path, "commit", "--allow-empty", "-qm", "work")
+        self._git("-C", self.proj, "merge", "-q", "--no-ff", "stu-1")
+        self._git("-C", self.proj, "push", "-q", "origin", "develop")
+
+        rc, out, err = self._wt("merged", "stu-1")
+
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, "")
+
     def test_add_recovers_branch_from_origin(self):
         # Revise after a cleaned-up worktree: no local branch, but the PR branch is on
         # origin. The helper must base the worktree on origin/<branch>, NOT develop,
         # or the PR's commits are silently lost.
-        bare = os.path.join(self.tmp, "remote.git")
-        self._git("init", "-q", "--bare", bare)
-        self._git("-C", self.proj, "remote", "add", "origin", bare)
+        self._remote_develop()
         self._git("-C", self.proj, "checkout", "-q", "-b", "stu-2")
         self._git("-c", "user.email=t@t", "-c", "user.name=t",
                   "-C", self.proj, "commit", "--allow-empty", "-qm", "pr work")
