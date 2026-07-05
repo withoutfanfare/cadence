@@ -59,19 +59,48 @@ LOCKDIR="$LOGDIR/$_LOCK.lock.d"
 # A lock older than this is treated as abandoned even if its recorded PID is alive
 # again (macOS recycles PIDs), matching the 2h agent:claimed reclaim window.
 _LOCK_MAX_AGE="${CADENCE_LOCK_MAX_AGE_SECONDS:-7200}"
+_lock_pid_mtime() {
+  stat -f %m "$LOCKDIR/pid" 2>/dev/null || stat -c %Y "$LOCKDIR/pid" 2>/dev/null || date +%s
+}
+_lock_age_seconds() {
+  local now mtime
+  now="$(date +%s)"
+  mtime="$(_lock_pid_mtime)"
+  echo "$(( now - mtime ))"
+}
 _lock_alive() {   # true only if the holder PID is live AND the lock is young enough
-  local holder now mtime
+  local holder age
   holder="$(cat "$LOCKDIR/pid" 2>/dev/null || echo '')"
   [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null || return 1
-  now="$(date +%s)"
-  mtime="$(stat -f %m "$LOCKDIR/pid" 2>/dev/null || stat -c %Y "$LOCKDIR/pid" 2>/dev/null || echo "$now")"
-  [ "$(( now - mtime ))" -lt "$_LOCK_MAX_AGE" ]
+  age="$(_lock_age_seconds)"
+  [ "$age" -lt "$_LOCK_MAX_AGE" ]
+}
+_lock_blocked() {
+  local holder age ts payload
+  holder="$(cat "$LOCKDIR/pid" 2>/dev/null || echo '?')"
+  age="$(_lock_age_seconds)"
+  ts="$(date -u +%FT%TZ)"
+  payload="$(STAGE="$STAGE" TS="$ts" HOLDER="$holder" AGE="$age" python3 - <<'PY'
+import json, os
+print(json.dumps({
+    "stage": os.environ["STAGE"],
+    "ts": os.environ["TS"],
+    "blocked": True,
+    "reason": "lock-held",
+    "detail": f"locked by {os.environ['HOLDER']}, age {os.environ['AGE']}s",
+}, separators=(",", ":")))
+PY
+)"
+  echo "[$ts] cadence $STAGE blocked — locked by $holder, age ${age}s" >> "$LOGDIR/$STAGE.log"
+  echo "[$ts] $STAGE — blocked (locked by $holder, age ${age}s)" >> "$RUNS/activity.log"
+  echo "$payload" >> "$RUNS/runs.jsonl"
+  echo "$payload"
+  exit 0
 }
 if mkdir "$LOCKDIR" 2>/dev/null; then
   :   # acquired cleanly
 elif _lock_alive; then
-  echo "[$(date -u +%FT%TZ)] $STAGE — skipped (run $(cat "$LOCKDIR/pid" 2>/dev/null) already in flight)" >> "$LOGDIR/$STAGE.log"
-  exit 0
+  _lock_blocked
 elif mkdir "$LOCKDIR.reclaim" 2>/dev/null; then
   # Won the right to reclaim a stale lock. Doing rm+mkdir under this second atomic
   # lock stops two racers both recreating LOCKDIR and each thinking they hold it.
