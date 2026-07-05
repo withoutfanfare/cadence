@@ -78,6 +78,7 @@ Usage: cadence [--config path|--profile name] <command> [args]
   advance <args>    Advancer decision core (decide, criteria, repairs)
   memory <args>     Memory adapter (recall, remember)
   worktree <args>   Build worktree helper (add|remove|path|merged|cleanup; git or grove)
+  app build|install|open  Build, install, or open the native Cadence menu-bar app
   help
 
 Home: $CADENCE_HOME   State: $CADENCE_STATE_DIR
@@ -159,6 +160,13 @@ case "$cmd" in
   advance) exec python3 "$CADENCE_HOME/engine/advance/cli.py" "$@" ;;
   memory)  exec python3 "$CADENCE_HOME/engine/memory/cli.py" "$@" ;;
   worktree) exec bash "$CADENCE_HOME/engine/scripts/worktree.sh" "$@" ;;
+  app)     sub="${1:-}"; shift 2>/dev/null || true
+           case "$sub" in
+             build) exec bash "$CADENCE_HOME/apps/Cadence/scripts/build-app.sh" "$@" ;;
+             install) exec bash "$CADENCE_HOME/apps/Cadence/scripts/install-app.sh" "$@" ;;
+             open) exec open "$HOME/Applications/Cadence.app" ;;
+             *) echo "usage: cadence app build | app install | app open" >&2; exit 2 ;;
+           esac ;;
   help|-h|--help) usage ;;
   *)       echo "unknown command: $cmd" >&2; usage; exit 2 ;;
 esac

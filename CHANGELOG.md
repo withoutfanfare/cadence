@@ -39,6 +39,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Cadence.app`, a native macOS menu-bar app that is the replacement candidate
+  for the SwiftBar control surface. It shells out to the public `cadence` CLI
+  for overview, task reads, and task/project actions, and ships with
+  `cadence app build|install|open`. SwiftBar remains the documented default
+  until live native parity passes.
+
+- `Cadence.app` now keeps the top-level menu to a coloured project status list,
+  with each project's task inbox and controls inside a native submenu.
+
+- `Cadence.app` now renders the overview immediately from a persistent project
+  menu cache, refreshes each project's task detail independently, and lets the
+  menu-bar icon use the system dark/light appearance instead of forcing a status
+  colour. `cadence app install` also stops any running copy before replacing the
+  bundle.
+
 - `cadence queue` now shows the GitHub PR link on every issue awaiting PR
   review (the "Review PR" and "Re-review PR" rows), inline by default and as a
   `PR:` line under `-v`. The link is read from where the build loop already

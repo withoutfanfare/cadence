@@ -134,6 +134,43 @@ printf 'codex:%s:%s\\n' "${#stdin}" "$last"
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(f"codex:{len(huge)}:-", result.stdout)
 
+    def test_claude_effort_suffix_becomes_effort_flag(self):
+        self._write_exe("claude", "#!/bin/sh\nstdin=$(cat)\nprintf 'claude:%s\\n' \"$*\"")
+
+        result = self._run("claude", "sonnet:medium")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--model sonnet ", result.stdout)
+        self.assertIn("--effort medium", result.stdout)
+        self.assertNotIn("sonnet:medium", result.stdout)
+
+    def test_claude_without_effort_suffix_omits_effort_flag(self):
+        self._write_exe("claude", "#!/bin/sh\nstdin=$(cat)\nprintf 'claude:%s\\n' \"$*\"")
+
+        result = self._run("claude", "sonnet")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("--effort", result.stdout)
+
+    def test_codex_effort_suffix_becomes_reasoning_effort_override(self):
+        self._write_exe("codex", "#!/bin/sh\nstdin=$(cat)\nprintf 'codex:%s\\n' \"$*\"")
+
+        result = self._run("codex", "gpt-test:high")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--model gpt-test ", result.stdout)
+        self.assertIn('model_reasoning_effort="high"', result.stdout)
+
+    def test_opencode_effort_suffix_is_stripped_with_warning(self):
+        self._write_exe("opencode", "#!/bin/sh\nprintf 'opencode:%s\\n' \"$*\"")
+
+        result = self._run("opencode", "provider/model:high")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--model provider/model ", result.stdout)
+        self.assertNotIn("provider/model:high", result.stdout)
+        self.assertIn("not supported for opencode", result.stderr)
+
     def test_unknown_provider_fails(self):
         result = self._run("unknown")
 

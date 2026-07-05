@@ -31,10 +31,14 @@ Supported provider names are `claude`, `codex`, `kimi`, and `opencode`.
 
 ## The Important Distinction
 
-`ORCHESTRATOR_*` values are provider/model pairs:
+`ORCHESTRATOR_*` values are provider/model pairs, with an optional third
+`:effort` segment that pins reasoning effort (claude/codex only — kimi and
+opencode ignore it with a logged warning). `REVIEW_MODEL` accepts the same
+suffix. See [Configuration](CONFIGURATION.md) for details.
 
 ```dotenv
 ORCHESTRATOR_BUILD=codex:gpt-5.4
+ORCHESTRATOR_REVISE=claude:sonnet:medium
 ```
 
 `BUILD_IMPLEMENTER` is provider-only:
