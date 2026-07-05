@@ -9,12 +9,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let menu = NSMenu()
     private let prURLExpression = try! NSRegularExpression(pattern: #"https://github\.com/[^\s)>"'`]+/pull/\d+"#)
     private var snapshot: MenuSnapshot?
+    private var overview: Overview?
+    private var projectCache: [String: CachedProjectData]
+    private var loadingProjects = Set<String>()
     private var cleanableWorktrees = Set<String>()
     private var timer: Timer?
+    private var refreshGeneration = 0
     private var isRefreshing = false
 
     init(client: CadenceClient) {
         self.client = client
+        self.projectCache = Self.loadProjectCache()
         super.init()
         menu.delegate = self
         statusItem.menu = menu
@@ -41,46 +46,72 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             defer { isRefreshing = false }
             do {
                 let overview = try await client.overview()
-                var itemsByProject: [String: [CadenceItem]] = [:]
-                var taskPaths: [String: String] = [:]
-                var itemErrors: [String: String] = [:]
-                var cleanable = Set<String>()
-
+                self.overview = overview
+                refreshGeneration += 1
+                let generation = refreshGeneration
                 for project in overview.projects {
-                    let items: [CadenceItem]
-                    do {
-                        items = try await client.items(for: project)
-                        itemsByProject[project.config] = items
-                    } catch {
-                        items = []
-                        itemsByProject[project.config] = []
-                        itemErrors[project.config] = shortError(error)
-                    }
-
-                    if let path = await client.taskPath(for: project) {
-                        taskPaths[project.config] = path
-                    }
-
-                    for item in MenuModel.visibleItems(items)
-                        where item.stage.name == "pr-open" || item.stage.name == "revised" {
-                        if await client.worktreeMerged(project: project, item: item) {
-                            cleanable.insert(actionKey(project: project, item: item))
-                        }
-                    }
+                    loadingProjects.insert(project.config)
+                    refreshProject(project, generation: generation)
                 }
-
-                cleanableWorktrees = cleanable
-                snapshot = MenuModel.build(
-                    overview: overview,
-                    itemsByProject: itemsByProject,
-                    taskPaths: taskPaths,
-                    itemErrors: itemErrors
-                )
-                render()
+                renderSnapshot()
             } catch {
                 renderError(error)
             }
         }
+    }
+
+    private func refreshProject(_ project: CadenceProject, generation: Int) {
+        Task { @MainActor in
+            var cache = projectCache[project.config] ?? CachedProjectData()
+            do {
+                let items = try await client.items(for: project)
+                cache.items = items
+                cache.itemError = nil
+                cache.taskPath = await client.taskPath(for: project)
+                var cleanable = Set<String>()
+                for item in MenuModel.visibleItems(items)
+                    where item.stage.name == "pr-open" || item.stage.name == "revised" {
+                    if await client.worktreeMerged(project: project, item: item) {
+                        cleanable.insert(actionKey(project: project, item: item))
+                    }
+                }
+                cache.cleanableWorktrees = cleanable
+            } catch {
+                cache.itemError = shortError(error)
+            }
+            guard generation == refreshGeneration else { return }
+            projectCache[project.config] = cache
+            saveProjectCache()
+            loadingProjects.remove(project.config)
+            renderSnapshot()
+        }
+    }
+
+    private func renderSnapshot() {
+        guard let overview else { return }
+        var itemsByProject: [String: [CadenceItem]] = [:]
+        var taskPaths: [String: String] = [:]
+        var itemErrors: [String: String] = [:]
+        var cleanable = Set<String>()
+        for project in overview.projects {
+            guard let cache = projectCache[project.config] else { continue }
+            itemsByProject[project.config] = cache.items
+            if let taskPath = cache.taskPath {
+                taskPaths[project.config] = taskPath
+            }
+            if let error = cache.itemError {
+                itemErrors[project.config] = error
+            }
+            cleanable.formUnion(cache.cleanableWorktrees)
+        }
+        cleanableWorktrees = cleanable
+        snapshot = MenuModel.build(
+            overview: overview,
+            itemsByProject: itemsByProject,
+            taskPaths: taskPaths,
+            itemErrors: itemErrors
+        )
+        render()
     }
 
     private func renderLoading() {
@@ -146,9 +177,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         addDisabled(project.subline, to: submenu, colour: .secondaryLabelColor, font: .systemFont(ofSize: 12))
         submenu.addItem(.separator())
 
+        if loadingProjects.contains(project.project.config) {
+            addDisabled(project.sections.isEmpty ? "Updating task list..." : "Updating in background...", to: submenu, colour: .secondaryLabelColor)
+        }
         if let error = project.taskError {
             addDisabled("task list unavailable: \(error)", to: submenu, colour: .systemRed, font: .monospacedSystemFont(ofSize: 11, weight: .regular))
-        } else if project.sections.isEmpty {
+        }
+        if project.sections.isEmpty && project.taskError == nil && !loadingProjects.contains(project.project.config) {
             addDisabled("Nothing awaiting your move", to: submenu, colour: .secondaryLabelColor)
         } else {
             for section in project.sections {
@@ -328,9 +363,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func setStatus(symbol: String, colourHex: String, count: Int) {
-        statusItem.button?.title = count > 0 ? "\(count)" : ""
+        let title = count > 0 ? "\(count)" : ""
+        statusItem.button?.title = ""
+        statusItem.button?.attributedTitle = NSAttributedString(
+            string: title,
+            attributes: [.foregroundColor: NSColor.labelColor]
+        )
         statusItem.button?.image = symbolImage(symbol)
-        statusItem.button?.contentTintColor = NSColor(hex: colourHex)
+        statusItem.button?.contentTintColor = nil
     }
 
     private func symbolImage(_ name: String) -> NSImage? {
@@ -420,6 +460,39 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             .replacingOccurrences(of: "\"", with: "\\\"")
             + "\""
     }
+
+    private static func loadProjectCache() -> [String: CachedProjectData] {
+        guard let url = cacheURL(),
+              let data = try? Data(contentsOf: url),
+              let cache = try? JSONDecoder.cadence.decode([String: CachedProjectData].self, from: data)
+        else {
+            return [:]
+        }
+        return cache
+    }
+
+    private func saveProjectCache() {
+        guard let url = Self.cacheURL(),
+              let data = try? JSONEncoder.cadence.encode(projectCache)
+        else {
+            return
+        }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: url)
+    }
+
+    private static func cacheURL() -> URL? {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("com.withoutfanfare.cadence", isDirectory: true)
+            .appendingPathComponent("menu-cache.json")
+    }
+}
+
+private struct CachedProjectData: Codable {
+    var items: [CadenceItem] = []
+    var taskPath: String?
+    var itemError: String?
+    var cleanableWorktrees = Set<String>()
 }
 
 private final class MenuAction: NSObject {

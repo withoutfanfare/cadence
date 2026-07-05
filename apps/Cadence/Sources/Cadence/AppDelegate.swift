@@ -5,7 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: StatusItemController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        controller = StatusItemController(client: CadenceClient())
+        controller = StatusItemController(client: CadenceClient(runner: ProcessRunner(timeout: 10)))
         controller?.start()
     }
 }

@@ -8,6 +8,14 @@ public extension JSONDecoder {
     }
 }
 
+public extension JSONEncoder {
+    static var cadence: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+}
+
 public struct Overview: Decodable, Sendable {
     public let registry: String
     public let projects: [CadenceProject]
@@ -56,7 +64,7 @@ public struct StageRun: Decodable, Sendable {
     public let result: String
 }
 
-public struct CadenceItem: Decodable, Sendable, Identifiable {
+public struct CadenceItem: Codable, Sendable, Identifiable {
     public var id: String { identifier }
     public let identifier: String
     public let title: String
@@ -74,7 +82,7 @@ public struct CadenceItem: Decodable, Sendable, Identifiable {
     }
 }
 
-public struct ItemStage: Decodable, Sendable {
+public struct ItemStage: Codable, Sendable {
     public let name: String
     public let gate: String?
     public let hold: Bool
