@@ -114,8 +114,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             return
         }
 
-        for (index, project) in snapshot.projects.enumerated() {
-            if index > 0 { menu.addItem(.separator()) }
+        for project in snapshot.projects {
             renderProject(project)
         }
 
@@ -132,39 +131,44 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func renderProject(_ project: ProjectMenu) {
-        let heading = NSMenuItem(title: projectHeading(project), action: nil, keyEquivalent: "")
-        heading.image = symbolImage(project.status.symbol)
-        heading.attributedTitle = NSAttributedString(
-            string: projectHeading(project),
+        let item = NSMenuItem(title: projectListTitle(project), action: nil, keyEquivalent: "")
+        item.image = symbolImage(project.status.symbol)
+        item.attributedTitle = NSAttributedString(
+            string: projectListTitle(project),
             attributes: [.foregroundColor: NSColor(hex: project.status.colourHex) ?? .labelColor]
         )
-        heading.isEnabled = false
-        menu.addItem(heading)
-        addDisabled(project.subline, to: menu, colour: .secondaryLabelColor, font: .systemFont(ofSize: 12))
-        menu.addItem(.separator())
+        item.submenu = projectMenu(project)
+        menu.addItem(item)
+    }
+
+    private func projectMenu(_ project: ProjectMenu) -> NSMenu {
+        let submenu = NSMenu(title: project.project.name)
+        addDisabled(project.subline, to: submenu, colour: .secondaryLabelColor, font: .systemFont(ofSize: 12))
+        submenu.addItem(.separator())
 
         if let error = project.taskError {
-            addDisabled("task list unavailable: \(error)", to: menu, colour: .systemRed, font: .monospacedSystemFont(ofSize: 11, weight: .regular))
+            addDisabled("task list unavailable: \(error)", to: submenu, colour: .systemRed, font: .monospacedSystemFont(ofSize: 11, weight: .regular))
         } else if project.sections.isEmpty {
-            addDisabled("Nothing awaiting your move", to: menu, colour: .secondaryLabelColor)
+            addDisabled("Nothing awaiting your move", to: submenu, colour: .secondaryLabelColor)
         } else {
             for section in project.sections {
-                addDisabled("\(section.title) (\(section.totalCount))", to: menu, font: .systemFont(ofSize: 12))
+                addDisabled("\(section.title) (\(section.totalCount))", to: submenu, font: .systemFont(ofSize: 12))
                 for item in section.items {
                     let row = NSMenuItem(title: taskTitle(item), action: nil, keyEquivalent: "")
                     row.submenu = taskSubmenu(project: project, item: item)
-                    menu.addItem(row)
+                    submenu.addItem(row)
                 }
                 if section.moreCount > 0 {
-                    addOpenProjectAction("+\(section.moreCount) more", project: project, to: menu)
+                    addOpenProjectAction("+\(section.moreCount) more", project: project, to: submenu)
                 }
             }
         }
 
-        menu.addItem(.separator())
+        submenu.addItem(.separator())
         let stages = NSMenuItem(title: "Stages & controls", action: nil, keyEquivalent: "")
         stages.submenu = stagesMenu(project)
-        menu.addItem(stages)
+        submenu.addItem(stages)
+        return submenu
     }
 
     private func taskSubmenu(project: ProjectMenu, item: CadenceItem) -> NSMenu {
@@ -342,6 +346,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         if project.project.backend == .file {
             title += " - file"
+        }
+        return title
+    }
+
+    private func projectListTitle(_ project: ProjectMenu) -> String {
+        var title = projectHeading(project)
+        if project.status.count > 0 {
+            title += " - \(project.status.count) awaiting"
+        } else {
+            switch project.project.health {
+            case .failed:
+                title += " - failed"
+            case .paused:
+                title += " - paused"
+            case .idle:
+                title += " - idle"
+            case .ok:
+                title += " - active"
+            }
         }
         return title
     }

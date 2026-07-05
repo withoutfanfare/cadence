@@ -45,6 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cadence app build|install|open`. SwiftBar remains the documented default
   until live native parity passes.
 
+- `Cadence.app` now keeps the top-level menu to a coloured project status list,
+  with each project's task inbox and controls inside a native submenu.
+
 - `cadence queue` now shows the GitHub PR link on every issue awaiting PR
   review (the "Review PR" and "Re-review PR" rows), inline by default and as a
   `PR:` line under `-v`. The link is read from where the build loop already
