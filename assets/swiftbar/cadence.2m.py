@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Current default menu-bar surface. Cadence.app is the native replacement
+# candidate and may replace this only after full live parity has been verified.
 # <xbar.title>Cadence</xbar.title>
 # <xbar.desc>One menu for every Cadence project: honest status, what's waiting on you, and per-project controls.</xbar.desc>
 # <xbar.author>Cadence</xbar.author>

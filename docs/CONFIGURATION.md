@@ -408,6 +408,12 @@ support is added.
 RUNNER_PATH_PREPEND="$HOME/Library/Application Support/Herd/bin"
 ```
 
+## Native menu-bar app
+
+`Cadence.app` reads the same scheduler registry and project config files as the
+CLI by shelling out to `cadence overview --json` and project-scoped task
+commands. No app-specific project ids or secrets are stored in the bundle.
+
 ## Memory
 
 | Variable | Default | Description |
