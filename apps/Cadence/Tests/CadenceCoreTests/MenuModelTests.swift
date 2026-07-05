@@ -70,6 +70,46 @@ final class MenuModelTests: XCTestCase {
         XCTAssertEqual(snapshot.projects[0].sections[0].moreCount, 1)
     }
 
+    func testNeedsAttentionCountsTowardBadge() {
+        let project = CadenceProject.fixture(name: "p", config: "/p", backend: .file, health: .ok)
+        let item = CadenceItem.fixture(id: "TASK-1", stage: ItemStage(name: "build", gate: nil, hold: false, exception: "needs-attention", advance: nil))
+
+        let snapshot = MenuModel.build(
+            overview: Overview(registry: "/r", projects: [project], warnings: []),
+            itemsByProject: ["/p": [item]],
+            taskPaths: [:],
+            now: Date(timeIntervalSince1970: 0)
+        )
+
+        XCTAssertEqual(snapshot.menuBar.count, 1)
+        XCTAssertEqual(snapshot.projects[0].status.count, 1)
+    }
+
+    func testBoardURLDerivedFromItemOrOmitted() {
+        let project = CadenceProject.fixture(name: "p", config: "/p", backend: .linear, health: .ok)
+        let item = CadenceItem.fixture(
+            id: "CAD-1",
+            url: "https://linear.app/acme/issue/CAD-1/fix-thing",
+            stage: ItemStage(name: "triaged", gate: nil, hold: false, exception: nil, advance: "agent:spec")
+        )
+
+        let withItems = MenuModel.build(
+            overview: Overview(registry: "/r", projects: [project], warnings: []),
+            itemsByProject: ["/p": [item]],
+            taskPaths: [:],
+            now: Date(timeIntervalSince1970: 0)
+        )
+        let empty = MenuModel.build(
+            overview: Overview(registry: "/r", projects: [project], warnings: []),
+            itemsByProject: ["/p": []],
+            taskPaths: [:],
+            now: Date(timeIntervalSince1970: 0)
+        )
+
+        XCTAssertEqual(withItems.projects[0].boardURL, "https://linear.app/acme/")
+        XCTAssertNil(empty.projects[0].boardURL)
+    }
+
     func testStageControlsIncludeRelativeLastRunAndNextRun() {
         let now = Date(timeIntervalSince1970: 1_750_000_000)
         let project = CadenceProject.fixture(

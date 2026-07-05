@@ -21,7 +21,7 @@ public struct ProjectMenu: Sendable, Identifiable {
     public let stages: [StageControl]
     public let taskPath: String?
     public let taskError: String?
-    public let boardURL: String
+    public let boardURL: String?
 }
 
 public struct TaskSection: Sendable {
@@ -45,7 +45,7 @@ public enum MenuModel {
 
     public static let workStages = ["triage", "spec", "build", "revise"]
 
-    private static let badgeKeys = Set(["needs-human", "pr-open", "revised"])
+    private static let badgeKeys = Set(["needs-human", "needs-attention", "pr-open", "revised"])
     private static let sectionTitles = [
         ("needs-human", "Needs a human decision"),
         ("needs-attention", "Run failed · needs attention"),
@@ -192,7 +192,7 @@ public enum MenuModel {
         }
     }
 
-    private static func workspaceURL(from items: [CadenceItem]) -> String {
+    private static func workspaceURL(from items: [CadenceItem]) -> String? {
         for item in items {
             guard let value = item.url,
                   let url = URL(string: value),
@@ -203,6 +203,9 @@ public enum MenuModel {
             }
             return "https://linear.app/\(workspace)/"
         }
-        return "https://linear.app/"
+        // ponytail: no workspace derivable (empty queue) — omit "Open board" rather
+        // than open the generic linear.app home. Better source: a board URL in
+        // `cadence overview --json`, if the engine ever exposes one.
+        return nil
     }
 }

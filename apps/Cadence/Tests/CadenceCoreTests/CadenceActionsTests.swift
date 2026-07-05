@@ -30,7 +30,7 @@ final class CadenceActionsTests: XCTestCase {
         ])
     }
 
-    func testSetStageTriageClearsTriagedAndAllGates() {
+    func testSetStageTriageClearsAllStatusAndGateLabels() {
         let project = CadenceProject.fixture(name: "p", config: "/p/cadence/.env", backend: .file, health: .ok)
         let item = CadenceItem.fixture(id: "TASK-1", stage: ItemStage(name: "specced", gate: nil, hold: false, exception: nil, advance: nil))
 
@@ -39,6 +39,9 @@ final class CadenceActionsTests: XCTestCase {
         XCTAssertEqual(command, [
             "cadence", "--config", "/p/cadence/.env", "tasks", "update", "TASK-1",
             "--remove-label", "agent:triaged",
+            "--remove-label", "agent:specced",
+            "--remove-label", "agent:pr-open",
+            "--remove-label", "agent:revised",
             "--remove-label", "agent:spec",
             "--remove-label", "agent:build",
             "--remove-label", "agent:revise"

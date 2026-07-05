@@ -164,7 +164,7 @@ case "$cmd" in
            case "$sub" in
              build) exec bash "$CADENCE_HOME/apps/Cadence/scripts/build-app.sh" "$@" ;;
              install) exec bash "$CADENCE_HOME/apps/Cadence/scripts/install-app.sh" "$@" ;;
-             open) open "$HOME/Applications/Cadence.app" ;;
+             open) exec open "$HOME/Applications/Cadence.app" ;;
              *) echo "usage: cadence app build | app install | app open" >&2; exit 2 ;;
            esac ;;
   help|-h|--help) usage ;;

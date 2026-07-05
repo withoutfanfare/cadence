@@ -2,6 +2,7 @@ import Foundation
 
 public enum CadenceActions {
     private static let gates = ["agent:spec", "agent:build", "agent:revise"]
+    private static let statuses = ["agent:triaged", "agent:specced", "agent:pr-open", "agent:revised"]
 
     public enum SetStage: CaseIterable {
         case triage
@@ -45,7 +46,9 @@ public enum CadenceActions {
     public static func setStageCommand(cadencePath: String, project: CadenceProject, item: CadenceItem, stage: SetStage) -> [String] {
         switch stage {
         case .triage:
-            return updateCommand(cadencePath: cadencePath, project: project, item: item, add: [], remove: ["agent:triaged"] + gates, closeTo: nil)
+            // Reset means reset: clear every stage/status label, or the item keeps
+            // rendering in its old section after the human sends it back to triage.
+            return updateCommand(cadencePath: cadencePath, project: project, item: item, add: [], remove: statuses + gates, closeTo: nil)
         case .spec:
             return updateCommand(cadencePath: cadencePath, project: project, item: item, add: ["agent:spec"], remove: ["agent:build", "agent:revise"], closeTo: nil)
         case .build:

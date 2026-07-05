@@ -14,8 +14,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var loadingProjects = Set<String>()
     private var cleanableWorktrees = Set<String>()
     private var timer: Timer?
-    private var refreshGeneration = 0
     private var isRefreshing = false
+    private var isMenuOpen = false
+    private var renderDeferred = false
+    private var deferredError: Error?
+    private var actionFeedback: ActionFeedback?
+    private var actionFeedbackGeneration = 0
 
     init(client: CadenceClient) {
         self.client = client
@@ -36,7 +40,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
+        isMenuOpen = true
         refresh()
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        isMenuOpen = false
+        guard renderDeferred else { return }
+        renderDeferred = false
+        if let error = deferredError {
+            deferredError = nil
+            renderErrorNow(error)
+        } else {
+            render()
+        }
     }
 
     private func refresh() {
@@ -47,11 +64,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             do {
                 let overview = try await client.overview()
                 self.overview = overview
-                refreshGeneration += 1
-                let generation = refreshGeneration
                 for project in overview.projects {
-                    loadingProjects.insert(project.config)
-                    refreshProject(project, generation: generation)
+                    refreshProject(project)
                 }
                 renderSnapshot()
             } catch {
@@ -60,7 +74,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    private func refreshProject(_ project: CadenceProject, generation: Int) {
+    private func refreshProject(_ project: CadenceProject) {
+        // Single-flight per project: a refresh (timer tick or menu open) while this
+        // project's CLI calls are still running must not stack duplicate subprocesses —
+        // each pr-open/revised item costs a `worktree merged` probe with a git fetch.
+        guard !loadingProjects.contains(project.config) else { return }
+        loadingProjects.insert(project.config)
         Task { @MainActor in
             var cache = projectCache[project.config] ?? CachedProjectData()
             do {
@@ -79,7 +98,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             } catch {
                 cache.itemError = shortError(error)
             }
-            guard generation == refreshGeneration else { return }
             projectCache[project.config] = cache
             saveProjectCache()
             loadingProjects.remove(project.config)
@@ -111,7 +129,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             taskPaths: taskPaths,
             itemErrors: itemErrors
         )
-        render()
+        deferredError = nil
+        renderWhenMenuIsStable()
     }
 
     private func renderLoading() {
@@ -121,6 +140,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func renderError(_ error: Error) {
+        guard !isMenuOpen else {
+            deferredError = error
+            renderDeferred = true
+            return
+        }
+        renderErrorNow(error)
+    }
+
+    private func renderErrorNow(_ error: Error) {
         setStatus(symbol: "exclamationmark.triangle.fill", colourHex: MenuModel.red, count: 0)
         menu.removeAllItems()
         addDisabled("Cadence unavailable", to: menu)
@@ -130,10 +158,34 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         addAction("Quit Cadence", to: menu, key: "q", kind: .quit)
     }
 
+    private func renderWhenMenuIsStable() {
+        guard !isMenuOpen else {
+            // ponytail: menu can be stale while open; rebuild on close so nested submenus stay usable.
+            renderDeferred = true
+            return
+        }
+        render()
+    }
+
     private func render() {
         guard let snapshot else { return }
-        setStatus(symbol: snapshot.menuBar.symbol, colourHex: snapshot.menuBar.colourHex, count: snapshot.menuBar.count)
+        if let actionFeedback {
+            setStatus(symbol: actionFeedback.symbol, colourHex: actionFeedback.colourHex, count: 0, useMenuBarIcon: false)
+        } else {
+            setStatus(symbol: snapshot.menuBar.symbol, colourHex: snapshot.menuBar.colourHex, count: snapshot.menuBar.count)
+        }
         menu.removeAllItems()
+
+        if let actionFeedback {
+            addDisabled(
+                actionFeedback.message,
+                to: menu,
+                colour: .secondaryLabelColor,
+                font: .systemFont(ofSize: 12),
+                image: symbolImage(actionFeedback.symbol, colour: NSColor(hex: actionFeedback.colourHex))
+            )
+            menu.addItem(.separator())
+        }
 
         if snapshot.projects.isEmpty {
             addDisabled("No registered projects", to: menu, colour: .secondaryLabelColor)
@@ -162,12 +214,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func renderProject(_ project: ProjectMenu) {
-        let item = NSMenuItem(title: projectListTitle(project), action: nil, keyEquivalent: "")
-        item.image = symbolImage(project.status.symbol)
-        item.attributedTitle = NSAttributedString(
-            string: projectListTitle(project),
-            attributes: [.foregroundColor: NSColor(hex: project.status.colourHex) ?? .labelColor]
-        )
+        let title = projectListTitle(project)
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.image = symbolImage(project.status.symbol, colour: NSColor(hex: project.status.colourHex))
         item.submenu = projectMenu(project)
         menu.addItem(item)
     }
@@ -267,7 +316,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func addOpenProjectAction(_ title: String, project: ProjectMenu, to target: NSMenu) {
         if project.project.backend == .file, let path = project.taskPath {
             addAction(title, to: target, kind: .openURL(URL(fileURLWithPath: path)))
-        } else if let url = URL(string: project.boardURL) {
+        } else if let board = project.boardURL, let url = URL(string: board) {
             addAction(title, to: target, kind: .openURL(url))
         }
     }
@@ -282,9 +331,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @discardableResult
-    private func addDisabled(_ title: String, to target: NSMenu, colour: NSColor = .labelColor, font: NSFont = .systemFont(ofSize: NSFont.systemFontSize)) -> NSMenuItem {
+    private func addDisabled(
+        _ title: String,
+        to target: NSMenu,
+        colour: NSColor = .labelColor,
+        font: NSFont = .systemFont(ofSize: NSFont.systemFontSize),
+        image: NSImage? = nil
+    ) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.isEnabled = false
+        item.image = image
         item.attributedTitle = NSAttributedString(string: title, attributes: [.foregroundColor: colour, .font: font])
         target.addItem(item)
         return item
@@ -294,7 +350,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard let action = sender.representedObject as? MenuAction else { return }
         switch action.kind {
         case let .command(command, project):
-            runCommand(command, project: project)
+            runCommand(command, project: project, title: sender.title)
         case let .terminal(command):
             openTerminal(command)
         case let .openURL(url):
@@ -306,19 +362,43 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    private func runCommand(_ command: [String], project: CadenceProject) {
+    private func runCommand(_ command: [String], project: CadenceProject, title: String) {
         guard !command.isEmpty else { return }
+        let title = title.isEmpty ? "Command" : title
+        setActionFeedback(.running(title))
         Task { @MainActor in
             let result: CommandResult
             do {
                 result = try await client.runner.run(command)
             } catch {
                 logAction(command: command, result: nil, error: error, project: project)
+                setActionFeedback(.failed(title, shortError(error)))
                 refresh()
                 return
             }
             logAction(command: command, result: result, error: nil, project: project)
+            if result.exitCode == 0 {
+                setActionFeedback(.succeeded(title))
+            } else {
+                setActionFeedback(.failed(title, commandFailureDetail(result)))
+            }
             refresh()
+        }
+    }
+
+    private func setActionFeedback(_ feedback: ActionFeedback) {
+        actionFeedbackGeneration += 1
+        let generation = actionFeedbackGeneration
+        actionFeedback = feedback
+        statusItem.button?.toolTip = "Cadence - \(feedback.message)"
+        renderWhenMenuIsStable()
+        guard let delay = feedback.autoClearAfter else { return }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: delay)
+            guard actionFeedbackGeneration == generation else { return }
+            actionFeedback = nil
+            statusItem.button?.toolTip = "Cadence"
+            renderWhenMenuIsStable()
         }
     }
 
@@ -362,21 +442,38 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    private func setStatus(symbol: String, colourHex: String, count: Int) {
+    private func setStatus(symbol: String, colourHex: String, count: Int, useMenuBarIcon: Bool = true) {
         let title = count > 0 ? "\(count)" : ""
         statusItem.button?.title = ""
         statusItem.button?.attributedTitle = NSAttributedString(
             string: title,
             attributes: [.foregroundColor: NSColor.labelColor]
         )
-        statusItem.button?.image = symbolImage(symbol)
-        statusItem.button?.contentTintColor = nil
+        let colour = NSColor(hex: colourHex)
+        let menuImage = useMenuBarIcon ? menuBarImage() : nil
+        statusItem.button?.image = menuImage ?? symbolImage(symbol, colour: colour)
+        statusItem.button?.contentTintColor = menuImage == nil && statusItem.button?.image?.isTemplate == true ? colour : nil
     }
 
-    private func symbolImage(_ name: String) -> NSImage? {
-        let image = NSImage(systemSymbolName: name, accessibilityDescription: "Cadence")
-        image?.isTemplate = true
+    private func menuBarImage() -> NSImage? {
+        guard let url = Bundle.main.url(forResource: "CadenceMenuBarIcon", withExtension: "svg"),
+              let image = NSImage(contentsOf: url)
+        else { return nil }
+        image.size = NSSize(width: 18, height: 18)
+        image.isTemplate = true
         return image
+    }
+
+    private func symbolImage(_ name: String, colour: NSColor? = nil) -> NSImage? {
+        guard let image = NSImage(systemSymbolName: name, accessibilityDescription: "Cadence") else { return nil }
+        guard let colour,
+              let configured = image.withSymbolConfiguration(NSImage.SymbolConfiguration(hierarchicalColor: colour))
+        else {
+            image.isTemplate = true
+            return image
+        }
+        configured.isTemplate = false
+        return configured
     }
 
     private func projectHeading(_ project: ProjectMenu) -> String {
@@ -446,6 +543,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return String(describing: error)
     }
 
+    private func commandFailureDetail(_ result: CommandResult) -> String {
+        let detail = (result.stderr.isEmpty ? result.stdout : result.stderr)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: "\n")
+            .last
+            .map(String.init) ?? "exit \(result.exitCode)"
+        return detail.count > 90 ? String(detail.prefix(89)) + "..." : detail
+    }
+
     private func actionKey(project: CadenceProject, item: CadenceItem) -> String {
         "\(project.config)\u{1f}\(item.identifier)"
     }
@@ -493,6 +599,25 @@ private struct CachedProjectData: Codable {
     var taskPath: String?
     var itemError: String?
     var cleanableWorktrees = Set<String>()
+}
+
+private struct ActionFeedback {
+    let message: String
+    let symbol: String
+    let colourHex: String
+    let autoClearAfter: UInt64?
+
+    static func running(_ title: String) -> ActionFeedback {
+        ActionFeedback(message: "\(title) started", symbol: "hourglass", colourHex: MenuModel.amber, autoClearAfter: nil)
+    }
+
+    static func succeeded(_ title: String) -> ActionFeedback {
+        ActionFeedback(message: "\(title) completed", symbol: "checkmark.circle.fill", colourHex: MenuModel.green, autoClearAfter: 8_000_000_000)
+    }
+
+    static func failed(_ title: String, _ detail: String) -> ActionFeedback {
+        ActionFeedback(message: "\(title) failed: \(detail)", symbol: "xmark.circle.fill", colourHex: MenuModel.red, autoClearAfter: 12_000_000_000)
+    }
 }
 
 private final class MenuAction: NSObject {
