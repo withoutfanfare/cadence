@@ -690,6 +690,34 @@ class TestRegister(unittest.TestCase):
             projects = cli.read_projects(os.path.join(global_state, "projects.txt"))
             self.assertEqual(projects[0]["project"], project)
 
+    def test_explicit_projects_file_beats_root_registry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, "cadence-home")
+            project = os.path.join(tmp, "app")
+            config = os.path.join(project, "cadence", ".env")
+            global_state = os.path.join(tmp, "global-state")
+            local_state = os.path.join(tmp, "local-state")
+            explicit_registry = os.path.join(tmp, "explicit", "projects.txt")
+            os.makedirs(os.path.dirname(config))
+            os.makedirs(home)
+            with open(os.path.join(home, ".env"), "w", encoding="utf-8") as f:
+                f.write(f"CADENCE_STATE_DIR={global_state}\n")
+            with open(config, "w", encoding="utf-8") as f:
+                f.write(f"CADENCE_STATE_DIR={local_state}\n")
+            env = {
+                "CADENCE_HOME": home,
+                "CADENCE_CONFIG": config,
+                "CADENCE_STATE_DIR": local_state,
+                "CADENCE_PROJECTS_FILE": explicit_registry,
+            }
+
+            cli.register(env, [project], out=lambda *_: None)
+
+            self.assertEqual(cli.projects_file(env), explicit_registry)
+            self.assertFalse(os.path.exists(os.path.join(global_state, "projects.txt")))
+            projects = cli.read_projects(explicit_registry)
+            self.assertEqual(projects[0]["project"], project)
+
 
 class TestUpsertEnvVar(unittest.TestCase):
     def test_appends_when_missing(self):

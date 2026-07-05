@@ -278,6 +278,9 @@ def _registry_env(env):
 
 
 def projects_file(env):
+    explicit = env.get("CADENCE_PROJECTS_FILE")
+    if explicit:
+        return os.path.expanduser(os.path.expandvars(explicit))
     reg_env = _registry_env(env)
     return os.path.expanduser(os.path.expandvars(
         reg_env.get("CADENCE_PROJECTS_FILE")
