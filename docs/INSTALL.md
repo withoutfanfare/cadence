@@ -98,9 +98,11 @@ cp .env.example /path/to/app/cadence/.env
 $EDITOR /path/to/app/cadence/.env
 ```
 
-Cadence will find this file when you run manual commands from `/path/to/app`.
-Existing root `.env` installs still work, but new project profiles should use
-`cadence/.env`.
+Cadence will find this file when you run manual commands from `/path/to/app`, and
+the scheduler and `Cadence.app` use it once the project is onboarded. A bare
+`.env` at the Cadence repo root is a legacy single-project fallback for manual CLI
+use only — the scheduler registry and the menu-bar app do not read it, so always
+configure the per-project `cadence/.env`.
 
 Optional shortcut:
 

@@ -12,7 +12,7 @@ For front-door `cadence` commands, config resolves in this order:
    non-comment line is the target config path.
 3. `CADENCE_CONFIG`
 4. `$PWD/cadence/.env`
-5. `$CADENCE_HOME/.env` for existing installs
+5. `$CADENCE_HOME/.env` — legacy single-project fallback (front-door CLI only)
 
 Scripts invoked directly skip the front door, so ambient `CADENCE_CONFIG` is
 their explicit override.
@@ -21,8 +21,11 @@ New projects should use `<project repo>/cadence/.env` in the base application
 checkout (`PROJECT_DIR`) so Cadence does not collide with the app's own `.env`.
 Generated worktrees do not get their own Cadence config unless you create one.
 
-Existing root `.env` installs still work, but new project profiles should use
-`cadence/.env`.
+A bare `.env` at the Cadence repo root (`$CADENCE_HOME/.env`) is a legacy
+single-project fallback resolved only by front-door CLI commands. The scheduler
+registry and `Cadence.app` never read it — they work from each registered
+project's own `<project>/cadence/.env` — so always configure the per-project
+file and onboard the project rather than relying on a root `.env`.
 
 For a shorter command, create a profile alias that points at the real config:
 
