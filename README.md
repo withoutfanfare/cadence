@@ -114,6 +114,23 @@ what each slot does, and see
 [configuration provider examples](docs/CONFIGURATION.md#provider-switching-examples)
 for all-Codex, mixed-provider, Kimi, and OpenCode examples.
 
+## Native Menu Bar App
+
+Cadence also includes `Cadence.app`, a Swift/AppKit macOS menu-bar app that
+shows the same registered projects, task inbox, run state, and human-gate
+controls as the CLI-backed menu-bar view. It shells out to the public `cadence`
+CLI, so the engine remains the source of truth for project registry, schedules,
+labels, and writes.
+
+```bash
+cadence app install
+cadence app open
+```
+
+The native app is the replacement candidate for the legacy SwiftBar plugin; keep
+using SwiftBar as the fallback until your install has passed the parity checks in
+[Operating Cadence](docs/OPERATING.md#native-cadenceapp-candidate).
+
 ## Quick Install
 
 ```bash
