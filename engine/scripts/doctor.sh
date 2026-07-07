@@ -261,6 +261,19 @@ if [ -n "${PROJECT_DIR:-}" ] && [ -d "$PROJECT_DIR" ]; then pass "PROJECT_DIR ex
 else echo "  ⚠️  PROJECT_DIR unset or missing (spec/build/revise cd here)"; fi
 if [ -n "${WORKTREE_BASE:-}" ] && [ -w "$(dirname "$WORKTREE_BASE")" ]; then pass "WORKTREE_BASE parent writable"
 else echo "  ⚠️  WORKTREE_BASE unset or parent not writable (build/revise create worktrees here)"; fi
+# WORKTREE_BASE inside PROJECT_DIR breaks the isolation contract: every
+# "isolated" worktree would sit in the main checkout, so a half-finished build
+# leaks into the main tree's tests and tooling. worktree.sh also refuses at
+# runtime; surface the misconfiguration here first.
+_doc_proj=""; _doc_wtb=""
+[ -n "${PROJECT_DIR:-}" ] && _doc_proj="$(cd "$PROJECT_DIR" 2>/dev/null && pwd -P)"
+[ -n "${WORKTREE_BASE:-}" ] && { _doc_wtb="$(cd "$WORKTREE_BASE" 2>/dev/null && pwd -P)" || _doc_wtb="$WORKTREE_BASE"; }
+if [ -n "$_doc_proj" ] && [ -n "$_doc_wtb" ]; then
+  case "$_doc_wtb/" in
+    "$_doc_proj/"*) fail "WORKTREE_BASE ($WORKTREE_BASE) is inside PROJECT_DIR — build worktrees would live in the main checkout; point it at a sibling directory (e.g. ${_doc_proj}-worktrees)" ;;
+    *) pass "WORKTREE_BASE is outside PROJECT_DIR" ;;
+  esac
+fi
 
 # Worktree tool: git needs nothing extra; grove must be installed AND know the
 # repo. The repo name defaults to PROJECT_DIR's basename but can differ from it

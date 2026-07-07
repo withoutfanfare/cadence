@@ -76,7 +76,9 @@ else:
                 "LINEAR_PROJECT_ID": "project-1",
                 "LINEAR_ASSIGNEE_ID": "user-1",
                 "PROJECT_DIR": str(self.root),
-                "WORKTREE_BASE": str(self.root / "worktrees"),
+                # A sibling of PROJECT_DIR — a pool inside the project breaks
+                # worktree isolation and doctor now fails on it.
+                "WORKTREE_BASE": str(pathlib.Path(self.tmp.name) / "worktrees"),
                 "NOTIFY": "off",
             }
         )
@@ -137,6 +139,19 @@ else:
         result = self._run({"ORCHESTRATOR_TRIAGE": "kimi:k2"})
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("cannot validate", result.stdout)
+
+    def test_fails_when_worktree_base_is_inside_project_dir(self):
+        # A worktree pool inside the main checkout means no build isolation:
+        # every "isolated" worktree — and its half-finished files — sits in the
+        # main tree. worktree.sh refuses at runtime; doctor must flag it first.
+        result = self._run({"WORKTREE_BASE": str(self.root / "worktrees")})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("inside PROJECT_DIR", result.stdout)
+
+    def test_passes_when_worktree_base_is_a_sibling_of_project_dir(self):
+        result = self._run({})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("WORKTREE_BASE is outside PROJECT_DIR", result.stdout)
 
     def test_rejects_orchestrator_provider_missing_from_runner_path(self):
         (self.runner_bin / "claude").unlink()

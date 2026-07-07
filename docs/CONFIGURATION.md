@@ -110,8 +110,12 @@ back-fill. Use `file` when a local `cadence/tasks.md` board is enough.
 | `WORKTREE_REPO` | Build/revise (grove only) | Grove `repos` name of the repo, when it differs from `PROJECT_DIR`'s basename. Defaults to that basename. |
 
 `PROJECT_DIR` should be a normal checkout of the application repo. This is the
-base repo whose `cadence/.env` Cadence normally reads. `WORKTREE_BASE` should be
-a separate directory so generated worktrees do not clutter the main checkout.
+base repo whose `cadence/.env` Cadence normally reads. `WORKTREE_BASE` **must**
+be a directory outside `PROJECT_DIR` (a sibling works well): a pool inside the
+main checkout breaks build isolation — every "isolated" worktree, and its
+half-finished files, would sit in the main tree and leak into its tests and
+tooling. `cadence doctor` fails on that layout, and `cadence worktree add`
+refuses it at runtime.
 
 `WORKTREE_TOOL` chooses how the build and revise loops create their isolated
 worktrees:
@@ -133,6 +137,15 @@ Either way the loops drive worktrees through `cadence worktree add|remove|path|m
 the skills themselves stay tool-agnostic. The generated worktree path is
 `$WORKTREE_BASE/<branch>`; keep the Cadence config in
 `$PROJECT_DIR/cadence/.env`, not in each generated worktree.
+
+Whichever tool is configured, `cadence worktree add` enforces the isolation
+contract before handing a path back: the path must be the root of a *linked*
+git worktree checked out on the requested branch, and never `PROJECT_DIR` or
+anything inside it. A stale plain directory, a standalone clone parked at the
+worktree path, or a worktree left on the wrong branch is refused with a
+diagnostic instead of being handed to the build. `run-implementer.sh` applies
+the same check immediately before launching a coding agent, as the last line
+of defence.
 
 ## Orchestrators, Reviewer, and Implementer
 

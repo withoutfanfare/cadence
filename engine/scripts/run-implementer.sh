@@ -19,6 +19,55 @@ TIMEOUT="${IMPL_TIMEOUT:-1200}"   # 20 min; override via IMPL_TIMEOUT
 
 [ -d "$WT" ]    || { echo "run-implementer: worktree not found: $WT" >&2; exit 3; }
 [ -f "$BRIEF" ] || { echo "run-implementer: brief not found: $BRIEF" >&2; exit 3; }
+
+# Isolation guard — implementers run with vendor auto-approve flags, so this is
+# the last check before one edits files. $WT must be the ROOT of a LINKED git
+# worktree and never the main checkout: a plain directory inside a checkout, a
+# standalone clone, and $PROJECT_DIR itself are all refused. Mirrors the
+# contract worktree.sh enforces at creation, for callers that pass a path
+# from anywhere else.
+_wt_real="$(cd "$WT" && pwd -P)"
+_top="$(git -C "$WT" rev-parse --show-toplevel 2>/dev/null)" \
+  || { echo "run-implementer: not a git worktree: $WT" >&2; exit 3; }
+[ "$_wt_real" = "$(cd "$_top" && pwd -P)" ] \
+  || { echo "run-implementer: $WT is inside the checkout at $_top, not a worktree root — refusing" >&2; exit 3; }
+_gitdir="$(git -C "$WT" rev-parse --absolute-git-dir 2>/dev/null)"
+[ -n "$_gitdir" ] && _gitdir="$(cd "$_gitdir" 2>/dev/null && pwd -P)"
+_commondir="$(git -C "$WT" rev-parse --git-common-dir 2>/dev/null)"
+case "$_commondir" in "") ;; /*) ;; *) _commondir="$WT/$_commondir" ;; esac
+[ -n "$_commondir" ] && _commondir="$(cd "$_commondir" 2>/dev/null && pwd -P)"
+if [ -z "$_gitdir" ] || [ "$_gitdir" = "$_commondir" ]; then
+  echo "run-implementer: $WT is a main checkout, not a linked worktree — refusing to run an implementer in it" >&2
+  exit 3
+fi
+if [ -n "${PROJECT_DIR:-}" ]; then
+  _proj_real="$(cd "$PROJECT_DIR" 2>/dev/null && pwd -P)"
+  if [ -n "$_proj_real" ]; then
+    # Never the main checkout OR anything inside it — a linked worktree nested
+    # under $PROJECT_DIR still leaks its files into the main tree's runs.
+    case "$_wt_real/" in
+      "$_proj_real/"*)
+        echo "run-implementer: $WT is the main checkout (PROJECT_DIR) or inside it — refusing" >&2
+        exit 3 ;;
+    esac
+    # And linked to the SAME repo as PROJECT_DIR: same git common dir (the git
+    # backend), or — grove links worktrees to its own bare repo — a matching
+    # `origin` URL. A worktree of some other repo must never get an implementer
+    # run with auto-approve flags under this project's config.
+    _proj_common="$(git -C "$PROJECT_DIR" rev-parse --git-common-dir 2>/dev/null)"
+    case "$_proj_common" in ""|/*) ;; *) _proj_common="$PROJECT_DIR/$_proj_common" ;; esac
+    [ -n "$_proj_common" ] && _proj_common="$(cd "$_proj_common" 2>/dev/null && pwd -P)"
+    if [ -n "$_proj_common" ] && [ "$_commondir" != "$_proj_common" ]; then
+      _wt_origin="$(git -C "$WT" remote get-url origin 2>/dev/null || echo)"
+      _proj_origin="$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || echo)"
+      if [ -z "$_wt_origin" ] || [ "$_wt_origin" != "$_proj_origin" ]; then
+        echo "run-implementer: $WT belongs to a different repository than PROJECT_DIR — refusing" >&2
+        exit 3
+      fi
+    fi
+  fi
+fi
+
 cd "$WT" || exit 3
 PROMPT="$(cat "$BRIEF")"
 
