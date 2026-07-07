@@ -1,7 +1,7 @@
 ---
 name: cadence-loop-revise
 description: Revise loop for the configured Linear project — addresses review feedback on a human-gated PR by pushing changes to the same draft PR, re-runs the gates, and re-reviews. Never merges, never marks a PR ready, never opens a new PR. Runs unattended on a schedule. Triggers include "run the revise loop", "cadence-loop-revise", or a scheduled routine invoking it.
-version: 1.0.0
+version: 1.0.1
 model: sonnet
 argument-hint: "[--limit=N] [--dry-run]"
 allowed-tools:
@@ -96,9 +96,12 @@ in `docs/ARCHITECTURE.md` §5a, then exit without touching Linear, git, or files
      ```
    Understand exactly what to fix.
 3. **Worktree.** Create or re-use the worktree for the **same branch** with
-   `base="${BASE_BRANCH:-develop}"; WT="$(cadence worktree add <branch> "$base")"; cd "$WT"`,
+   `base="${BASE_BRANCH:-develop}"; WT="$(cadence worktree add <branch> "$base")" && cd "$WT"`,
    then rebase on the origin tracking branch for `$BASE_BRANCH`. The helper is idempotent — an existing worktree for the branch is
-   re-used. `<branch>` is the PR's existing head ref (already short — the build loop
+   re-used, after it verifies the path really is an isolated linked worktree on
+   that branch (never `$PROJECT_DIR`). **If `add` fails or `$WT` is empty, STOP on
+   this issue via "Failure handling" — never edit in `$PROJECT_DIR`** (with an
+   empty `$WT`, a bare `cd "$WT"` silently leaves you in the main checkout). `<branch>` is the PR's existing head ref (already short — the build loop
    names it after the Linear identifier, e.g. `stu-1799`); use it verbatim
    (`gh pr view <n> --json headRefName`), do **not** reconstruct it from the longer
    Linear `gitBranchName` (with `WORKTREE_TOOL=grove` a different name yields a Herd

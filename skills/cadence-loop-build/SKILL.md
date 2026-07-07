@@ -1,7 +1,7 @@
 ---
 name: cadence-loop-build
 description: Build loop for the configured Linear project — implements a human-gated, spec'd issue in an isolated worktree off the configured base branch, runs the gates, opens a DRAFT PR against that base branch, and folds in a code review. Never merges, never marks a PR ready, never moves an issue past In Review. Runs unattended on a schedule. Triggers include "run the build loop", "cadence-loop-build", or a scheduled routine invoking it.
-version: 1.2.0
+version: 1.2.1
 model: opus
 argument-hint: "[--limit=N] [--dry-run] [--implementer=claude|kimi|opencode|codex]"
 allowed-tools:
@@ -124,8 +124,13 @@ the diff, the red→green test, and the scope yourself.
    acceptance-criteria stub instead, and note in the PR that no spec doc was present.
 3. **Worktree off `$BASE_BRANCH`.** Create it through the engine helper, which abstracts the
    worktree tool (plain `git worktree` by default; grove when `WORKTREE_TOOL=grove`):
-   `base="${BASE_BRANCH:-develop}"; WT="$(cadence worktree add <branch> "$base")"; cd "$WT"` — the helper prints the
-   worktree path on stdout. `<branch>` is the issue's Linear **identifier** lowercased
+   `base="${BASE_BRANCH:-develop}"; WT="$(cadence worktree add <branch> "$base")" && cd "$WT"` — the helper prints
+   ONLY the worktree path on stdout and verifies the result is an isolated linked
+   worktree (never `$PROJECT_DIR` or anything inside it). **If `add` fails or `$WT`
+   is empty, STOP on this issue via "Failure handling" — never implement in
+   `$PROJECT_DIR`.** (With an empty `$WT`, a bare `cd "$WT"` is a silent no-op that
+   would leave you in the main checkout — hence the `&&` and the explicit check.)
+   `<branch>` is the issue's Linear **identifier** lowercased
    (e.g. `stu-1799`) — **not** the full `gitBranchName`. The PR still auto-links:
    Linear matches the issue ID anywhere in the branch, and step 7 also puts the ID in
    the PR body. Confirm the worktree is based on the origin tracking branch for
