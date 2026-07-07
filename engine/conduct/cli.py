@@ -204,6 +204,8 @@ def conduct(env, dry_run=False):
 def _summary_line(summary):
     if summary.get("error"):
         return "FAILED — %s" % summary["error"]
+    if summary.get("blocked"):
+        return "blocked — %s" % summary.get("reason", "?")
     tagged = len(summary.get("tagged") or [])
     blocked = len(summary.get("skipped_blocked") or [])
     parent = len(summary.get("skipped_parent") or [])
@@ -242,27 +244,77 @@ def append_ledger(summary, env, ts=None):
         f.write("\n## conduct · %s · %s\n\n%s\n" % (mode, ts, _summary_line(summary)))
 
 
+def _lock_path(env):
+    state_dir = env.get("CADENCE_STATE_DIR") or os.path.expanduser("~/.cadence")
+    return os.path.join(state_dir, "logs", "conduct.lock.d")
+
+
+def _acquire_lock(env, max_age=7200):
+    path = _lock_path(env)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        os.mkdir(path)
+    except FileExistsError:
+        try:
+            age = datetime.now(timezone.utc).timestamp() - os.path.getmtime(path)
+        except OSError:
+            age = 0
+        if age <= max_age:
+            return None
+        try:
+            os.rmdir(path)
+            os.mkdir(path)
+        except OSError:
+            return None
+    with open(os.path.join(path, "pid"), "w", encoding="utf-8") as f:
+        f.write(str(os.getpid()))
+    return path
+
+
+def _release_lock(path):
+    if not path:
+        return
+    try:
+        os.unlink(os.path.join(path, "pid"))
+    except FileNotFoundError:
+        pass
+    try:
+        os.rmdir(path)
+    except OSError:
+        pass
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     ap = argparse.ArgumentParser(prog="cadence conduct")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
     env = _cadence_env.load_env()
+    lock = _acquire_lock(env)
+    if lock is None:
+        summary = {"loop": "conduct", "dry_run": args.dry_run,
+                   "blocked": True, "reason": "lock-held"}
+        append_ledger(summary, env)
+        print(json.dumps(summary, separators=(",", ":")))
+        return
     try:
-        summary = conduct(env, dry_run=args.dry_run)
-    except (SystemExit, Exception) as exc:
-        # An adapter failed (_linear/_tasks call sys.exit) or conduct raised. Record
-        # the failure so a scheduled run leaves a trace in the ledger a human monitors,
-        # then re-raise to preserve the non-zero exit.
-        detail = ("adapter exit %s" % exc.code) if isinstance(exc, SystemExit) \
-            else ("%s: %s" % (type(exc).__name__, exc))
         try:
-            append_ledger({"loop": "conduct", "dry_run": args.dry_run, "error": detail}, env)
-        except Exception:
-            pass  # never mask the original failure with a ledger-write error
-        raise
-    append_ledger(summary, env)
-    print(json.dumps(summary, separators=(",", ":")))
+            summary = conduct(env, dry_run=args.dry_run)
+        except (SystemExit, Exception) as exc:
+            # An adapter failed (_linear/_tasks call sys.exit) or conduct raised. Record
+            # the failure so a scheduled run leaves a trace in the ledger a human monitors,
+            # then re-raise to preserve the non-zero exit.
+            detail = ("adapter exit %s" % exc.code) if isinstance(exc, SystemExit) \
+                else ("%s: %s" % (type(exc).__name__, exc))
+            try:
+                append_ledger({"loop": "conduct", "dry_run": args.dry_run, "error": detail}, env)
+            except Exception:
+                pass  # never mask the original failure with a ledger-write error
+            raise
+        append_ledger(summary, env)
+        print(json.dumps(summary, separators=(",", ":")))
+    finally:
+        _release_lock(lock)
 
 
 if __name__ == "__main__":

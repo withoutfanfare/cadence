@@ -182,6 +182,10 @@ exec {real_python} "$@"
             feed = f.read()
         self.assertIn("FAILED — exit 7", feed)
         self.assertIn("FAILED", self._read_today_digest())
+        record = json.loads(self._read_ledger().strip().splitlines()[-1])
+        self.assertEqual(record["stage"], "triage")
+        self.assertTrue(record["runner_error"])
+        self.assertEqual(record["exit"], 7)
 
     def test_successful_run_uses_selected_orchestrator_provider(self):
         real_python = sys.executable
@@ -390,6 +394,36 @@ exec {real_python} "$@"
         with open(os.path.join(self.state, "logs", "triage.log"), encoding="utf-8") as f:
             stage_log = f.read()
         self.assertIn("CRASHED (exit 1)", stage_log)
+        record = json.loads(self._read_ledger().strip().splitlines()[-1])
+        self.assertEqual(record["reason"], "crashed")
+        self.assertEqual(record["exit"], 1)
+
+    def test_build_loop_refuses_gh_pr_merge_at_shell_level(self):
+        os.makedirs(os.path.join(self.project, "cadence"))
+        with open(os.path.join(self.project, "cadence", "tasks.md"), "w", encoding="utf-8") as f:
+            f.write("# Cadence Tasks\n")
+        shutil.copytree(os.path.join(ROOT, "engine", "prompts"),
+                        os.path.join(self.root, "engine", "prompts"))
+        self._write_exe("gh", "#!/bin/sh\necho real gh should not merge >&2\nexit 0\n")
+        self._write_exe("codex", "#!/bin/sh\ngh pr merge 12\n")
+
+        result = self._run(
+            "build",
+            TASK_BACKEND="file",
+            ORCHESTRATOR_BUILD="codex:gpt-test",
+            BASE_BRANCH="develop",
+            LINEAR_TEAM_ID="",
+            LINEAR_PROJECT_ID="",
+            LINEAR_ASSIGNEE_ID="",
+            LINEAR_API_KEY="",
+        )
+
+        self.assertEqual(result.returncode, 126, result.stderr)
+        with open(os.path.join(self.state, "logs", "build.log"), encoding="utf-8") as f:
+            self.assertIn("refusing gh pr merge", f.read())
+        record = json.loads(self._read_ledger().strip().splitlines()[-1])
+        self.assertEqual(record["stage"], "build")
+        self.assertEqual(record["exit"], 126)
 
     def test_live_worktree_lock_emits_blocked_summary(self):
         lockdir = os.path.join(self.state, "logs", "worktree.lock.d")

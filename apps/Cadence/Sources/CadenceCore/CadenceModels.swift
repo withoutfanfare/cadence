@@ -29,6 +29,7 @@ public struct CadenceProject: Decodable, Sendable, Identifiable {
     public let config: String
     public let stateDir: String
     public let teamName: String?
+    public let boardURL: String?
     public let backend: Backend
     public let scheduled: Bool
     public let autonomous: Bool
@@ -42,6 +43,7 @@ public struct CadenceProject: Decodable, Sendable, Identifiable {
         case name, project, config, backend, scheduled, autonomous, paused, health, stages, schedule
         case stateDir = "state_dir"
         case teamName = "team_name"
+        case boardURL = "board_url"
         case lastActivity = "last_activity"
     }
 }

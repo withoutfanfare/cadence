@@ -27,7 +27,7 @@ MODEL="${2:?model}"
 # the machine's CLI default happens to be.
 EFFORT=""
 case "$MODEL" in
-  *:*) EFFORT="${MODEL##*:}"; MODEL="${MODEL%:*}" ;;
+  *:low|*:medium|*:high|*:minimal) EFFORT="${MODEL##*:}"; MODEL="${MODEL%:*}" ;;
 esac
 WORKDIR="${3:?workdir}"
 PROMPT_FILE="${4:?prompt file}"

@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The worktree **isolation contract is now engine-enforced for both worktree
+  tools (`git` and `grove`)**, not assumed. `cadence worktree add` verifies —
+  on re-use and after creation — that the path it hands back is the root of a
+  *linked* git worktree checked out on the requested branch, and never
+  `PROJECT_DIR` or anything inside it — and belongs to the *same repository*
+  as the project (same git common dir, or for grove's separate bare repos a
+  matching `origin` URL), so a shared pool cannot hand back another repo's
+  leftover worktree. Previously a bare
+  `rev-parse --is-inside-work-tree` accepted any directory inside any checkout
+  (including a stale plain directory in the main checkout), so a build could be
+  handed the main working tree to edit — its half-finished files then leaking
+  into the main tree's tests. Also enforced: `WORKTREE_BASE` must live outside
+  `PROJECT_DIR` (checked by `cadence doctor` and at `add` time), branch names
+  cannot escape the pool via `..` segments, `remove` refuses a path that
+  resolves to the main checkout, and `run-implementer.sh` re-checks the
+  contract immediately before launching a coding agent with auto-approve
+  flags — the last line of defence whatever path it was given. The build and
+  revise skills (and the file-backend build prompt) now also chain
+  `worktree add` with `&&` and stop on failure: with an empty `$WT`, a bare
+  `cd "$WT"` is a silent no-op that left the orchestrator sitting in the main
+  checkout.
+
 - SwiftBar menu status icons are now an SF Symbol traffic light instead of
   emoji. Red is reserved for a genuinely failed run; "your move" (a decision
   waiting on you) is amber — attention, not alarm — so a board full of pending

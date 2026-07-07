@@ -26,6 +26,7 @@ class TestOverview(unittest.TestCase):
             f.write("AUTONOMOUS=%s\n" % ("on" if autonomous else "0"))
             f.write("CADENCE_STATE_DIR=%s\n" % state)
             f.write('LINEAR_TEAM_NAME="Team %s"\n' % name)
+            f.write('LINEAR_WORKSPACE_SLUG="workspace-%s"\n' % name)
             if roadmap_schedule:
                 f.write("SCHED_ROADMAP=%s\n" % roadmap_schedule)
         os.makedirs(os.path.join(state, "runs"))
@@ -67,6 +68,7 @@ class TestOverview(unittest.TestCase):
             self.assertIsNone(by_name["app1"]["stages"]["spec"])
             self.assertEqual(by_name["app1"]["last_activity"],
                              "[2026-07-02T08:00:00Z] triage — LIVE nothing to do")
+            self.assertEqual(by_name["app1"]["board_url"], "https://linear.app/workspace-app1/")
 
             self.assertEqual(by_name["app2"]["health"], "paused")
             self.assertTrue(by_name["app2"]["paused"])

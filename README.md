@@ -122,6 +122,10 @@ controls as the CLI-backed menu-bar view. It shells out to the public `cadence`
 CLI, so the engine remains the source of truth for project registry, schedules,
 labels, and writes.
 
+The app lists only **onboarded** projects — those registered with `cadence
+onboard` — and reads each one from its own `<app>/cadence/.env`, never from a
+repo-root `.env`. A project appears in the app only after it has been onboarded.
+
 ```bash
 cadence app install
 cadence app open
@@ -151,8 +155,11 @@ cd /path/to/app
 cadence doctor
 ```
 
-Existing root `.env` installs still work, but new project profiles should use
-`cadence/.env`.
+Each project keeps its own config at `<app>/cadence/.env` — that is what the CLI,
+the scheduler registry, and `Cadence.app` read once the project is onboarded
+(`cadence onboard /path/to/app`). A bare `.env` at the Cadence repo root is a
+legacy single-project fallback for manual CLI use only; the scheduler and the
+menu-bar app do not read it, so always configure the per-project `cadence/.env`.
 
 **Prefer a guided setup?** Once `cadence` is on your `PATH`, ask your AI agent
 (Claude, Codex, or any agent that can run a shell) to **"set up this project with

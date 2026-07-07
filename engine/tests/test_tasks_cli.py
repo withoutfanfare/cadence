@@ -108,6 +108,32 @@ class TestTasksCli(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("agent:specced", updated)
 
+    def test_a_loop_cannot_grant_a_human_gate(self):
+        text = TASKS_MD.replace("labels: agent:triaged, Bug", "labels: agent:specced, Bug")
+        result, updated = self._run_env(
+            ["update", "TASK-1", "--add-label", "agent:build"],
+            {"CADENCE_STAGE": "spec"}, tasks_text=text)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("refused", result.stderr.lower())
+        self.assertNotIn("agent:build", updated)
+
+    def test_blank_stage_cannot_bypass_gate_removal_guard(self):
+        text = TASKS_MD.replace("labels: agent:triaged, Bug", "labels: agent:triaged, agent:spec")
+        result, updated = self._run_env(
+            ["update", "TASK-1", "--remove-label", "agent:spec"],
+            {"CADENCE_STAGE": ""}, tasks_text=text)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("refused", result.stderr.lower())
+        self.assertIn("agent:spec", updated)
+
+    def test_autonomous_advance_can_grant_gate_on_auto_task(self):
+        text = TASKS_MD.replace("labels: agent:triaged, Bug", "labels: agent:auto, agent:specced")
+        result, updated = self._run_env(
+            ["update", "TASK-1", "--add-label", "agent:build"],
+            {"CADENCE_STAGE": "advance", "AUTONOMOUS": "on"}, tasks_text=text)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("agent:build", updated)
+
     def test_human_without_a_stage_may_ungrant_a_gate(self):
         text = TASKS_MD.replace("labels: agent:triaged, Bug", "labels: agent:triaged, agent:spec")
         result, updated = self._run_env(

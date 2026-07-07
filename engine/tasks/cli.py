@@ -224,14 +224,26 @@ DELIVERY_LABELS = {"agent:pr-open", "agent:revised"}
 _STAGE_MAY_REMOVE_GATE = {"spec": {"agent:spec"}, "build": {"agent:build"}, "revise": {"agent:revise"}}
 
 
+def _running_stage(env):
+    if "CADENCE_STAGE" not in env:
+        return None
+    return (env.get("CADENCE_STAGE") or "").strip().lower() or "unknown"
+
+
+def _autonomous_gate_allowed(stage, add_labels, current_labels, env):
+    if stage != "advance":
+        return False
+    if (env.get("AUTONOMOUS") or "").strip().lower() not in {"1", "on", "true", "yes"}:
+        return False
+    return "agent:auto" in set(current_labels or []) and all(lbl in GATE_LABELS for lbl in add_labels)
+
+
 def _guard_gate_removal(remove_labels, env):
     """A scheduled loop must never strip a human gate label; only a human (no
-    CADENCE_STAGE in the environment) or the stage that owns the gate may remove
-    it. Enforced here in the engine because the prompt-level rule can be — and was
-    — disobeyed by a model (triage erased a granted agent:spec, reverting the work
-    to agent:triaged). run-loop.sh exports CADENCE_STAGE for every loop run."""
-    stage = (env.get("CADENCE_STAGE") or "").strip().lower()
-    if not stage:
+    CADENCE_STAGE key in the environment) or the stage that owns the gate may
+    remove it. A present-but-empty CADENCE_STAGE is still a loop context."""
+    stage = _running_stage(env)
+    if stage is None:
         return
     allowed = _STAGE_MAY_REMOVE_GATE.get(stage, set())
     illegal = sorted(lbl for lbl in remove_labels if lbl in GATE_LABELS and lbl not in allowed)
@@ -242,11 +254,27 @@ def _guard_gate_removal(remove_labels, env):
             % (stage, ", ".join(illegal)))
 
 
+def _guard_gate_grant(add_labels, env, current_labels):
+    stage = _running_stage(env)
+    if stage is None:
+        return
+    illegal = sorted(lbl for lbl in add_labels if lbl in GATE_LABELS)
+    if not illegal:
+        return
+    if _autonomous_gate_allowed(stage, illegal, current_labels, env):
+        return
+    raise SystemExit(
+        "refused: the %s loop may not grant human gate label(s) %s — only a "
+        "human, or autonomous advance on an agent:auto task, grants gates"
+        % (stage, ", ".join(illegal)))
+
+
 def cmd_update(args, env=None):
     env = env or os.environ
     _guard_gate_removal(args.remove_label or [], env)
     tasks = load(env)
     task = _find(tasks, args.identifier)
+    _guard_gate_grant(args.add_label or [], env, task.get("labels") or [])
     had_delivery_label = bool(DELIVERY_LABELS.intersection(task.get("labels") or []))
     if args.status is not None:
         task["status"] = args.status

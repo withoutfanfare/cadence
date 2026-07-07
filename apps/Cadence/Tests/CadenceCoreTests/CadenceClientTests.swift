@@ -13,6 +13,7 @@ final class CadenceClientTests: XCTestCase {
             "config": "/repo/notes/cadence/.env",
             "state_dir": "/Users/me/.cadence/projects/notes",
             "team_name": "Product",
+            "board_url": "https://linear.app/example/",
             "backend": "file",
             "scheduled": true,
             "autonomous": false,
@@ -30,6 +31,7 @@ final class CadenceClientTests: XCTestCase {
         XCTAssertEqual(overview.projects.count, 1)
         XCTAssertEqual(overview.projects[0].name, "notes")
         XCTAssertEqual(overview.projects[0].backend, .file)
+        XCTAssertEqual(overview.projects[0].boardURL, "https://linear.app/example/")
         XCTAssertEqual(overview.projects[0].health, .ok)
         XCTAssertEqual(overview.projects[0].stages["triage"]??.result, "ok")
     }

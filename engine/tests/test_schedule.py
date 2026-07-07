@@ -359,6 +359,32 @@ class TestSchedulerTick(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(cli.tick(env, now=now, run=fake_run), 0)
 
+    def test_tick_skips_project_after_daily_run_cap(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "app")
+            config_dir = os.path.join(project, "cadence")
+            state = os.path.join(tmp, "state")
+            registry = os.path.join(tmp, "projects.txt")
+            os.makedirs(config_dir)
+            os.makedirs(os.path.join(state, "runs"))
+            with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\nCADENCE_DAILY_RUN_CAP=1\n" % state)
+            with open(os.path.join(state, "runs", "runs.jsonl"), "w", encoding="utf-8") as f:
+                f.write('{"stage":"triage","ts":"2026-07-01T00:00:00Z"}\n')
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(project + "\n")
+
+            def fake_run(*_args, **_kwargs):
+                raise AssertionError("capped project should not run")
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry}
+            now = datetime(2026, 7, 1, 0, 5, tzinfo=timezone.utc)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(cli.tick(env, now=now, run=fake_run), 0)
+
+        self.assertIn("CADENCE_DAILY_RUN_CAP=1 reached", out.getvalue())
+
     def test_status_warns_only_when_projects_share_state_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
             registry = os.path.join(tmp, "projects.txt")

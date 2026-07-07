@@ -88,7 +88,7 @@ public enum MenuModel {
                 stages: stageControls(project, now: now),
                 taskPath: taskPaths[project.config],
                 taskError: itemErrors[project.config],
-                boardURL: workspaceURL(from: items)
+                boardURL: project.boardURL ?? workspaceURL(from: items)
             )
         }
 

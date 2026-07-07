@@ -1,7 +1,7 @@
 ---
 name: cadence-loop-build
 description: Build loop for the configured Linear project — implements a human-gated, spec'd issue in an isolated worktree off the configured base branch, runs the gates, opens a DRAFT PR against that base branch, and folds in a code review. Never merges, never marks a PR ready, never moves an issue past In Review. Runs unattended on a schedule. Triggers include "run the build loop", "cadence-loop-build", or a scheduled routine invoking it.
-version: 1.2.0
+version: 1.2.1
 model: opus
 argument-hint: "[--limit=N] [--dry-run] [--implementer=claude|kimi|opencode|codex]"
 allowed-tools:
@@ -122,10 +122,20 @@ the diff, the red→green test, and the scope yourself.
    implement to *those*. If no spec document is linked (the issue was gated
    `agent:build` without a spec stage), implement to the issue's description +
    acceptance-criteria stub instead, and note in the PR that no spec doc was present.
+   Also pull the Clio handoff brief for this ticket:
+   `clio brief --preset handoff --query <ISSUE-ID> --char-budget 4000`
+   (run from `$PROJECT_DIR` so the namespace auto-detects). Fold anything
+   relevant into your implementation approach; an empty brief is fine — skip it
+   silently.
 3. **Worktree off `$BASE_BRANCH`.** Create it through the engine helper, which abstracts the
    worktree tool (plain `git worktree` by default; grove when `WORKTREE_TOOL=grove`):
-   `base="${BASE_BRANCH:-develop}"; WT="$(cadence worktree add <branch> "$base")"; cd "$WT"` — the helper prints the
-   worktree path on stdout. `<branch>` is the issue's Linear **identifier** lowercased
+   `base="${BASE_BRANCH:-develop}"; WT="$(cadence worktree add <branch> "$base")" && cd "$WT"` — the helper prints
+   ONLY the worktree path on stdout and verifies the result is an isolated linked
+   worktree (never `$PROJECT_DIR` or anything inside it). **If `add` fails or `$WT`
+   is empty, STOP on this issue via "Failure handling" — never implement in
+   `$PROJECT_DIR`.** (With an empty `$WT`, a bare `cd "$WT"` is a silent no-op that
+   would leave you in the main checkout — hence the `&&` and the explicit check.)
+   `<branch>` is the issue's Linear **identifier** lowercased
    (e.g. `stu-1799`) — **not** the full `gitBranchName`. The PR still auto-links:
    Linear matches the issue ID anywhere in the branch, and step 7 also puts the ID in
    the PR body. Confirm the worktree is based on the origin tracking branch for
@@ -217,7 +227,9 @@ the diff, the red→green test, and the scope yourself.
    `docs/ARCHITECTURE.md` §7a — `kind: constraint`, importance by severity (5
    security/money/data-integrity, else 4), `upsert: true` with a stable
    `source_ref`. If `MEMORY_BACKEND=clio`, use `memory_remember`; if `markdown`, use
-   `cadence memory remember`. One-offs stay in the PR comment only.
+   `cadence memory remember`. One-offs stay in the PR comment only. Whenever this loop stores anything in
+   Clio while working an issue, tag it `ticket:<issue-id>` (lowercase, e.g.
+   `ticket:cad-42`) so future handoff briefs find it.
 10. **Record the run.** Append the human digest and the machine ledger line per the
     dated-file convention in `docs/ARCHITECTURE.md` §7:
     - Append a section to `$CADENCE_STATE_DIR/runs/<YYYY-MM-DD>.md` in `$PROJECT_DIR`,
