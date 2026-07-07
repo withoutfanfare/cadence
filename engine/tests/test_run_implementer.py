@@ -79,6 +79,43 @@ class TestRunImplementerIsolation(unittest.TestCase):
         self.assertIn("not a worktree root", err)
         self.assertFalse(os.path.exists(self.marker))
 
+    def test_refuses_a_linked_worktree_nested_inside_the_main_checkout(self):
+        # A linked worktree ROOT that sits inside PROJECT_DIR still leaks its
+        # files into the main tree's runs — containment, not just equality.
+        nested = os.path.join(self.proj, "nested-wt")
+        self._git("-C", self.proj, "worktree", "add", nested, "-b", "nest")
+        rc, err = self._run(nested)
+        self.assertEqual(rc, 3)
+        self.assertIn("or inside it", err)
+        self.assertFalse(os.path.exists(self.marker))
+
+    def test_refuses_a_worktree_of_a_different_repository(self):
+        other = os.path.join(self.tmp, "other")
+        self._git("init", "-q", "-b", "main", other)
+        self._git("-c", "user.email=t@t", "-c", "user.name=t",
+                  "-C", other, "commit", "--allow-empty", "-qm", "init")
+        foreign = os.path.join(self.tmp, "wts", "foreign")
+        self._git("-C", other, "worktree", "add", foreign, "-b", "foreign")
+        rc, err = self._run(foreign)
+        self.assertEqual(rc, 3)
+        self.assertIn("different repository", err)
+        self.assertFalse(os.path.exists(self.marker))
+
+    def test_accepts_a_worktree_of_a_bare_clone_sharing_origin(self):
+        # Grove topology: the worktree links to a separate bare repo whose
+        # `origin` matches PROJECT_DIR's — same project, must be accepted.
+        remote = os.path.join(self.tmp, "remote.git")
+        self._git("init", "-q", "--bare", remote)
+        self._git("-C", self.proj, "remote", "add", "origin", remote)
+        self._git("-C", self.proj, "push", "-q", "-u", "origin", "develop")
+        bare = os.path.join(self.tmp, "grove-bare.git")
+        self._git("clone", "-q", "--bare", remote, bare)
+        grove_wt = os.path.join(self.tmp, "wts", "stu-5")
+        self._git("-C", bare, "worktree", "add", grove_wt, "-b", "stu-5", "develop")
+        rc, err = self._run(grove_wt)
+        self.assertEqual(rc, 0, err)
+        self.assertTrue(os.path.exists(self.marker))
+
     def test_refuses_a_non_git_directory(self):
         plain = os.path.join(self.tmp, "plain")
         os.makedirs(plain)

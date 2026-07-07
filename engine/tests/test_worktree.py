@@ -171,6 +171,39 @@ class TestWorktreeGit(unittest.TestCase):
         self.assertEqual(path, "")
         self.assertIn("standalone checkout", err)
 
+    def test_add_refuses_linked_worktree_of_another_repo(self):
+        # A shared WORKTREE_BASE can hold a leftover linked worktree of some
+        # OTHER repo at exactly $WORKTREE_BASE/<branch>. It is a linked worktree
+        # root on the right branch — but of the wrong repository — and must not
+        # be re-used as ours.
+        other = os.path.join(self.tmp, "other")
+        self._git("init", "-q", "-b", "main", other, cwd=self.tmp)
+        self._git("-c", "user.email=t@t", "-c", "user.name=t",
+                  "-C", other, "commit", "--allow-empty", "-qm", "init")
+        self._git("-C", other, "worktree", "add",
+                  os.path.join(self.wtbase, "stu-4"), "-b", "stu-4")
+
+        rc, path, err = self._wt("add", "stu-4", "develop")
+
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(path, "")
+        self.assertIn("different repository", err)
+
+    def test_add_accepts_worktree_of_a_bare_clone_sharing_origin(self):
+        # The grove topology: worktrees link to grove's own BARE repo, whose git
+        # common dir is not $PROJECT_DIR's. Same `origin` URL = same project, so
+        # the same-repo check must accept it rather than break the grove backend.
+        remote = self._remote_develop()
+        bare = os.path.join(self.tmp, "grove-bare.git")
+        self._git("clone", "-q", "--bare", remote, bare, cwd=self.tmp)
+        self._git("-C", bare, "worktree", "add",
+                  os.path.join(self.wtbase, "stu-5"), "-b", "stu-5", "develop")
+
+        rc, path, err = self._wt("add", "stu-5", "develop")
+
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(path, os.path.join(self.wtbase, "stu-5"))
+
     def test_branch_names_cannot_escape_worktree_base(self):
         for bad in ("../escape", "a/../../b", ".."):
             rc, path, err = self._wt("add", bad, "develop")

@@ -13,7 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tools (`git` and `grove`)**, not assumed. `cadence worktree add` verifies —
   on re-use and after creation — that the path it hands back is the root of a
   *linked* git worktree checked out on the requested branch, and never
-  `PROJECT_DIR` or anything inside it. Previously a bare
+  `PROJECT_DIR` or anything inside it — and belongs to the *same repository*
+  as the project (same git common dir, or for grove's separate bare repos a
+  matching `origin` URL), so a shared pool cannot hand back another repo's
+  leftover worktree. Previously a bare
   `rev-parse --is-inside-work-tree` accepted any directory inside any checkout
   (including a stale plain directory in the main checkout), so a build could be
   handed the main working tree to edit — its half-finished files then leaking

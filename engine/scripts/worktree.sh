@@ -67,7 +67,7 @@ resolve_dir() {   # physical path of an existing directory; empty if missing
 # both tools: git builds correct worktrees by construction, but grove is an
 # external command, so its result is verified the same way.
 assert_isolated_worktree() {
-  local wt_real proj_real top cur gitdir commondir
+  local wt_real proj_real top cur gitdir commondir proj_common wt_origin proj_origin
   wt_real="$(resolve_dir "$WT")"
   proj_real="$(resolve_dir "$PROJECT_DIR")"
   if [ -n "$proj_real" ]; then
@@ -90,6 +90,23 @@ assert_isolated_worktree() {
   if [ -z "$gitdir" ] || [ "$gitdir" = "$commondir" ]; then
     echo "worktree: $WT is a standalone checkout, not a linked worktree of the project repo — refusing" >&2
     exit 1
+  fi
+  # ...and linked to the SAME repo as the project. With a shared WORKTREE_BASE,
+  # a leftover linked worktree of some OTHER repo would otherwise be re-used as
+  # ours. Same git common dir means same repo (always true for the git backend,
+  # whose worktrees hang off $PROJECT_DIR). Grove links worktrees to its own
+  # bare repo — a different common dir — so when the dirs differ, accept only a
+  # worktree whose `origin` URL matches the project's; anything else is foreign.
+  proj_common="$(git -C "$PROJECT_DIR" rev-parse --git-common-dir 2>/dev/null)"
+  case "$proj_common" in ""|/*) ;; *) proj_common="$PROJECT_DIR/$proj_common" ;; esac
+  proj_common="$(resolve_dir "$proj_common")"
+  if [ -n "$proj_common" ] && [ "$commondir" != "$proj_common" ]; then
+    wt_origin="$(git -C "$WT" remote get-url origin 2>/dev/null || echo)"
+    proj_origin="$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || echo)"
+    if [ -z "$wt_origin" ] || [ "$wt_origin" != "$proj_origin" ]; then
+      echo "worktree: $WT belongs to a different repository (git dir $commondir, project $proj_common) — refusing" >&2
+      exit 1
+    fi
   fi
   cur="$(git -C "$WT" symbolic-ref --quiet --short HEAD 2>/dev/null || echo)"
   if [ "$cur" != "$branch" ]; then

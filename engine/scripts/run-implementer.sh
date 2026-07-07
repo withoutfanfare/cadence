@@ -42,9 +42,29 @@ if [ -z "$_gitdir" ] || [ "$_gitdir" = "$_commondir" ]; then
 fi
 if [ -n "${PROJECT_DIR:-}" ]; then
   _proj_real="$(cd "$PROJECT_DIR" 2>/dev/null && pwd -P)"
-  if [ -n "$_proj_real" ] && [ "$_wt_real" = "$_proj_real" ]; then
-    echo "run-implementer: $WT is the main checkout (PROJECT_DIR) — refusing" >&2
-    exit 3
+  if [ -n "$_proj_real" ]; then
+    # Never the main checkout OR anything inside it — a linked worktree nested
+    # under $PROJECT_DIR still leaks its files into the main tree's runs.
+    case "$_wt_real/" in
+      "$_proj_real/"*)
+        echo "run-implementer: $WT is the main checkout (PROJECT_DIR) or inside it — refusing" >&2
+        exit 3 ;;
+    esac
+    # And linked to the SAME repo as PROJECT_DIR: same git common dir (the git
+    # backend), or — grove links worktrees to its own bare repo — a matching
+    # `origin` URL. A worktree of some other repo must never get an implementer
+    # run with auto-approve flags under this project's config.
+    _proj_common="$(git -C "$PROJECT_DIR" rev-parse --git-common-dir 2>/dev/null)"
+    case "$_proj_common" in ""|/*) ;; *) _proj_common="$PROJECT_DIR/$_proj_common" ;; esac
+    [ -n "$_proj_common" ] && _proj_common="$(cd "$_proj_common" 2>/dev/null && pwd -P)"
+    if [ -n "$_proj_common" ] && [ "$_commondir" != "$_proj_common" ]; then
+      _wt_origin="$(git -C "$WT" remote get-url origin 2>/dev/null || echo)"
+      _proj_origin="$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || echo)"
+      if [ -z "$_wt_origin" ] || [ "$_wt_origin" != "$_proj_origin" ]; then
+        echo "run-implementer: $WT belongs to a different repository than PROJECT_DIR — refusing" >&2
+        exit 3
+      fi
+    fi
   fi
 fi
 
