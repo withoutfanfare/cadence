@@ -91,6 +91,11 @@ check fails, emit the standard pause JSON and records described in
    `$PROJECT_DIR`, read against the origin tracking branch for `$BASE_BRANCH`) to ground the spec in the real
    code — affected models, traits, Filament panels, call sites, prior related
    issues/PRs. Do not guess; read the code.
+   Also pull the Clio handoff brief for this ticket:
+   `clio brief --preset handoff --query <ISSUE-ID> --char-budget 4000`
+   (run from `$PROJECT_DIR` so the namespace auto-detects). Fold anything
+   relevant into the spec's Findings; an empty brief is fine — skip it
+   silently.
 4. **Validate duplicate candidates.** Before writing, resolve any cluster this
    issue belongs to — this is what stops the build loop working two issues with
    one fix, and it is *your* job: triage only proposes, you confirm against code.
@@ -172,6 +177,10 @@ leave a held claim.
 ## Writing rules
 
 UK English. Plain and specific. Name files, lines, models. No hype, no padding.
+
+- When storing anything in Clio while working an issue, tag it
+  `ticket:<issue-id>` (lowercase, e.g. `ticket:cad-42`) so future handoff
+  briefs find it.
 
 ## On finishing
 

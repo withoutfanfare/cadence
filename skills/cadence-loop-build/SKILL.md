@@ -122,6 +122,11 @@ the diff, the red→green test, and the scope yourself.
    implement to *those*. If no spec document is linked (the issue was gated
    `agent:build` without a spec stage), implement to the issue's description +
    acceptance-criteria stub instead, and note in the PR that no spec doc was present.
+   Also pull the Clio handoff brief for this ticket:
+   `clio brief --preset handoff --query <ISSUE-ID> --char-budget 4000`
+   (run from `$PROJECT_DIR` so the namespace auto-detects). Fold anything
+   relevant into the spec's Findings; an empty brief is fine — skip it
+   silently.
 3. **Worktree off `$BASE_BRANCH`.** Create it through the engine helper, which abstracts the
    worktree tool (plain `git worktree` by default; grove when `WORKTREE_TOOL=grove`):
    `base="${BASE_BRANCH:-develop}"; WT="$(cadence worktree add <branch> "$base")" && cd "$WT"` — the helper prints
@@ -222,7 +227,9 @@ the diff, the red→green test, and the scope yourself.
    `docs/ARCHITECTURE.md` §7a — `kind: constraint`, importance by severity (5
    security/money/data-integrity, else 4), `upsert: true` with a stable
    `source_ref`. If `MEMORY_BACKEND=clio`, use `memory_remember`; if `markdown`, use
-   `cadence memory remember`. One-offs stay in the PR comment only.
+   `cadence memory remember`. One-offs stay in the PR comment only. When storing
+   anything in Clio while working an issue, tag it `ticket:<issue-id>` (lowercase,
+   e.g. `ticket:cad-42`) so future handoff briefs find it.
 10. **Record the run.** Append the human digest and the machine ledger line per the
     dated-file convention in `docs/ARCHITECTURE.md` §7:
     - Append a section to `$CADENCE_STATE_DIR/runs/<YYYY-MM-DD>.md` in `$PROJECT_DIR`,
