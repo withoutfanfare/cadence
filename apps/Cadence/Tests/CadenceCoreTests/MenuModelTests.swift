@@ -110,6 +110,25 @@ final class MenuModelTests: XCTestCase {
         XCTAssertNil(empty.projects[0].boardURL)
     }
 
+    func testBoardURLPrefersOverviewValueForEmptyQueues() {
+        let project = CadenceProject.fixture(
+            name: "p",
+            config: "/p",
+            backend: .linear,
+            health: .ok,
+            boardURL: "https://linear.app/acme/"
+        )
+
+        let snapshot = MenuModel.build(
+            overview: Overview(registry: "/r", projects: [project], warnings: []),
+            itemsByProject: ["/p": []],
+            taskPaths: [:],
+            now: Date(timeIntervalSince1970: 0)
+        )
+
+        XCTAssertEqual(snapshot.projects[0].boardURL, "https://linear.app/acme/")
+    }
+
     func testStageControlsIncludeRelativeLastRunAndNextRun() {
         let now = Date(timeIntervalSince1970: 1_750_000_000)
         let project = CadenceProject.fixture(

@@ -1,4 +1,6 @@
 import importlib.util
+import contextlib
+import io
 import json
 import os
 import tempfile
@@ -264,6 +266,27 @@ class TestLedger(unittest.TestCase):
             record = json.loads(open(jsonl, encoding="utf-8").read().strip().splitlines()[-1])
             self.assertEqual(record["loop"], "conduct")
             self.assertIn("error", record)
+
+    def test_main_records_blocked_when_conduct_lock_is_held(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old_load = cli._cadence_env.load_env
+            try:
+                cli._cadence_env.load_env = lambda *a, **k: {
+                    "CADENCE_STATE_DIR": tmp, "AUTONOMOUS": "on",
+                    "TASK_BACKEND": "file", "TASK_FILE": os.path.join(tmp, "tasks.md"),
+                }
+                os.makedirs(os.path.join(tmp, "logs", "conduct.lock.d"))
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    cli.main([])
+            finally:
+                cli._cadence_env.load_env = old_load
+
+            summary = json.loads(out.getvalue())
+            self.assertTrue(summary["blocked"])
+            record = json.loads(open(os.path.join(tmp, "runs", "runs.jsonl"),
+                                     encoding="utf-8").read().strip())
+            self.assertEqual(record["reason"], "lock-held")
 
 
 if __name__ == "__main__":

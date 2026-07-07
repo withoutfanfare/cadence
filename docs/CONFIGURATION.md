@@ -66,6 +66,7 @@ needs to contain a quote, wrap it in the other quote style instead.
 | `LINEAR_TEAM_ID` | `TASK_BACKEND=linear` | Team ID Cadence is allowed to operate in. `cadence doctor` verifies this. |
 | `LINEAR_PROJECT_ID` | `TASK_BACKEND=linear` | Project ID used to scope every issue query. |
 | `LINEAR_TEAM_NAME` | Recommended | Display name used in status output and human-facing checks. Quote it if it contains spaces. |
+| `LINEAR_WORKSPACE_SLUG` | Optional | Linear workspace slug used by `cadence overview --json` to expose a stable board URL for empty queues. |
 | `LINEAR_ASSIGNEE_ID` | `TASK_BACKEND=linear` | User ID whose assigned issues Cadence may act on. |
 
 Cadence always scopes issue lists to both `LINEAR_TEAM_ID` and
@@ -184,7 +185,8 @@ Codex model name. Use `ORCHESTRATOR_BUILD=codex:gpt-5.4` instead.
 
 ### Reasoning effort (optional third segment)
 
-Any `ORCHESTRATOR_*` value may carry an effort suffix:
+Any `ORCHESTRATOR_*` value may carry a `low`, `medium`, `high`, or `minimal`
+effort suffix:
 `ORCHESTRATOR_BUILD=claude:sonnet:medium`. Claude runs receive it as
 `--effort`; Codex runs as a `model_reasoning_effort` override. Kimi and
 OpenCode have no effort control, so the suffix is ignored with a logged
@@ -334,6 +336,7 @@ registered project has scheduling enabled.
 | `CADENCE_SCHEDULER_INTERVAL` | `300` | scheduler | Launchd wake interval in seconds. |
 | `CADENCE_SCHEDULER_MAX_RUNS` | `1` | scheduler | Maximum scheduled stage runs per tick across all projects (the throughput ceiling). |
 | `CADENCE_SCHEDULER_CONCURRENCY` | `4` | scheduler | How many of a tick's runs execute at once (the width). Effective only when `CADENCE_SCHEDULER_MAX_RUNS` allows more than one run; keep it small for API-rate and cost safety. |
+| `CADENCE_DAILY_RUN_CAP` | unset | scheduler/project | Optional per-project cap on scheduled runs per UTC day. Once the project's `runs.jsonl` has this many dated run records for today, the scheduler skips further launches for that project and logs why. |
 | `CADENCE_SCHEDULER_RUN_TIMEOUT` | `3600` | scheduler | Wall-clock cap in seconds per scheduled run; the child is killed on expiry and the run reported as failed. `0` disables. Sits above `ORCH_TIMEOUT`, which bounds only the model call inside the run. |
 | `CADENCE_SCHEDULER_WINDOW_MINUTES` | `5` | scheduler | Due window used to tolerate launchd jitter without catching up old missed runs. |
 | `CADENCE_SCHEDULED` | unset/off | project | Set to `1`, `on`, `true`, or `yes` to let the scheduler run this project. |

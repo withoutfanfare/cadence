@@ -437,13 +437,26 @@ DELIVERY_LABELS = {"agent:pr-open", "agent:revised"}
 _STAGE_MAY_REMOVE_GATE = {"spec": {"agent:spec"}, "build": {"agent:build"}, "revise": {"agent:revise"}}
 
 
+def _running_stage(env):
+    if "CADENCE_STAGE" not in env:
+        return None
+    return (env.get("CADENCE_STAGE") or "").strip().lower() or "unknown"
+
+
+def _autonomous_gate_allowed(stage, add_labels, current_labels, env):
+    if stage != "advance":
+        return False
+    if (env.get("AUTONOMOUS") or "").strip().lower() not in {"1", "on", "true", "yes"}:
+        return False
+    return "agent:auto" in set(current_labels or []) and all(lbl in GATE_LABELS for lbl in add_labels)
+
+
 def _guard_gate_removal(remove_labels, env):
     """A scheduled loop must never strip a human gate label; only a human (no
-    CADENCE_STAGE in the environment) or the stage that owns the gate may remove
-    it. Engine-enforced because the prompt-level rule can be disobeyed by a model.
-    run-loop.sh exports CADENCE_STAGE for every loop run."""
-    stage = (env.get("CADENCE_STAGE") or "").strip().lower()
-    if not stage:
+    CADENCE_STAGE key in the environment) or the stage that owns the gate may
+    remove it. A present-but-empty CADENCE_STAGE is still a loop context."""
+    stage = _running_stage(env)
+    if stage is None:
         return
     allowed = _STAGE_MAY_REMOVE_GATE.get(stage, set())
     illegal = sorted(lbl for lbl in remove_labels if lbl in GATE_LABELS and lbl not in allowed)
@@ -452,6 +465,21 @@ def _guard_gate_removal(remove_labels, env):
             "refused: the %s loop may not remove human gate label(s) %s — only a "
             "human, or the stage that owns the gate, removes it"
             % (stage, ", ".join(illegal)))
+
+
+def _guard_gate_grant(add_labels, env, current_labels):
+    stage = _running_stage(env)
+    if stage is None:
+        return
+    illegal = sorted(lbl for lbl in add_labels if lbl in GATE_LABELS)
+    if not illegal:
+        return
+    if _autonomous_gate_allowed(stage, illegal, current_labels, env):
+        return
+    raise LinearError(
+        "refused: the %s loop may not grant human gate label(s) %s — only a "
+        "human, or autonomous advance on an agent:auto issue, grants gates"
+        % (stage, ", ".join(illegal)))
 
 
 def _issue_label_nodes(issue_id, env, post):
@@ -509,12 +537,16 @@ def cmd_issue_update(args, env, post=graphql):
         inp["cycleId"] = args.cycle  # caller passes a cycle id
     add_names = getattr(args, "add_label", None) or []
     rem_names = getattr(args, "remove_label", None) or []
+    current_nodes = None
+    if any(lbl in GATE_LABELS for lbl in add_names):
+        current_nodes = _issue_label_nodes(args.id, env, post)
+        _guard_gate_grant(add_names, env, [n["name"] for n in current_nodes])
     # Moving an issue to a done/cancelled state clears its agent:* workflow labels
     # — a completed issue holds no live gate/status/flag. So a "Set as merged" close
     # tidies the board without a separate label sweep.
     terminal = _target_state_is_terminal(args, env, post)
-    had_delivery_label = terminal and any(
-        n["name"] in DELIVERY_LABELS for n in _issue_label_nodes(args.id, env, post))
+    had_delivery_label = terminal and any(n["name"] in DELIVERY_LABELS
+                                          for n in (current_nodes or _issue_label_nodes(args.id, env, post)))
     if add_names or rem_names or terminal:
         _resolve_label_ids(add_names, env, post)   # fail fast on an unknown add label
         inp["labelIds"] = _enforced_label_ids(args.id, add_names, rem_names, env, post,
@@ -537,6 +569,10 @@ def cmd_bulk_label(args, env, post=graphql):
     add = args.add_label or []
     rem = args.remove_label or []
     _guard_gate_removal(rem, env)
+    if _running_stage(env) is not None and any(lbl in GATE_LABELS for lbl in add):
+        raise LinearError(
+            "refused: the %s loop may not bulk-grant human gate label(s) %s"
+            % (_running_stage(env), ", ".join(sorted(lbl for lbl in add if lbl in GATE_LABELS))))
     if not add and not rem:
         raise LinearError("bulk-label: nothing to do (need --add and/or --remove)")
     if args.where_label and args.issues:

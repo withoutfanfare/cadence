@@ -161,6 +161,15 @@ printf 'codex:%s:%s\\n' "${#stdin}" "$last"
         self.assertIn("--model gpt-test ", result.stdout)
         self.assertIn('model_reasoning_effort="high"', result.stdout)
 
+    def test_model_colon_is_kept_when_suffix_is_not_effort(self):
+        self._write_exe("opencode", "#!/bin/sh\nprintf 'opencode:%s\\n' \"$*\"")
+
+        result = self._run("opencode", "provider:model")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--model provider:model ", result.stdout)
+        self.assertNotIn("effort=", result.stderr)
+
     def test_opencode_effort_suffix_is_stripped_with_warning(self):
         self._write_exe("opencode", "#!/bin/sh\nprintf 'opencode:%s\\n' \"$*\"")
 

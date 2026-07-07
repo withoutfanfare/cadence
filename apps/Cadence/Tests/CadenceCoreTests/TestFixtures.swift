@@ -9,6 +9,7 @@ extension CadenceProject {
         health: Health = .ok,
         stages: [String: StageRun?] = [:],
         schedule: [String: Date?] = [:],
+        boardURL: String? = nil,
         lastActivity: String? = nil
     ) -> CadenceProject {
         CadenceProject(
@@ -17,6 +18,7 @@ extension CadenceProject {
             config: config,
             stateDir: "/state/\(name)",
             teamName: nil,
+            boardURL: boardURL,
             backend: backend,
             scheduled: true,
             autonomous: false,

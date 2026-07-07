@@ -81,6 +81,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard !loadingProjects.contains(project.config) else { return }
         loadingProjects.insert(project.config)
         Task { @MainActor in
+            defer { loadingProjects.remove(project.config) }
             var cache = projectCache[project.config] ?? CachedProjectData()
             do {
                 let items = try await client.items(for: project)
@@ -100,7 +101,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             projectCache[project.config] = cache
             saveProjectCache()
-            loadingProjects.remove(project.config)
             renderSnapshot()
         }
     }

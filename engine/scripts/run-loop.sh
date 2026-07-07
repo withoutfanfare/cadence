@@ -31,6 +31,7 @@ mkdir -p "$LOGDIR" "$RUNS"
 # before this line (e.g. lib-env refusing a bad profile) still surface only on
 # stderr.
 _CADENCE_DONE=0
+GUARD_DIR=""
 # shellcheck disable=SC2329  # invoked via the EXIT trap strings below
 _crash_log() {
   local _rc=$?
@@ -40,6 +41,17 @@ _crash_log() {
   _ts="$(date -u +%FT%TZ)"
   echo "[$_ts] $STAGE — CRASHED (exit $_rc)" >> "$RUNS/activity.log" 2>/dev/null || true
   echo "[$_ts] cadence $STAGE CRASHED (exit $_rc) — see scheduler/launchd stderr" >> "$LOGDIR/$STAGE.log" 2>/dev/null || true
+  STAGE="$STAGE" TS="$_ts" RC="$_rc" python3 - <<'PY' >> "$RUNS/runs.jsonl" 2>/dev/null || true
+import json, os
+print(json.dumps({
+    "stage": os.environ["STAGE"],
+    "ts": os.environ["TS"],
+    "errors": 1,
+    "runner_error": True,
+    "exit": int(os.environ["RC"]),
+    "reason": "crashed",
+}, separators=(",", ":")))
+PY
 }
 trap _crash_log EXIT
 
@@ -122,7 +134,7 @@ _HB=$!
 # PROMPT_FILE is removed on the normal path too; the trap covers signal interruption
 # (SIGTERM mid-orchestrator) so an orphan prompt is never left in $RUNS.
 PROMPT_FILE=""
-trap '_crash_log; kill "$_HB" 2>/dev/null; rm -f "$PROMPT_FILE"; rm -rf "$LOCKDIR"' EXIT
+trap '_crash_log; kill "$_HB" 2>/dev/null; rm -f "$PROMPT_FILE"; [ -n "$GUARD_DIR" ] && rm -rf "$GUARD_DIR"; rm -rf "$LOCKDIR"' EXIT
 
 pause_before_launch() {
   reason="$1"
@@ -279,6 +291,52 @@ esac
 PROVIDER="$(provider_from_pair "$PAIR")"
 MODEL="$(model_from_pair "$PAIR")"
 
+install_command_guards() {
+  [ "$STAGE" = "build" ] || [ "$STAGE" = "revise" ] || return 0
+  GUARD_DIR="$(mktemp -d "$RUNS/guard-$STAGE.XXXXXX")" || exit 1
+  real_git="$(command -v git 2>/dev/null || true)"
+  real_gh="$(command -v gh 2>/dev/null || true)"
+  if [ -n "$real_git" ]; then
+    cat > "$GUARD_DIR/git" <<EOF
+#!/bin/sh
+base="\${CADENCE_BASE_BRANCH:-develop}"
+if [ "\${1:-}" = "push" ]; then
+  current="\$("$real_git" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+  if [ "\$current" = "\$base" ]; then
+    echo "cadence guard: refusing git push from base branch \$base" >&2
+    exit 126
+  fi
+  for arg in "\$@"; do
+    case "\$arg" in
+      "\$base"|refs/heads/"\$base"|HEAD:"\$base"|HEAD:refs/heads/"\$base"|*:"\$base"|*:refs/heads/"\$base")
+        echo "cadence guard: refusing git push to base branch \$base" >&2
+        exit 126 ;;
+    esac
+  done
+fi
+exec "$real_git" "\$@"
+EOF
+    chmod +x "$GUARD_DIR/git"
+  fi
+  if [ -n "$real_gh" ]; then
+    cat > "$GUARD_DIR/gh" <<EOF
+#!/bin/sh
+if [ "\${1:-}" = "pr" ] && { [ "\${2:-}" = "merge" ] || [ "\${2:-}" = "ready" ]; }; then
+  echo "cadence guard: refusing gh \$1 \$2 from a Cadence loop" >&2
+  exit 126
+fi
+exec "$real_gh" "\$@"
+EOF
+    chmod +x "$GUARD_DIR/gh"
+  fi
+  export CADENCE_BASE_BRANCH="${BASE_BRANCH:-develop}"
+  RUNNER_PATH_PREPEND="$GUARD_DIR${RUNNER_PATH_PREPEND:+:$RUNNER_PATH_PREPEND}"
+  export RUNNER_PATH_PREPEND
+  export PATH="$GUARD_DIR:$PATH"
+}
+
+install_command_guards
+
 # Housekeeping: before a build/revise launch, remove clean worktrees whose branch
 # is fully merged into origin/<base> (their PR landed) so they don't pile up.
 if [ "$STAGE" = "build" ] || [ "$STAGE" = "revise" ]; then
@@ -289,6 +347,7 @@ if [ "$STAGE" = "build" ] || [ "$STAGE" = "revise" ]; then
 fi
 
 LOG="$LOGDIR/$STAGE.log"
+touch "$LOG"
 _LOG_START=$(wc -c < "$LOG" 2>/dev/null || echo 0)   # scan only THIS run's output for a summary
 PROMPT_FILE="$RUNS/prompt-$STAGE-$(date -u +%Y%m%dT%H%M%SZ)-$$.md"
 # ${arr[@]+…} guard: macOS /bin/bash 3.2 treats an empty array as unbound under set -u
@@ -400,6 +459,20 @@ PY
 FLAG="${SUM%%|*}"; MSG="${SUM#*|}"
 mkdir -p "$RUNS"
 echo "[$(date -u +%FT%TZ)] $STAGE — $MSG" >> "$RUNS/activity.log"
+if [ "$FLAG" = "2" ]; then
+  TS="$(date -u +%FT%TZ)"
+  STAGE="$STAGE" TS="$TS" RC="$RC" MSG="$MSG" python3 - <<'PY' >> "$RUNS/runs.jsonl" 2>/dev/null || true
+import json, os
+print(json.dumps({
+    "stage": os.environ["STAGE"],
+    "ts": os.environ["TS"],
+    "errors": 1,
+    "runner_error": True,
+    "exit": int(os.environ["RC"]),
+    "summary": os.environ["MSG"],
+}, separators=(",", ":")))
+PY
+fi
 # A failed run (non-zero exit or reported errors) is also recorded in the dated
 # digest, so the failure survives in the human record — not just a transient alert.
 [ "$FLAG" = "2" ] && echo "❌ $STAGE — $MSG · $(date -u +%FT%TZ)" >> "$RUNS/$(date -u +%F).md"

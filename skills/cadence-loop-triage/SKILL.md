@@ -209,8 +209,9 @@ check fails, emit the standard pause JSON and records described in
      prefix (feat/fix/refactor/chore), state set to match (Merged, or Approved/Live
      if already released), assignee set to the PR author. Check for an existing
      linked issue first to avoid duplicates.
-   - **Linked issue still at `agent:pr-open`** → the human has merged it, so record
-     that: move it to a completed-type state and clear the label —
+   - **Linked issue still at `agent:pr-open`** → first verify the branch with
+     `cadence worktree merged <headRefName> "$base"`; only if that exits 0, the
+     human has merged it, so record that: move it to a completed-type state and clear the label —
      `cadence linear issue-update <ID> --state-type completed --remove-label agent:pr-open`.
      The engine also removes the issue's generated feature-branch worktree.
      This mirrors a merge a human already made; you are **not** granting a gate,

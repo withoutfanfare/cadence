@@ -350,6 +350,63 @@ class TestWriteVerbs(unittest.TestCase):
         cli.cmd_issue_update(args, ENV, post=post)
         self.assertEqual(set(sent["ids"]), {"lt", "lp"})   # specced (ls) dropped
 
+    def test_loop_cannot_grant_human_gate_label(self):
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            if "labels{ nodes{ id name } }" in query:
+                return {"issue": {"labels": {"nodes": [{"id": "ls", "name": "agent:specced"}]}}}
+            raise AssertionError("gate grant should be refused before mutation")
+        env = dict(ENV, CADENCE_STAGE="spec")
+        args = types.SimpleNamespace(
+            id="i1", priority=None, title=None, estimate=None, state=None,
+            state_type=None, cycle=None, add_label=["agent:build"], remove_label=None)
+        with self.assertRaises(cli.LinearError):
+            cli.cmd_issue_update(args, env, post=post)
+
+    def test_blank_stage_cannot_bypass_gate_removal_guard(self):
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            raise AssertionError("blank-stage removal should be refused before mutation")
+        env = dict(ENV, CADENCE_STAGE="")
+        args = types.SimpleNamespace(
+            id="i1", priority=None, title=None, estimate=None, state=None,
+            state_type=None, cycle=None, add_label=None, remove_label=["agent:spec"])
+        with self.assertRaises(cli.LinearError):
+            cli.cmd_issue_update(args, env, post=post)
+
+    def test_autonomous_advance_can_grant_gate_on_auto_issue(self):
+        sent = {}
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            if "labels{ nodes{ id name } }" in query:
+                return {"issue": {"labels": {"nodes": [
+                    {"id": "la", "name": "agent:auto"},
+                    {"id": "ls", "name": "agent:specced"}]}}}
+            if "issueLabels(" in query:
+                return {"issueLabels": {"nodes": [
+                    {"id": "la", "name": "agent:auto"},
+                    {"id": "ls", "name": "agent:specced"},
+                    {"id": "lb", "name": "agent:build"}]}}
+            if "issueUpdate(" in query:
+                sent["ids"] = variables["input"]["labelIds"]
+                return {"issueUpdate": {"success": True, "issue": {"id": "i1"}}}
+            raise AssertionError(query)
+        env = dict(ENV, CADENCE_STAGE="advance", AUTONOMOUS="on")
+        args = types.SimpleNamespace(
+            id="i1", priority=None, title=None, estimate=None, state=None,
+            state_type=None, cycle=None, add_label=["agent:build"], remove_label=None)
+        cli.cmd_issue_update(args, env, post=post)
+        self.assertEqual(set(sent["ids"]), {"la", "ls", "lb"})
+
     def test_completing_an_issue_strips_agent_labels(self):
         # closing to a completed-type state clears every agent:* label but keeps
         # user labels — no separate label sweep needed after "Set as merged".

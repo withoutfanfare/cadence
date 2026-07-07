@@ -14,6 +14,7 @@ Format (value of each SCHED_<STAGE>):
 from datetime import datetime, timedelta, timezone
 import concurrent.futures
 import importlib.util
+import json
 import os
 import re
 import shutil
@@ -620,6 +621,33 @@ def _mark_ran(state, stage, key):
         f.write(key + "\n")
 
 
+def _runs_today(state, now):
+    path = os.path.join(state, "runs", "runs.jsonl")
+    today = now.date()
+    count = 0
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if (rec.get("stage") or rec.get("loop")) not in JOBS:
+                    continue
+                raw = rec.get("ts") or rec.get("timestamp") or rec.get("date")
+                if not raw:
+                    continue
+                try:
+                    ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                except (ValueError, AttributeError):
+                    continue
+                if ts.date() == today:
+                    count += 1
+    except FileNotFoundError:
+        return 0
+    return count
+
+
 def _last_served(state):
     """Newest mtime among a project's scheduler slot markers, or 0.0 if it has
     never been served. Used to order the tick least-recently-served first so a
@@ -728,6 +756,11 @@ def tick(env, now=None, run=subprocess.run):
         if len(picks) >= max_runs:
             break
         project, config = item["project"], item["config"]
+        daily_cap = _int_env(values, "CADENCE_DAILY_RUN_CAP",
+                             _int_env(env, "CADENCE_DAILY_RUN_CAP", 0))
+        if daily_cap > 0 and _runs_today(state, now) >= daily_cap:
+            print(f"{project}: skipped (CADENCE_DAILY_RUN_CAP={daily_cap} reached)")
+            continue
         # Dedup is per (stage, slot) only — a project is never excluded as a whole,
         # so two stages due in the same window each get their turn (across ticks),
         # rather than the first one silently starving the rest.

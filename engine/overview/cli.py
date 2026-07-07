@@ -83,6 +83,14 @@ def _tail(path, n=1):
         return []
 
 
+def _linear_board_url(values):
+    if (values.get("TASK_BACKEND") or "linear").lower() != "linear":
+        return None
+    workspace = values.get("LINEAR_WORKSPACE_SLUG") or values.get("LINEAR_WORKSPACE")
+    workspace = workspace.strip().strip("/") if workspace else ""
+    return "https://linear.app/%s/" % workspace if workspace else None
+
+
 def _project_overview(item, now=None):
     now = now or datetime.now(timezone.utc)
     config = item["config"]
@@ -129,6 +137,7 @@ def _project_overview(item, now=None):
         "config": config,
         "state_dir": state_dir,
         "team_name": values.get("LINEAR_TEAM_NAME") or None,
+        "board_url": _linear_board_url(values),
         "backend": (values.get("TASK_BACKEND") or "linear").lower(),
         "scheduled": scheduled,
         "autonomous": autonomous,

@@ -265,9 +265,22 @@ else echo "  ⚠️  WORKTREE_BASE unset or parent not writable (build/revise cr
 # "isolated" worktree would sit in the main checkout, so a half-finished build
 # leaks into the main tree's tests and tooling. worktree.sh also refuses at
 # runtime; surface the misconfiguration here first.
+_physical_path() {
+  if [ -d "$1" ]; then
+    (cd "$1" 2>/dev/null && pwd -P)
+    return
+  fi
+  _p_dir="$(dirname "$1")"
+  _p_base="$(basename "$1")"
+  if [ -d "$_p_dir" ]; then
+    _p_real="$(cd "$_p_dir" 2>/dev/null && pwd -P)" || return
+    printf '%s/%s\n' "$_p_real" "$_p_base"
+  fi
+}
+
 _doc_proj=""; _doc_wtb=""
 [ -n "${PROJECT_DIR:-}" ] && _doc_proj="$(cd "$PROJECT_DIR" 2>/dev/null && pwd -P)"
-[ -n "${WORKTREE_BASE:-}" ] && { _doc_wtb="$(cd "$WORKTREE_BASE" 2>/dev/null && pwd -P)" || _doc_wtb="$WORKTREE_BASE"; }
+[ -n "${WORKTREE_BASE:-}" ] && _doc_wtb="$(_physical_path "$WORKTREE_BASE")"
 if [ -n "$_doc_proj" ] && [ -n "$_doc_wtb" ]; then
   case "$_doc_wtb/" in
     "$_doc_proj/"*) fail "WORKTREE_BASE ($WORKTREE_BASE) is inside PROJECT_DIR — build worktrees would live in the main checkout; point it at a sibling directory (e.g. ${_doc_proj}-worktrees)" ;;
