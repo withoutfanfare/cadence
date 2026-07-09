@@ -132,6 +132,13 @@ class TestOverview(unittest.TestCase):
             self.assertEqual(data["projects"], [])
             self.assertIn("Cadence overview", cli.render_human(data))
 
+    def test_linear_workspace_legacy_value_is_not_used_as_board_url(self):
+        board_url = cli._linear_board_url({
+            "TASK_BACKEND": "linear",
+            "LINEAR_WORKSPACE": "https://linear.app/acme/",
+        })
+        self.assertIsNone(board_url)
+
     def test_project_local_config_uses_root_registry(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = os.path.join(tmp, "cadence-home")

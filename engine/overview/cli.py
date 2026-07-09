@@ -86,7 +86,7 @@ def _tail(path, n=1):
 def _linear_board_url(values):
     if (values.get("TASK_BACKEND") or "linear").lower() != "linear":
         return None
-    workspace = values.get("LINEAR_WORKSPACE_SLUG") or values.get("LINEAR_WORKSPACE")
+    workspace = values.get("LINEAR_WORKSPACE_SLUG")
     workspace = workspace.strip().strip("/") if workspace else ""
     return "https://linear.app/%s/" % workspace if workspace else None
 
