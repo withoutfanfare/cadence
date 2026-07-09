@@ -24,6 +24,9 @@ import tempfile
 
 ENGINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOME = os.path.dirname(ENGINE)
+sys.path.insert(0, os.path.join(ENGINE, "lib"))
+from atomic_file import atomic_write  # noqa: E402
+
 SCHEDULER_LABEL = "com.cadence.scheduler"
 SCHEDULER_DEFAULT_INTERVAL = 300
 TRUE = {"1", "on", "true", "yes"}
@@ -616,9 +619,7 @@ def _already_ran(state, stage, key):
 
 def _mark_ran(state, stage, key):
     path = _marker(state, stage)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(key + "\n")
+    atomic_write(path, key + "\n")
 
 
 def _runs_today(state, now):

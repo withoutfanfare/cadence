@@ -63,6 +63,20 @@ class TestMemoryMarkdown(unittest.TestCase):
         out = cli.cmd_recall(types.SimpleNamespace(min_importance=1, limit=10), env)
         self.assertEqual(out[0]["description"], "Line one Line two")
 
+    def test_slug_collision_is_rejected_without_overwriting(self):
+        env, d = env_with_dir()
+        cli.cmd_remember(types.SimpleNamespace(
+            importance=3, title="Money in pence",
+            body="Original body."), env)
+
+        with self.assertRaises(FileExistsError):
+            cli.cmd_remember(types.SimpleNamespace(
+                importance=5, title="Money in pence!",
+                body="Replacement body."), env)
+
+        with open(os.path.join(d, "money-in-pence.md"), encoding="utf-8") as f:
+            self.assertIn("Original body.", f.read())
+
     def test_recall_respects_limit(self):
         env, d = env_with_dir()
         for i in range(3):

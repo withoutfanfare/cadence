@@ -12,6 +12,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+from atomic_file import atomic_write  # noqa: E402
 from cadence_env import load_env  # noqa: E402
 
 
@@ -62,14 +63,15 @@ def cmd_remember(args, env):
     os.makedirs(d, exist_ok=True)
     name = _slug(args.title)
     path = os.path.join(d, f"{name}.md")
+    if os.path.exists(path):
+        raise FileExistsError(f"memory already exists for slug: {name}")
     # Collapse any newlines/whitespace so a multi-line title can't corrupt the
     # single-line `description:` frontmatter this writes.
     desc = " ".join(args.title.split())
     if len(desc) > 80:
         desc = desc[:77] + "..."
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(f"---\nname: {name}\nimportance: {args.importance}\n"
-                f"description: {desc}\n---\n\n{args.body}\n")
+    atomic_write(path, f"---\nname: {name}\nimportance: {args.importance}\n"
+                 f"description: {desc}\n---\n\n{args.body}\n")
     return {"name": name, "path": path}
 
 
@@ -85,7 +87,11 @@ def main(argv=None):
     rm.add_argument("body")
     args = p.parse_args(argv)
     env = load_env()
-    out = cmd_recall(args, env) if args.cmd == "recall" else cmd_remember(args, env)
+    try:
+        out = cmd_recall(args, env) if args.cmd == "recall" else cmd_remember(args, env)
+    except FileExistsError as exc:
+        print(f"cadence memory: {exc}", file=sys.stderr)
+        return 2
     print(json.dumps(out, ensure_ascii=False, indent=2))
     return 0
 

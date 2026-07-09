@@ -8,6 +8,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+from atomic_file import atomic_write  # noqa: E402
 from stages import is_terminal, resolve_labels, stage_of, strip_workflow_labels  # noqa: E402
 from worktrees import remove_worktree as _remove_worktree  # noqa: E402
 
@@ -190,9 +191,7 @@ def load(env=None):
 
 def save(tasks, env=None):
     path = task_path(env)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(render(tasks))
+    atomic_write(path, render(tasks))
 
 
 def _find(tasks, identifier):

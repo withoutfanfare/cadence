@@ -326,7 +326,10 @@ forever under autonomous mode.
 Get the date/timestamp from the shell (`date -u +%FT%TZ`), never invent one.
 
 The `runs/` directory is git-ignored by default — run artefacts, not committed
-history. Track it instead if you want the audit trail in git.
+history. Track it instead if you want the audit trail in git. Use
+`cadence prune --days N` to trim local run history and launchd logs older than
+the retention window; the command keeps undated or unparseable ledger lines rather
+than deleting ambiguous records.
 
 ---
 

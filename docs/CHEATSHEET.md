@@ -21,6 +21,7 @@ project's config to use. `cadence help` prints the built-in summary.
 | `cadence digest [date]` | Full run digest for a day (default: today) |
 | `cadence overview [--json]` | Cross-project status for every registered project |
 | `cadence throughput [days]` | Per-stage rollup of recent runs (default 7 days) |
+| `cadence prune [--days N] [--dry-run]` | Trim old local run/log history (default 30 days) |
 | `cadence inspect` | One bundle: doctor + status + autonomous + schedule + queue + feed |
 
 ## Control the loops

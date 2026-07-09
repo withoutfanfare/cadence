@@ -17,6 +17,7 @@ cadence feed 30         # recent activity lines
 cadence queue [-v]      # your move: board overview grouped by agent state
 cadence digest          # today's full digest, UTC date
 cadence throughput 30   # per-stage rollup from the machine ledger
+cadence prune --dry-run # preview run/log retention cleanup
 cadence schedule        # show the active config's stage cadence
 cadence schedule status # show registered scheduled projects
 cadence inspect         # read-only support bundle
@@ -128,6 +129,17 @@ cadence throughput 30     # last 30 days
 
 Read-only. Runs with no timestamp in the ledger are reported separately rather
 than silently dropped.
+
+Prune old local run history when `$CADENCE_STATE_DIR` gets large:
+
+```bash
+cadence prune --dry-run     # preview the default 30-day retention
+cadence prune --days 60     # delete run/log history older than 60 days
+```
+
+The prune command removes dated digest files and launchd `.log` files older than
+the retention window, and rewrites `runs.jsonl` / `activity.log` without older
+dated records. Undated or unparseable lines are kept.
 
 ## Logs
 
