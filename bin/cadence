@@ -63,6 +63,7 @@ Usage: cadence [--config path|--profile name] <command> [args]
   queue [-v]        What needs you now — board overview by agent state
   digest [date]     Full digest for a date (default: today UTC)
   throughput [days] Per-stage rollup of recent runs (default 7 days)
+  prune [--days N] [--dry-run]  Prune old local run/log history (default 30 days)
   restart           Reload all launchd jobs after editing plists
   schedule [show|status|register|tick|apply]  Manage the single launchd scheduler and its project registry
   autonomous on|off|status  Flip autonomous mode in the active config
@@ -121,6 +122,7 @@ case "$cmd" in
   digest)  d="${1:-$(date -u +%F)}"; f="$RUNS/$d.md"
            [ -f "$f" ] && cat "$f" || echo "no digest for $d ($f)" ;;
   throughput) exec python3 "$CADENCE_HOME/engine/throughput/cli.py" "$@" ;;
+  prune)  exec python3 "$CADENCE_HOME/engine/prune/cli.py" "$@" ;;
   inspect) echo "== doctor =="; bash "$CADENCE_HOME/engine/scripts/doctor.sh"
            echo; echo "== status =="; bash "$CADENCE_HOME/engine/scripts/status.sh"
            echo; echo "== autonomous =="; bash "$CADENCE_HOME/engine/scripts/autonomous.sh" status

@@ -16,6 +16,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+from atomic_file import atomic_write  # noqa: E402
+
 _TRUE = {"1", "true", "on", "yes"}
 
 
@@ -120,9 +123,7 @@ def _load_repairs(state_dir):
 
 def _save_repairs(state_dir, data):
     path = repairs_path(state_dir)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f)
+    atomic_write(path, json.dumps(data))
 
 
 def get_repairs(state_dir, issue):
