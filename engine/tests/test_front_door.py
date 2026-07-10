@@ -29,7 +29,7 @@ class TestFrontDoor(unittest.TestCase):
         self.assertIn("labels init|list|ensure", result.stdout)
         self.assertIn("inspect", result.stdout)
         self.assertIn("provider CLIs", result.stdout)
-        self.assertIn("providers roles|show|set|help", result.stdout)
+        self.assertIn("providers roles|show|registry|set|help", result.stdout)
         self.assertIn("prompt render", result.stdout)
         self.assertIn("tasks <args>", result.stdout)
 

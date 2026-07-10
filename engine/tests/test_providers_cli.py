@@ -140,6 +140,61 @@ class TestProvidersCli(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Provider Roles", result.stdout)
 
+    def _write_registry(self, content: str) -> pathlib.Path:
+        path = pathlib.Path(self.tmp.name) / "agents.json"
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    def test_registry_lists_agents_with_models_and_support(self):
+        registry = self._write_registry(
+            '{"registry_version": 1, "agents": {'
+            '"claude": {"command": "claude", "models": ['
+            '{"id": "opus-4.6"}, {"id": "sonnet-4.6"}]},'
+            '"gemini": {"command": "gemini", "models": [{"id": "gemini-3-pro-preview"}]}'
+            "}}"
+        )
+        result = self._run_with_env({"AGENT_REGISTRY_FILE": str(registry)}, "registry")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("claude", result.stdout)
+        self.assertIn("opus-4.6, sonnet-4.6", result.stdout)
+        self.assertIn("gemini", result.stdout)
+        # gemini exists on the machine but Cadence's runtime cannot drive it
+        gemini_row = next(l for l in result.stdout.splitlines() if l.startswith("gemini"))
+        self.assertIn("no", gemini_row)
+
+    def test_registry_reports_missing_file(self):
+        missing = pathlib.Path(self.tmp.name) / "absent.json"
+        result = self._run_with_env({"AGENT_REGISTRY_FILE": str(missing)}, "registry")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("No shared agent registry", result.stdout)
+
+    def test_set_rejects_provider_absent_from_registry(self):
+        registry = self._write_registry(
+            '{"registry_version": 1, "agents": {"claude": {"command": "claude"}}}'
+        )
+        result = self._run_with_env(
+            {"AGENT_REGISTRY_FILE": str(registry)}, "set", "--build", "codex:gpt-5.4"
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("unknown provider: codex", result.stderr)
+
+    def test_malformed_registry_falls_back_to_builtin_providers(self):
+        registry = self._write_registry("not json at all")
+        result = self._run_with_env(
+            {"AGENT_REGISTRY_FILE": str(registry)}, "set", "--build", "codex:gpt-5.4"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("ORCHESTRATOR_BUILD=codex:gpt-5.4", result.stdout)
+
+    def test_wrong_registry_version_falls_back(self):
+        registry = self._write_registry(
+            '{"registry_version": 2, "agents": {"claude": {"command": "claude"}}}'
+        )
+        result = self._run_with_env(
+            {"AGENT_REGISTRY_FILE": str(registry)}, "set", "--build", "codex:gpt-5.4"
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

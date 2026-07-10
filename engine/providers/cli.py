@@ -4,13 +4,48 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import pathlib
 import re
 import sys
 
 
-PROVIDERS = {"claude", "codex", "kimi", "opencode"}
+# Providers run-orchestrator.sh knows how to invoke (its case statement).
+RUNTIME_PROVIDERS = {"claude", "codex", "kimi", "opencode"}
+
+
+def registry_path() -> pathlib.Path:
+    explicit = os.environ.get("AGENT_REGISTRY_FILE")
+    if explicit:
+        return pathlib.Path(explicit)
+    return pathlib.Path.home() / ".config" / "agent-registry" / "agents.json"
+
+
+def load_registry() -> dict:
+    """Agents from the shared machine-level registry, written by Spool.
+
+    Total read: a missing, malformed, or wrong-version file yields {} so a
+    bad registry can never break Cadence — built-in defaults apply instead.
+    """
+    try:
+        data = json.loads(registry_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict) or data.get("registry_version") != 1:
+        return {}
+    agents = data.get("agents")
+    return agents if isinstance(agents, dict) else {}
+
+
+def _available_providers() -> set:
+    """Runtime-supported providers narrowed to what the registry says exists."""
+    registry = load_registry()
+    available = RUNTIME_PROVIDERS & set(registry)
+    return available or RUNTIME_PROVIDERS
+
+
+PROVIDERS = _available_providers()
 STAGES = {
     "triage": ("ORCHESTRATOR_TRIAGE", "MODEL_TRIAGE", "sonnet", "triage orchestrator"),
     "spec": ("ORCHESTRATOR_SPEC", "MODEL_SPEC", "opus", "spec orchestrator"),
@@ -58,6 +93,7 @@ Rules
 Common commands
   cadence providers roles
   cadence providers show
+  cadence providers registry
   cadence providers set --build codex:gpt-5.4 --implementer codex
   cadence providers set --all kimi:k2 --review claude:opus --implementer kimi
   cadence doctor
@@ -179,6 +215,23 @@ def cmd_show(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_registry(_args: argparse.Namespace) -> int:
+    agents = load_registry()
+    if not agents:
+        supported = ", ".join(sorted(RUNTIME_PROVIDERS))
+        print(f"No shared agent registry at {registry_path()} (using built-in providers: {supported})")
+        return 0
+    rows = [("Agent", "Models", "Cadence support")]
+    for name in sorted(agents):
+        entry = agents[name] if isinstance(agents[name], dict) else {}
+        models = ", ".join(
+            m.get("id", "") for m in entry.get("models", []) if isinstance(m, dict)
+        ) or "-"
+        rows.append((name, models, "yes" if name in RUNTIME_PROVIDERS else "no"))
+    print_table(rows)
+    return 0
+
+
 def cmd_help(_args: argparse.Namespace) -> int:
     print(MANUAL.rstrip())
     return 0
@@ -228,6 +281,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     show = sub.add_parser("show", help="show raw provider configuration")
     show.set_defaults(func=cmd_show)
+
+    registry = sub.add_parser("registry", help="show the shared agent registry")
+    registry.set_defaults(func=cmd_registry)
 
     help_parser = sub.add_parser("help", help="show provider role manual")
     help_parser.set_defaults(func=cmd_help)
