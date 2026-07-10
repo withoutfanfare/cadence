@@ -89,6 +89,10 @@ Rules
   REVIEW_MODEL accepts the same :effort suffix.
   BUILD_IMPLEMENTER is provider-only, for example codex.
   MODEL_* values are model names only. Do not put provider:model values there.
+  Accepted providers are gated by the shared agent registry when one exists
+  (~/.config/agent-registry/agents.json, written by Spool): an agent removed
+  there is rejected by `set` even if its CLI is installed. Run
+  `cadence providers registry` to see the current gate.
 
 Common commands
   cadence providers roles
