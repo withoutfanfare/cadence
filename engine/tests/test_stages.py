@@ -1,6 +1,7 @@
 import os, sys, unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
-from stages import is_terminal, resolve_labels, stage_of, strip_workflow_labels  # noqa: E402
+from stages import (dep_mode, dep_satisfied, is_terminal, resolve_labels,  # noqa: E402
+                    stage_of, strip_workflow_labels)
 
 
 class TestStageOf(unittest.TestCase):
@@ -93,6 +94,27 @@ class TestTerminal(unittest.TestCase):
         out = strip_workflow_labels(
             ["agent:pr-open", "agent:specced", "Bug", "priority:high", "agent:auto"])
         self.assertEqual(out, ["Bug", "priority:high"])
+
+
+class TestDeps(unittest.TestCase):
+    def test_merged_needs_terminal_blocker(self):
+        self.assertTrue(dep_satisfied("completed", [], "merged"))
+        self.assertTrue(dep_satisfied("canceled", ["agent:pr-open"], "merged"))
+        self.assertFalse(dep_satisfied("started", ["agent:pr-open"], "merged"))
+        self.assertFalse(dep_satisfied("open", [], "merged"))
+
+    def test_pr_open_accepts_open_pr_or_terminal(self):
+        self.assertTrue(dep_satisfied("started", ["agent:pr-open"], "pr-open"))
+        self.assertTrue(dep_satisfied("started", ["agent:revised"], "pr-open"))
+        self.assertTrue(dep_satisfied("completed", [], "pr-open"))
+        self.assertFalse(dep_satisfied("started", ["agent:specced"], "pr-open"))
+        self.assertFalse(dep_satisfied("open", [], "pr-open"))
+
+    def test_dep_mode_defaults_and_rejects_unknown(self):
+        self.assertEqual(dep_mode({}), "merged")
+        self.assertEqual(dep_mode({"DEPS_SATISFIED_WHEN": "pr-open"}), "pr-open")
+        self.assertEqual(dep_mode({"DEPS_SATISFIED_WHEN": " PR-Open "}), "pr-open")
+        self.assertEqual(dep_mode({"DEPS_SATISFIED_WHEN": "banana"}), "merged")
 
 
 if __name__ == "__main__":

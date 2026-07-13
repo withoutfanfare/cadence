@@ -65,6 +65,17 @@ class TestDecide(unittest.TestCase):
         out = cli.decide(st(resting="specced", bar={"criteria_present": False}))
         self.assertEqual(out["action"], "escalate")
 
+    def test_blocked_specced_skips_instead_of_granting_build(self):
+        out = cli.decide(st(resting="specced", blocked=True,
+                            bar={"criteria_present": True}))
+        self.assertEqual(out["action"], "skip")
+        self.assertIn("blocked", out["reason"])
+
+    def test_unblocked_specced_still_grants_build(self):
+        out = cli.decide(st(resting="specced", blocked=False,
+                            bar={"criteria_present": True}))
+        self.assertEqual(out["action"], "grant-build")
+
     def test_accept_when_pr_open_full_bar(self):
         out = cli.decide(st(resting="pr-open",
                             bar={"gates": True, "criteria_met": True, "review_clean": True}))

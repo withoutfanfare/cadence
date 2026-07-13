@@ -409,5 +409,76 @@ class TestAdd(unittest.TestCase):
         self.assertEqual(out["identifier"], "TASK-3")
 
 
+DEPS_MD = """# Cadence Tasks
+
+## TASK-1: Blocker
+status: open
+labels: agent:pr-open
+
+PR: https://example.com/o/r/pull/1
+
+## TASK-2: Dependant
+status: open
+labels: agent:build
+blocked-by: TASK-1
+
+x
+"""
+
+
+class TestDeps(unittest.TestCase):
+    def _list(self, text, extra_env=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            task_file = os.path.join(tmp, "tasks.md")
+            with open(task_file, "w", encoding="utf-8") as f:
+                f.write(text)
+            env = {"TASK_FILE": task_file}
+            env.update(extra_env or {})
+            args = types.SimpleNamespace(label=None, status=None)
+            with mock.patch.dict(os.environ, env, clear=False):
+                return cli.cmd_list(args, dict(os.environ))
+
+    def test_blocked_by_parses_and_round_trips(self):
+        tasks = cli.parse(DEPS_MD)
+        self.assertEqual(tasks[1]["blocked_by"], ["TASK-1"])
+        self.assertIn("blocked-by: TASK-1", cli.render(tasks))
+        # a task with no deps renders no blocked-by line
+        self.assertEqual(cli.render(tasks).count("blocked-by:"), 1)
+
+    def test_merged_mode_blocks_until_blocker_done(self):
+        tasks = self._list(DEPS_MD)
+        self.assertFalse(tasks[0]["blocked"])
+        self.assertTrue(tasks[1]["blocked"])
+        done = DEPS_MD.replace("status: open\nlabels: agent:pr-open", "status: done\nlabels:")
+        tasks = self._list(done)
+        self.assertFalse(tasks[1]["blocked"])
+
+    def test_pr_open_mode_unblocks_at_open_pr(self):
+        tasks = self._list(DEPS_MD, {"DEPS_SATISFIED_WHEN": "pr-open"})
+        self.assertFalse(tasks[1]["blocked"])
+
+    def test_unknown_blocker_blocks_and_validate_flags(self):
+        text = DEPS_MD.replace("blocked-by: TASK-1", "blocked-by: TASK-9")
+        tasks = self._list(text)
+        self.assertTrue(tasks[1]["blocked"])
+        problems = cli.validate(text)
+        self.assertTrue(any("unknown task 'TASK-9'" in p for p in problems))
+
+    def test_validate_flags_self_reference_and_cycles(self):
+        self_ref = DEPS_MD.replace("blocked-by: TASK-1", "blocked-by: TASK-2")
+        self.assertTrue(any("blocked-by itself" in p for p in cli.validate(self_ref)))
+        cycle = DEPS_MD.replace(
+            "status: open\nlabels: agent:pr-open",
+            "status: open\nlabels: agent:pr-open\nblocked-by: TASK-2")
+        problems = cli.validate(cycle)
+        self.assertTrue(any("dependency cycle" in p for p in problems))
+
+    def test_clean_file_validates_and_blocked_not_persisted(self):
+        self.assertEqual(cli.validate(DEPS_MD), [])
+        # computed `blocked` must never leak into the rendered file
+        tasks = self._list(DEPS_MD)
+        self.assertNotIn("blocked:", cli.render(tasks))
+
+
 if __name__ == "__main__":
     unittest.main()

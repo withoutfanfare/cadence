@@ -64,6 +64,11 @@ def decide(state):
         return _act("escalate", "triage incomplete or no criteria stub")
 
     if resting == "specced":
+        # Dependency chains: never grant build while a blocker is unfinished
+        # (per DEPS_SATISFIED_WHEN). Skip, not escalate — a later run picks it
+        # up once the blocker completes.
+        if state.get("blocked"):
+            return _act("skip", "blocked by unfinished dependency")
         if bar.get("criteria_present"):
             return _act("grant-build", "spec has checkable acceptance criteria")
         return _act("escalate", "spec missing checkable acceptance criteria")

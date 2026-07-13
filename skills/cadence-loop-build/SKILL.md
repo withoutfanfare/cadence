@@ -116,8 +116,11 @@ the diff, the red→green test, and the scope yourself.
 1. **Select.** List the configured project's issues assigned to the configured
    assignee with `agent:build`, not `agent:hold`, not `agent:superseded`, not
    `agent:needs-human`, not fresh `agent:claimed`, **and no open PR** for it:
-   `cadence linear issues-list --label agent:build --assignee me`. Take up to
-   `--limit`. `cadence linear issue-update <ID> --add-label agent:claimed`.
+   `cadence linear issues-list --label agent:build --assignee me`. Also drop any
+   issue whose `blocked` field is `true` — a dependency chain says its blocker
+   has not yet satisfied `DEPS_SATISFIED_WHEN`; a later run picks it up once the
+   blocker completes (no comment, no label — skipping is silent and normal).
+   Take up to `--limit`. `cadence linear issue-update <ID> --add-label agent:claimed`.
 2. **Read the spec.** Open the linked spec document + the acceptance criteria and
    implement to *those*. If no spec document is linked (the issue was gated
    `agent:build` without a spec stage), implement to the issue's description +

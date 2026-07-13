@@ -177,6 +177,51 @@ class TestReadVerbs(unittest.TestCase):
         self.assertEqual(out[0]["stage"]["name"], "specced")
         self.assertEqual(out[0]["stage"]["advance"], "agent:build")
 
+    def _blocked_node(self, blocker_state, blocker_labels):
+        return {
+            "id": "i1", "identifier": "ENG-2", "title": "T", "url": "u",
+            "labels": {"nodes": [{"name": "agent:build"}]},
+            "inverseRelations": {"nodes": [{
+                "type": "blocks",
+                "issue": {"identifier": "ENG-1",
+                          "state": {"name": "S", "type": blocker_state},
+                          "labels": {"nodes": [{"name": n} for n in blocker_labels]}},
+            }]},
+        }
+
+    def test_issues_list_marks_blocked_until_blocker_merged(self):
+        cap = {"response": {"issues": {"nodes": [
+            self._blocked_node("started", ["agent:pr-open"])]}}}
+        args = types.SimpleNamespace(label=None, state=None, assignee=None, limit=None)
+        out = cli.cmd_issues_list(args, ENV, post=fake_post(cap))
+        self.assertEqual(out[0]["blocked_by"], ["ENG-1"])
+        self.assertTrue(out[0]["blocked"])
+        self.assertIn("inverseRelations", cap["query"])
+
+    def test_blocked_clears_when_blocker_completed(self):
+        cap = {"response": {"issues": {"nodes": [self._blocked_node("completed", [])]}}}
+        args = types.SimpleNamespace(label=None, state=None, assignee=None, limit=None)
+        out = cli.cmd_issues_list(args, ENV, post=fake_post(cap))
+        self.assertFalse(out[0]["blocked"])
+
+    def test_pr_open_mode_clears_blocked_at_open_pr(self):
+        env = dict(ENV, DEPS_SATISFIED_WHEN="pr-open")
+        cap = {"response": {"issues": {"nodes": [
+            self._blocked_node("started", ["agent:pr-open"])]}}}
+        args = types.SimpleNamespace(label=None, state=None, assignee=None, limit=None)
+        out = cli.cmd_issues_list(args, env, post=fake_post(cap))
+        self.assertFalse(out[0]["blocked"])
+
+    def test_related_but_not_blocking_relation_does_not_block(self):
+        node = self._blocked_node("started", [])
+        node["inverseRelations"]["nodes"][0]["type"] = "related"
+        cap = {"response": {"issues": {"nodes": [node]}}}
+        args = types.SimpleNamespace(label=None, state=None, assignee=None, limit=None)
+        out = cli.cmd_issues_list(args, ENV, post=fake_post(cap))
+        self.assertEqual(out[0]["blocked_by"], [])
+        self.assertFalse(out[0]["blocked"])
+
+
 class TestProjectGet(unittest.TestCase):
     def test_reads_configured_project_description(self):
         cap = {"response": {"project": {
