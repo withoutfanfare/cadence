@@ -22,27 +22,32 @@ def registry_path() -> pathlib.Path:
     return pathlib.Path.home() / ".config" / "agent-registry" / "agents.json"
 
 
-def load_registry() -> dict:
+def load_registry() -> dict | None:
     """Agents from the shared machine-level registry, written by Spool.
 
-    Total read: a missing, malformed, or wrong-version file yields {} so a
-    bad registry can never break Cadence — built-in defaults apply instead.
+    Returns None when no usable registry exists (missing, malformed, or
+    wrong-version file) so a bad registry can never break Cadence — built-in
+    defaults apply instead. A readable registry returns its agents dict, even
+    when empty: a valid registry is authoritative about what exists.
     """
     try:
         data = json.loads(registry_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return {}
+        return None
     if not isinstance(data, dict) or data.get("registry_version") != 1:
-        return {}
+        return None
     agents = data.get("agents")
-    return agents if isinstance(agents, dict) else {}
+    return agents if isinstance(agents, dict) else None
 
 
 def _available_providers() -> set:
-    """Runtime-supported providers narrowed to what the registry says exists."""
+    """Runtime-supported providers narrowed to what the registry says exists.
+    No usable registry → built-in defaults; a valid registry gates strictly,
+    so removing every supported agent there leaves nothing selectable."""
     registry = load_registry()
-    available = RUNTIME_PROVIDERS & set(registry)
-    return available or RUNTIME_PROVIDERS
+    if registry is None:
+        return RUNTIME_PROVIDERS
+    return RUNTIME_PROVIDERS & set(registry)
 
 
 PROVIDERS = _available_providers()
@@ -154,10 +159,17 @@ def effective_values(values: dict[str, str]) -> dict[str, str]:
     return result
 
 
+def _reject_provider(provider: str) -> None:
+    if provider in RUNTIME_PROVIDERS:
+        raise ValueError(
+            f"provider '{provider}' is not in the shared agent registry ({registry_path()})")
+    raise ValueError(f"unknown provider: {provider}")
+
+
 def provider_from_pair(pair: str) -> str:
     provider = pair.split(":", 1)[0]
     if provider not in PROVIDERS:
-        raise ValueError(f"unknown provider: {provider}")
+        _reject_provider(provider)
     if ":" not in pair:
         raise ValueError(f"provider/model pair required: {pair}")
     if not pair.split(":", 1)[1]:
@@ -167,7 +179,7 @@ def provider_from_pair(pair: str) -> str:
 
 def validate_provider(provider: str) -> None:
     if provider not in PROVIDERS:
-        raise ValueError(f"unknown provider: {provider}")
+        _reject_provider(provider)
 
 
 def set_env_values(path: pathlib.Path, updates: dict[str, str]) -> None:
@@ -221,9 +233,12 @@ def cmd_show(_args: argparse.Namespace) -> int:
 
 def cmd_registry(_args: argparse.Namespace) -> int:
     agents = load_registry()
-    if not agents:
+    if agents is None:
         supported = ", ".join(sorted(RUNTIME_PROVIDERS))
         print(f"No shared agent registry at {registry_path()} (using built-in providers: {supported})")
+        return 0
+    if not agents:
+        print(f"Shared agent registry at {registry_path()} lists no agents — every provider is gated out")
         return 0
     rows = [("Agent", "Models", "Cadence support")]
     for name in sorted(agents):

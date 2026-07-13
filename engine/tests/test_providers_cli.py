@@ -176,7 +176,17 @@ class TestProvidersCli(unittest.TestCase):
             {"AGENT_REGISTRY_FILE": str(registry)}, "set", "--build", "codex:gpt-5.4"
         )
         self.assertEqual(result.returncode, 2)
-        self.assertIn("unknown provider: codex", result.stderr)
+        self.assertIn("provider 'codex' is not in the shared agent registry", result.stderr)
+
+    def test_valid_registry_with_no_supported_providers_fails_closed(self):
+        registry = self._write_registry(
+            '{"registry_version": 1, "agents": {"gemini": {"command": "gemini"}}}'
+        )
+        result = self._run_with_env(
+            {"AGENT_REGISTRY_FILE": str(registry)}, "set", "--build", "claude:opus"
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("provider 'claude' is not in the shared agent registry", result.stderr)
 
     def test_malformed_registry_falls_back_to_builtin_providers(self):
         registry = self._write_registry("not json at all")
