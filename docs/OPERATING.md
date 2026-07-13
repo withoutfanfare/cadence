@@ -218,6 +218,76 @@ cadence labels ensure agent:spec
 cadence doctor --labels
 ```
 
+## Dependency chains (run tasks in a set order)
+
+When one task builds on another, declare the dependency and the loops execute
+them in order — gate the whole chain at once and walk away. A dependant task
+reports `blocked: true` until its blocker is finished; while blocked, the build
+loop skips it, and (in autonomous mode) the advancer will not grant
+`agent:build` and the conductor will not queue it. Nothing is ever cancelled or
+escalated by a dependency — a blocked task simply waits, and a later run picks
+it up once the blocker completes. Spec-writing is deliberately not gated: a
+spec can be written while its blocker is still in flight.
+
+### Declaring a dependency — Linear
+
+Use Linear's native "blocked by" relation, either in the Linear UI (issue →
+*Relations* → *Blocked by*) or from the CLI. The direction matters: **A blocks
+B** means B waits for A.
+
+```bash
+cadence linear issue-relate STU-101 STU-102 --type blocks   # STU-101 blocks STU-102
+cadence linear issue-get STU-102                            # shows blocked_by: ["STU-101"], blocked: true
+```
+
+Chains longer than two work as expected (A blocks B, B blocks C), and a task
+may list several blockers — it stays blocked until all of them are done.
+
+### Declaring a dependency — file backend
+
+Add a `blocked-by:` line to the task's header block in `cadence/tasks.md`
+(comma-separated for multiple blockers, no blank line before it):
+
+```markdown
+## TASK-1: Build the API
+status: open
+labels: agent:triaged
+
+### Acceptance Criteria
+- [ ] Endpoint returns the list
+
+## TASK-2: Build the UI on top
+status: open
+labels: agent:triaged
+blocked-by: TASK-1
+
+### Acceptance Criteria
+- [ ] Screen renders the list
+```
+
+`cadence tasks list` and `get` then report `blocked` on each task. `cadence
+doctor` guards the format: it flags a blocker that names an unknown task, a
+task that blocks itself, and dependency cycles (A waits for B waits for A) —
+all of which would otherwise stall silently forever.
+
+### When does a blocker stop blocking?
+
+Set `DEPS_SATISFIED_WHEN` in the project's `cadence/.env` (both backends):
+
+| Value | Blocker stops blocking when… | Use it for |
+| --- | --- | --- |
+| `merged` (default) | the blocker is done or cancelled — its PR merged by a human | the safe default: the dependant's branch is cut from the base branch, so only then does it contain the blocker's changes |
+| `pr-open` | the blocker has an open draft PR | unattended overnight chains — work is sequenced without waiting on human merges, but the dependant is built *without* the blocker's unmerged changes, so best when the tasks are related rather than code-stacked |
+
+### Overnight chains, end to end
+
+1. Create the issues and declare the dependencies (above).
+2. Set `DEPS_SATISFIED_WHEN=pr-open` (if you accept the caveat) and enable
+   [autonomous mode](#autonomous-mode-opt-in) (`AUTONOMOUS=1`, tag the chain
+   `agent:auto` or let the conductor feed it).
+3. In the morning, review the draft PRs in order and merge them yourself —
+   dependencies change nothing about the human-gated endpoint.
+
 ## Autonomous mode (opt-in)
 
 Autonomous mode lets the advancer grant gates on `agent:auto` issues, carrying
@@ -258,8 +328,10 @@ still tagged.
 With autonomous mode on, the conductor feeds the queue so you do not have to tag
 issues by hand. Every 3 hours it ranks the ready backlog (priority → current cycle
 → oldest), skips anything not buildable yet (held, needs-attention, terminal,
-already-auto, anything without acceptance criteria, and, for Linear, blocked or
-parent issues with children), and tops up `agent:auto` to `CONDUCT_WIP`
+already-auto, anything without acceptance criteria, blocked issues — a
+dependency chain's blocker not yet at `DEPS_SATISFIED_WHEN`, see
+CONFIGURATION.md — and, for Linear, parent issues with children), and tops up
+`agent:auto` to `CONDUCT_WIP`
 (default 1) — one issue in flight at a time until you raise it. A task with no
 acceptance criteria is never queued, so triage stubs them in. An issue that
 stalls into `agent:needs-attention` (or `agent:hold`) releases its WIP slot, so
@@ -267,7 +339,7 @@ one stuck item cannot freeze the whole queue — the conductor moves on and feed
 the next.
 
 - **Shadow it first:** `AUTONOMOUS=on cadence conduct --dry-run` prints which issue
-  it would set loose (and, for Linear, which it skipped as blocked or parent work),
+  it would set loose (and which it skipped as blocked or, for Linear, parent work),
   writing nothing to the active task backend. The decision summary is still
   recorded in the normal Cadence feed, digest, and throughput ledger.
 - **Schedule it:** set `CADENCE_SCHEDULED=1`; the scheduler runs conductor work
@@ -459,7 +531,17 @@ preferred menu-bar surface.
 cadence app install
 ```
 
-Parity gate:
+Unlike the SwiftBar dropdown, the app opens a floating panel that stays open
+while you act, so you can work through the gate inbox without reopening a menu
+per task. The panel is resizable (the size persists), closes on any click
+outside it, and refreshes live while open. Projects are accordions — collapsed
+by default to give an overview, with the open/closed choice remembered and
+Expand all / Collapse all in the header, which also shows the total awaiting
+count and when the data was last refreshed. Expanding a task shows its actions
+inline as buttons rather than nested submenus.
+
+Parity gate (same data and actions; presentation intentionally differs as
+described above):
 
 - same menu-bar status precedence and count
 - same project status lines and colour semantics
@@ -470,7 +552,9 @@ Parity gate:
 
 ### Controlling a task from the menu bar
 
-Every task in the gate inbox — Linear or file-backed alike — carries a submenu:
+Every task in the gate inbox — Linear or file-backed alike — carries the same
+set of actions (a nested submenu in SwiftBar; inline buttons on the expanded
+task row in `Cadence.app`):
 
 - **▶ Advance to <stage>** — grants the next gate (backlog/triaged → spec,
   specced → build, pr-open/revised → revise). Shown only when a forward move

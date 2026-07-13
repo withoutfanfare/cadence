@@ -57,6 +57,11 @@ revise   →  agent pushes fixes to the same PR, leaves `agent:revised`
 Nothing advances without a human adding the next gate label. See
 [docs/OPERATING.md](docs/OPERATING.md) for the day-to-day commands.
 
+Tasks that build on each other can be chained: declare "B is blocked by A"
+(Linear's *blocked by* relation, or a `blocked-by:` line in the file backend)
+and the loops execute the chain in order — see
+[Dependency chains](docs/OPERATING.md#dependency-chains-run-tasks-in-a-set-order).
+
 ## Autonomous mode (opt-in)
 
 Cadence can also run *without* a human granting each gate. Tag issues `agent:auto`
@@ -118,9 +123,11 @@ for all-Codex, mixed-provider, Kimi, and OpenCode examples.
 
 Cadence also includes `Cadence.app`, a Swift/AppKit macOS menu-bar app that
 shows the same registered projects, task inbox, run state, and human-gate
-controls as the CLI-backed menu-bar view. It shells out to the public `cadence`
-CLI, so the engine remains the source of truth for project registry, schedules,
-labels, and writes.
+controls as the CLI-backed menu-bar view. Clicking the status item opens a
+resizable slate-glass panel that **stays open while you act** — expand a task,
+set its stage, and move to the next without reopening anything. It shells out
+to the public `cadence` CLI, so the engine remains the source of truth for
+project registry, schedules, labels, and writes.
 
 The app lists only **onboarded** projects — those registered with `cadence
 onboard` — and reads each one from its own `<app>/cadence/.env`, never from a

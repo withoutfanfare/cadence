@@ -7,8 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Dependency chains between tasks.** Declare that one task must wait for
+  another — Linear's "blocked by" relation (`cadence linear issue-relate <A>
+  <B> --type blocks`, or the Linear UI) or a `blocked-by: <ID>[, <ID>…]`
+  header line in the file backend. Both adapters report a computed
+  `blocked`/`blocked_by` on `issues-list`/`issue-get`/`tasks list|get`; the
+  build loop skips blocked issues, and autonomous advance and the conductor
+  refuse to start them, so a gated chain executes in order. When a blocker
+  stops blocking is configurable via `DEPS_SATISFIED_WHEN`: `merged` (default
+  — blocker done/cancelled) or `pr-open` (an open draft PR is enough, for
+  unattended overnight chains; before granting a build the advancer verifies
+  the blocker's PR really is open or merged on GitHub, so a stale label
+  cannot unblock a dependant). `cadence doctor` flags unknown,
+  self-referencing, and cyclic dependencies in the file backend, which would
+  otherwise stall silently forever.
+- **Redpen review intake.** The revise loop now treats a Redpen report posted
+  as a PR comment (recognised by its `---` frontmatter with `clean:` /
+  `findings_high:` lines) as a fourth feedback source alongside the human's
+  note, the folded code-review, and Copilot — each finding fixed or answered.
+  A report is only trusted when the comment author matches this machine's
+  `gh` login (the account Redpen posts with); frontmatter shape alone is
+  forgeable by any PR commenter. Autonomous advance counts a fresh verified
+  report with `findings_high` > 0 against `review_clean`, triggering a repair
+  (`agent:revise`) cycle — minor-only findings (`clean: false`,
+  `findings_high: 0`) do not block, matching the folded-review rule — closing
+  the build → independent review → revise loop without a human in it.
+  Requires `REVIEW_POST_TO_PR="true"` in Redpen's own config.
+
 ### Changed
 
+- **`Cadence.app` replaced its dropdown menu with a floating panel** that stays
+  open while you act, so the gate inbox can be worked through without reopening
+  a menu per task. The panel is resizable (size persisted across launches),
+  closes on outside click, and refreshes live while open. Projects render as
+  accordion cards — collapsed by default, open/closed state remembered — with
+  Expand all / Collapse all, total awaiting count, and last-refresh time in a
+  header. Expanding a task shows its actions (set stage, advance, hold, merged,
+  worktree cleanup, open PR/board/tasks) as inline buttons. Styled as frosted
+  glass with a neutral slate tint in light and dark mode.
 - The worktree **isolation contract is now engine-enforced for both worktree
   tools (`git` and `grove`)**, not assumed. `cadence worktree add` verifies —
   on re-use and after creation — that the path it hands back is the root of a
@@ -58,6 +96,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   title) instead of letting `gh` infer the title from the commit, so every PR is
   trackable from the GitHub PR list and links back to the task. Applies to both
   the Linear skill and the file-backend build prompt.
+
+### Fixed
+
+- A **valid agent registry now gates providers strictly**: a registry listing
+  none of the supported providers leaves nothing selectable (with an error
+  naming the registry file) instead of silently falling back to every built-in
+  provider, which defeated registry-based allow-listing. A missing, malformed,
+  or wrong-version registry still falls back to the built-ins as before.
+- File-backend dependency lookups with a **duplicate task ID** now use the
+  first occurrence, matching `tasks get`, so blocked status can't be computed
+  from a different task than the one returned. A **blocked-by chain deep
+  enough to exhaust Python's stack** is reported by `validate`/`doctor` as a
+  problem ("dependency graph too deep") instead of crashing.
 
 ### Added
 

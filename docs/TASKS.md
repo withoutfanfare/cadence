@@ -29,8 +29,12 @@ Use `###` or deeper for any sub-headings inside a body.
 ## TASK-2: Another task
 status: open
 labels:
+blocked-by: TASK-1
 
-Body for the second task.
+Body for the second task. The optional `blocked-by:` header line (comma-
+separated task IDs) declares a dependency chain: this task reports
+`blocked: true` — and the loops will not build it — until every listed task
+satisfies `DEPS_SATISFIED_WHEN` (see CONFIGURATION.md; default: done/cancelled).
 ```
 
 **Acceptance criteria gate autonomous advance.** Under autonomous mode the
@@ -55,7 +59,11 @@ reserved for task headers).
    line following the header is the description.
 5. **IDs are unique.** Two tasks with the same ID: only the first is reachable
    by `cadence tasks get/update`. `doctor` flags duplicates.
-6. **`agent:pr-open` requires a PR URL in the body.** The build loop records the
+6. **`blocked-by:` must reference real tasks and stay acyclic.** An unknown or
+   self-referencing blocker, or a dependency cycle, blocks the task(s) forever —
+   `doctor` flags all three. `blocked-by:` sits in the header block with
+   `status:`/`labels:`, same no-blank-line rule.
+7. **`agent:pr-open` requires a PR URL in the body.** The build loop records the
    draft PR's URL (`…/pull/<n>`) when it opens one, so a pr-open task with no PR
    reference means no PR actually exists — `doctor` flags it as workflow state
    that needs repair (usually: work done outside the worktree flow, or a label

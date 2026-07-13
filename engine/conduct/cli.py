@@ -84,6 +84,10 @@ def rank(issues, active_cycle):
 
 
 def is_blocked(detail):
+    # The adapter computes `blocked` honouring DEPS_SATISFIED_WHEN; trust it
+    # when present. The loop below is the legacy fallback (merged-only).
+    if "blocked" in detail:
+        return bool(detail["blocked"])
     for rel in (detail.get("inverseRelations") or []):
         if rel.get("type") != "blocks":
             continue

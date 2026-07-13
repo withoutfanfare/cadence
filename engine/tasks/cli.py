@@ -9,7 +9,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from atomic_file import atomic_write  # noqa: E402
-from stages import is_terminal, resolve_labels, stage_of, strip_workflow_labels  # noqa: E402
+from stages import (dep_mode, dep_satisfied, is_terminal, resolve_labels,  # noqa: E402
+                    stage_of, strip_workflow_labels)
 from worktrees import remove_worktree as _remove_worktree  # noqa: E402
 
 
@@ -65,6 +66,7 @@ def parse(text):
                 "title": match.group(2).strip(),
                 "status": "",
                 "labels": [],
+                "blocked_by": [],
                 "description": "",
             }
             body = []
@@ -79,6 +81,8 @@ def parse(text):
             current["status"] = line.split(":", 1)[1].strip()
         elif in_header and line.startswith("labels:"):
             current["labels"] = _split_list(line.split(":", 1)[1])
+        elif in_header and line.startswith("blocked-by:"):
+            current["blocked_by"] = _split_list(line.split(":", 1)[1])
         else:
             in_header = False
             body.append(line)
@@ -129,7 +133,7 @@ def validate(text):
         # start with it and parse() tolerates that (treats it as body). Only flag
         # a non-matching `## ` line as a broken header when the author clearly
         # meant one — i.e. the next non-empty line is task metadata.
-        if line.startswith("## ") and _next_nonempty(n - 1).startswith(("status:", "labels:")):
+        if line.startswith("## ") and _next_nonempty(n - 1).startswith(("status:", "labels:", "blocked-by:")):
             problems.append(
                 f"line {n}: malformed task header {line.strip()!r}; expected "
                 "'## <ID>: <Title>' (the ID must not contain a colon)"
@@ -141,18 +145,57 @@ def validate(text):
             header_meta.add("status")
         elif in_header and line.startswith("labels:"):
             header_meta.add("labels")
+        elif in_header and line.startswith("blocked-by:"):
+            header_meta.add("blocked-by")
         else:
             in_header = False
             if awaiting_body and line.strip():
                 awaiting_body = False
                 key = "status" if line.startswith("status:") else (
-                    "labels" if line.startswith("labels:") else None)
+                    "labels" if line.startswith("labels:") else (
+                        "blocked-by" if line.startswith("blocked-by:") else None))
                 if key and key not in header_meta:
                     problems.append(
                         f"line {n}: '{key}:' is in the body of task '{current}', "
                         f"not its header; move it directly under the "
                         f"'## {current}: …' line with no blank line between"
                     )
+    # Dependency truth: an unknown or self-referencing blocker blocks forever,
+    # and a cycle deadlocks every task in it — all silent overnight stalls.
+    parsed = parse(text)
+    ids = {t["identifier"] for t in parsed}
+    deps = {t["identifier"]: (t.get("blocked_by") or []) for t in parsed}
+    for tid, blockers in deps.items():
+        for b in blockers:
+            if b == tid:
+                problems.append(f"task '{tid}': blocked-by itself — it can never run")
+            elif b not in ids:
+                problems.append(
+                    f"task '{tid}': blocked-by unknown task '{b}' — it will "
+                    "never unblock")
+    state = {}  # 1 = visiting, 2 = done
+
+    def _cycles(tid, path):
+        state[tid] = 1
+        for b in deps.get(tid, []):
+            if state.get(b) == 1:
+                problems.append(
+                    "dependency cycle: " + " -> ".join(path + [b])
+                    + " — none of these tasks can ever run")
+            elif state.get(b) != 2 and b in deps:
+                _cycles(b, path + [b])
+        state[tid] = 2
+
+    try:
+        for tid in deps:
+            if state.get(tid) != 2:
+                _cycles(tid, [tid])
+    except RecursionError:
+        # A hand-edited file can chain blocked-by deeper than Python's stack;
+        # report it as a normal problem instead of crashing validate/doctor.
+        problems.append(
+            "dependency graph too deep to validate — flatten the blocked-by "
+            "chain (thousands of links deep is never intentional)")
     # Workflow truth, not just format: agent:pr-open claims a draft PR exists,
     # and the build loop records its URL in the body. A pr-open task with no
     # PR reference is the tell that build never opened one.
@@ -173,6 +216,8 @@ def render(tasks):
         parts.append(f"## {task['identifier']}: {task['title']}")
         parts.append(f"status: {task.get('status', '')}")
         parts.append("labels: " + ", ".join(task.get("labels") or []))
+        if task.get("blocked_by"):
+            parts.append("blocked-by: " + ", ".join(task["blocked_by"]))
         parts.append("")
         desc = (task.get("description") or "").strip()
         if desc:
@@ -201,8 +246,25 @@ def _find(tasks, identifier):
     raise KeyError(identifier)
 
 
+def _annotate_blocked(tasks, env):
+    """blocked = any declared blocker not yet satisfied per DEPS_SATISFIED_WHEN.
+    An unknown blocker id blocks (fail safe); validate() surfaces it."""
+    mode = dep_mode(env or os.environ)
+    # First occurrence wins, matching _find() — duplicate IDs are a validate()
+    # problem, but blocked status must be computed from the task `get` returns.
+    by_id = {}
+    for t in tasks:
+        by_id.setdefault(t["identifier"], t)
+    for t in tasks:
+        t["blocked"] = any(
+            b not in by_id or not dep_satisfied(
+                by_id[b].get("status"), by_id[b].get("labels") or [], mode)
+            for b in t.get("blocked_by") or [])
+
+
 def cmd_list(args, env=None):
     tasks = load(env)
+    _annotate_blocked(tasks, env)
     if args.label:
         tasks = [task for task in tasks if args.label in (task.get("labels") or [])]
     if args.status:
@@ -213,7 +275,9 @@ def cmd_list(args, env=None):
 
 
 def cmd_get(args, env=None):
-    return _find(load(env), args.identifier)
+    tasks = load(env)
+    _annotate_blocked(tasks, env)
+    return _find(tasks, args.identifier)
 
 
 GATE_LABELS = {"agent:spec", "agent:build", "agent:revise"}

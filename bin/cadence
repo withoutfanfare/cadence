@@ -74,7 +74,7 @@ Usage: cadence [--config path|--profile name] <command> [args]
   labels init|list|ensure <name>  Initialise, inspect, or create Linear labels
   linear <args>     Linear API adapter (teams, me, projects, issues-list, issue-get, …)
   tasks <args>      Local task-file adapter (list, get, update)
-  providers roles|show|set|help  Inspect, update, or explain AI provider roles
+  providers roles|show|registry|set|help  Inspect, update, or explain AI provider roles
   prompt render <stage> [args...] --output <file>  Render a provider-neutral loop prompt
   advance <args>    Advancer decision core (decide, criteria, repairs)
   memory <args>     Memory adapter (recall, remember)

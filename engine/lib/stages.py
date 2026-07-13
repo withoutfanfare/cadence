@@ -92,6 +92,29 @@ def is_terminal(state):
     return (state or "").strip().lower() in TERMINAL_STATES
 
 
+# DEPS_SATISFIED_WHEN modes — when a blocking task stops blocking its dependants.
+DEP_MODES = ("merged", "pr-open")
+
+
+def dep_satisfied(state, labels, mode="merged"):
+    """True when a blocker no longer blocks. `merged` (default): the blocker
+    must be terminal (its PR merged and the task completed, or cancelled —
+    a dead blocker does not block). `pr-open`: reaching an open PR is enough,
+    for unattended runs that sequence work without waiting on human merges."""
+    if is_terminal(state):
+        return True
+    if mode == "pr-open":
+        return stage_of(labels)["name"] in ("pr-open", "revised")
+    return False
+
+
+def dep_mode(env):
+    """Read DEPS_SATISFIED_WHEN from the config env; unknown values fall back
+    to merged (the safe default) rather than erroring an unattended run."""
+    mode = (env.get("DEPS_SATISFIED_WHEN") or "merged").strip().lower()
+    return mode if mode in DEP_MODES else "merged"
+
+
 def strip_workflow_labels(labels):
     """Drop the agent:* workflow labels — a done/cancelled issue holds no live
     workflow state, so completing it should clear its gates, status, and flags.

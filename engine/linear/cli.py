@@ -14,7 +14,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
 from cadence_env import load_env  # noqa: E402
-from stages import resolve_labels, strip_workflow_labels  # noqa: E402
+from stages import dep_mode, dep_satisfied, resolve_labels, strip_workflow_labels  # noqa: E402
 from stages import stage_of  # noqa: E402
 from worktrees import remove_worktree as _remove_worktree  # noqa: E402
 
@@ -147,16 +147,40 @@ _ISSUE_FIELDS = """
   labels { nodes { name } } cycle { number }
 """
 
+# Blockers of an issue: inverse relations of type "blocks" — the related node's
+# `issue` is the blocker. State + labels are enough to judge dep satisfaction.
+_BLOCKERS_F = """
+  inverseRelations {
+    nodes { type issue { identifier state { name type } labels { nodes { name } } } }
+  }
+"""
+
 _ISSUES_Q = """
 query($filter: IssueFilter, $first: Int!, $after: String) {
   issues(filter: $filter, first: $first, after: $after) {
-    nodes { %s }
+    nodes { %s %s }
     pageInfo { hasNextPage endCursor }
   }
-}""" % _ISSUE_FIELDS
+}""" % (_ISSUE_FIELDS, _BLOCKERS_F)
 
 
-def _shape_issue(n):
+def _apply_deps(out, n, env):
+    """Add blocked_by (declared blocker identifiers) and blocked (any blocker
+    not yet satisfied per DEPS_SATISFIED_WHEN) when the node carries relations."""
+    nodes = (n.get("inverseRelations") or {}).get("nodes")
+    if nodes is None:
+        return
+    blockers = [r.get("issue") or {} for r in nodes if r.get("type") == "blocks"]
+    out["blocked_by"] = [b.get("identifier") for b in blockers]
+    mode = dep_mode(env or {})
+    out["blocked"] = any(
+        not dep_satisfied((b.get("state") or {}).get("type"),
+                          [x["name"] for x in (b.get("labels") or {}).get("nodes", [])],
+                          mode)
+        for b in blockers)
+
+
+def _shape_issue(n, env=None):
     out = {
         "id": n.get("id"),
         "identifier": n.get("identifier"),
@@ -187,6 +211,7 @@ def _shape_issue(n):
                      ("documents", "documents")):
         if n.get(rel):
             out[key] = n[rel].get("nodes", [])
+    _apply_deps(out, n, env)
     out["stage"] = stage_of(out.get("labels") or [])
     return out
 
@@ -238,7 +263,7 @@ def cmd_issues_list(args, env, post=graphql):
         uid = env.get("LINEAR_ASSIGNEE_ID") if args.assignee == "me" else args.assignee
         f["assignee"] = {"id": {"eq": uid}}
     nodes = _issue_nodes(f, env, post=post, limit=getattr(args, "limit", None))
-    return [_shape_issue(n) for n in nodes]
+    return [_shape_issue(n, env) for n in nodes]
 
 
 _ISSUE_GET_Q = """
@@ -247,7 +272,7 @@ query($id: String!) {
     %s
     comments { nodes { body user { name } createdAt } }
     relations { nodes { type relatedIssue { identifier url state { type } } } }
-    inverseRelations { nodes { type issue { identifier url state { type } } } }
+    inverseRelations { nodes { type issue { identifier url state { name type } labels { nodes { name } } } } }
     children { nodes { identifier title url } }
     documents { nodes { id title url } }
   }
@@ -259,7 +284,7 @@ def cmd_issue_get(args, env, post=graphql):
     data = post(_ISSUE_GET_Q, {"id": args.id}, env)
     n = data["issue"]
     n["description"] = n.get("description")  # force-keep description on detail read
-    return _shape_issue(n)
+    return _shape_issue(n, env)
 
 
 _CYCLES_Q = """
