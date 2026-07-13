@@ -473,6 +473,26 @@ class TestDeps(unittest.TestCase):
         problems = cli.validate(cycle)
         self.assertTrue(any("dependency cycle" in p for p in problems))
 
+    def test_duplicate_blocker_id_uses_first_occurrence_like_find(self):
+        # A duplicated blocker ID must resolve to the same task _find returns
+        # (the first), so `get` and blocked status never disagree.
+        dup = DEPS_MD + (
+            "\n## TASK-1: duplicate shadow\nstatus: done\nlabels:\n\nBody.\n")
+        tasks = self._list(dup)
+        self.assertTrue(tasks[1]["blocked"])  # first TASK-1 is open, not done
+
+    def test_validate_survives_a_very_deep_dependency_chain(self):
+        parts = ["# Cadence Tasks", ""]
+        for n in range(4000):
+            parts += [f"## T-{n}: chain link", "status: open", "labels:"]
+            if n:
+                parts.append(f"blocked-by: T-{n - 1}")
+            parts.append("")
+        problems = cli.validate("\n".join(parts))
+        # acyclic — either validates clean or reports depth, never crashes
+        self.assertTrue(
+            problems == [] or any("too deep" in p for p in problems))
+
     def test_clean_file_validates_and_blocked_not_persisted(self):
         self.assertEqual(cli.validate(DEPS_MD), [])
         # computed `blocked` must never leak into the rendered file

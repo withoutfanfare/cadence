@@ -186,9 +186,16 @@ def validate(text):
                 _cycles(b, path + [b])
         state[tid] = 2
 
-    for tid in deps:
-        if state.get(tid) != 2:
-            _cycles(tid, [tid])
+    try:
+        for tid in deps:
+            if state.get(tid) != 2:
+                _cycles(tid, [tid])
+    except RecursionError:
+        # A hand-edited file can chain blocked-by deeper than Python's stack;
+        # report it as a normal problem instead of crashing validate/doctor.
+        problems.append(
+            "dependency graph too deep to validate — flatten the blocked-by "
+            "chain (thousands of links deep is never intentional)")
     # Workflow truth, not just format: agent:pr-open claims a draft PR exists,
     # and the build loop records its URL in the body. A pr-open task with no
     # PR reference is the tell that build never opened one.
@@ -243,7 +250,11 @@ def _annotate_blocked(tasks, env):
     """blocked = any declared blocker not yet satisfied per DEPS_SATISFIED_WHEN.
     An unknown blocker id blocks (fail safe); validate() surfaces it."""
     mode = dep_mode(env or os.environ)
-    by_id = {t["identifier"]: t for t in tasks}
+    # First occurrence wins, matching _find() — duplicate IDs are a validate()
+    # problem, but blocked status must be computed from the task `get` returns.
+    by_id = {}
+    for t in tasks:
+        by_id.setdefault(t["identifier"], t)
     for t in tasks:
         t["blocked"] = any(
             b not in by_id or not dep_satisfied(
