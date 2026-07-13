@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Dependency chains between tasks.** Declare that one task must wait for
+  another — Linear's "blocked by" relation (`cadence linear issue-relate <A>
+  <B> --type blocks`, or the Linear UI) or a `blocked-by: <ID>[, <ID>…]`
+  header line in the file backend. Both adapters report a computed
+  `blocked`/`blocked_by` on `issues-list`/`issue-get`/`tasks list|get`; the
+  build loop skips blocked issues, and autonomous advance and the conductor
+  refuse to start them, so a gated chain executes in order. When a blocker
+  stops blocking is configurable via `DEPS_SATISFIED_WHEN`: `merged` (default
+  — blocker done/cancelled) or `pr-open` (an open draft PR is enough, for
+  unattended overnight chains). `cadence doctor` flags unknown,
+  self-referencing, and cyclic dependencies in the file backend, which would
+  otherwise stall silently forever.
+- **Redpen review intake.** The revise loop now treats a Redpen report posted
+  as a PR comment (recognised by its `---` frontmatter with `clean:` /
+  `findings_high:` lines) as a fourth feedback source alongside the human's
+  note, the folded code-review, and Copilot — each finding fixed or answered.
+  Autonomous advance counts a fresh `clean: false` Redpen report against
+  `review_clean`, triggering a repair (`agent:revise`) cycle, closing the
+  build → independent review → revise loop without a human in it. Requires
+  `REVIEW_POST_TO_PR="true"` in Redpen's own config.
+
 ### Changed
 
 - The worktree **isolation contract is now engine-enforced for both worktree
