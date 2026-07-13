@@ -459,7 +459,17 @@ preferred menu-bar surface.
 cadence app install
 ```
 
-Parity gate:
+Unlike the SwiftBar dropdown, the app opens a floating panel that stays open
+while you act, so you can work through the gate inbox without reopening a menu
+per task. The panel is resizable (the size persists), closes on any click
+outside it, and refreshes live while open. Projects are accordions — collapsed
+by default to give an overview, with the open/closed choice remembered and
+Expand all / Collapse all in the header, which also shows the total awaiting
+count and when the data was last refreshed. Expanding a task shows its actions
+inline as buttons rather than nested submenus.
+
+Parity gate (same data and actions; presentation intentionally differs as
+described above):
 
 - same menu-bar status precedence and count
 - same project status lines and colour semantics
@@ -470,7 +480,9 @@ Parity gate:
 
 ### Controlling a task from the menu bar
 
-Every task in the gate inbox — Linear or file-backed alike — carries a submenu:
+Every task in the gate inbox — Linear or file-backed alike — carries the same
+set of actions (a nested submenu in SwiftBar; inline buttons on the expanded
+task row in `Cadence.app`):
 
 - **▶ Advance to <stage>** — grants the next gate (backlog/triaged → spec,
   specced → build, pr-open/revised → revise). Shown only when a forward move

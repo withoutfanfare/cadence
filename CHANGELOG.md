@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`Cadence.app` replaced its dropdown menu with a floating panel** that stays
+  open while you act, so the gate inbox can be worked through without reopening
+  a menu per task. The panel is resizable (size persisted across launches),
+  closes on outside click, and refreshes live while open. Projects render as
+  accordion cards — collapsed by default, open/closed state remembered — with
+  Expand all / Collapse all, total awaiting count, and last-refresh time in a
+  header. Expanding a task shows its actions (set stage, advance, hold, merged,
+  worktree cleanup, open PR/board/tasks) as inline buttons. Styled as frosted
+  glass with a neutral slate tint in light and dark mode.
 - The worktree **isolation contract is now engine-enforced for both worktree
   tools (`git` and `grove`)**, not assumed. `cadence worktree add` verifies —
   on re-use and after creation — that the path it hands back is the root of a
