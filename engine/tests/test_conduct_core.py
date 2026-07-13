@@ -115,6 +115,14 @@ class TestIsBlocked(unittest.TestCase):
     def test_no_relations_not_blocked(self):
         self.assertFalse(cli.is_blocked({}))
 
+    def test_adapter_computed_blocked_field_wins(self):
+        # the adapter's `blocked` honours DEPS_SATISFIED_WHEN (e.g. pr-open),
+        # so it overrides the legacy terminal-only fallback either way
+        detail = {"blocked": False, "inverseRelations": [
+            {"type": "blocks", "issue": {"identifier": "B-1", "state": {"type": "started"}}}]}
+        self.assertFalse(cli.is_blocked(detail))
+        self.assertTrue(cli.is_blocked({"blocked": True, "inverseRelations": []}))
+
 
 class TestConduct(unittest.TestCase):
     def test_skips_parent_issue_with_children_before_tagging(self):

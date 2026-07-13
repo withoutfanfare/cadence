@@ -116,13 +116,22 @@ nothing). Still write the dry-run-titled dated run files.
        `"$CADENCE_HOME/engine/scripts/run-reviewer.sh" "${REVIEW_PROVIDER:-claude}"
        "${REVIEW_MODEL:-opus}" "$PROJECT_DIR" "<brief-file>"`. Blocking findings
        (Critical/Important) make `review_clean` false; Minor findings do not.
+       **Also check the PR's comments** (`gh pr view <n> --comments`) for a
+       Redpen report — an ordinary PR comment whose body opens with a `---`
+       frontmatter block containing `clean:` and `findings_high:` lines. A
+       Redpen comment with `clean: false` that is newer than the revise loop's
+       last follow-up comment also makes `review_clean` false (the resulting
+       `repair` grants `agent:revise`, and the revise loop addresses it).
      This is the only expensive step and runs ONLY at this gate.
 5. **Repairs + decide.** `repairs=$(cadence advance repairs get <ID>)`. Build the
    state JSON and call:
-   `cadence advance decide --state '{"auto":true,"hold":false,"resting":"<resting>","bar":{…},"repairs":<n>,"issues_done":<k>,"max_issues":<AUTO_MAX_ISSUES_PER_RUN>,"max_repairs":<AUTO_MAX_REPAIRS>}'`.
+   `cadence advance decide --state '{"auto":true,"hold":false,"resting":"<resting>","blocked":<blocked>,"bar":{…},"repairs":<n>,"issues_done":<k>,"max_issues":<AUTO_MAX_ISSUES_PER_RUN>,"max_repairs":<AUTO_MAX_REPAIRS>}'`.
    Use the bar keys the core expects: `triage_clean`, `criteria_present`, `gates`,
-   `criteria_met`, `review_clean`. `issues_done` is how many you have already
-   advanced this run.
+   `criteria_met`, `review_clean`. `blocked` is the issue's `blocked` field from
+   `issues-list`/`issue-get` (false when absent) — a dependency-blocked issue is
+   never granted `agent:build`; the core answers `skip` and a later run retries
+   once the blocker satisfies `DEPS_SATISFIED_WHEN`. `issues_done` is how many
+   you have already advanced this run.
 6. **Act** on `action` (skip all writes in `--dry-run`):
    - `grant-spec` → `cadence linear issue-update <ID> --add-label agent:spec`
    - `grant-build` → `--add-label agent:build --remove-label agent:specced`

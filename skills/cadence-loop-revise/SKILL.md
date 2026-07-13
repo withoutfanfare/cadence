@@ -79,7 +79,7 @@ in `docs/ARCHITECTURE.md` §5a, then exit without touching Linear, git, or files
    `agent:needs-human`, not fresh `agent:claimed`:
    `cadence linear issues-list --label agent:revise --assignee me`.
    Take up to `--limit`. `cadence linear issue-update <ID> --add-label agent:claimed`.
-2. **Read the feedback — three sources, gather all of them.** Before changing
+2. **Read the feedback — four sources, gather all of them.** Before changing
    anything, pull:
    - **The human's note** on the Linear issue (why it was sent back):
      `cadence linear issue-get <ID>`.
@@ -94,6 +94,13 @@ in `docs/ARCHITECTURE.md` §5a, then exit without touching Linear, git, or files
      gh api repos/$REPO_SLUG/pulls/<n>/comments \
        --jq '.[] | select(.user.login|test("[Cc]opilot")) | "\(.path):\(.line // .original_line) — \(.body)"'
      ```
+   - **Redpen's report, if present.** Redpen (the machine-local reviewer) posts
+     its report as an ordinary PR comment; recognise it by its body opening with
+     a `---` frontmatter block containing `clean:` and `findings_high:` lines
+     (already included in `gh pr view <n> --comments` — no extra fetch). Treat
+     each finding like any other review finding. Only Redpen comments newer than
+     your own last revise follow-up comment are new feedback; older ones were
+     addressed in a previous pass.
    Understand exactly what to fix.
 3. **Worktree.** Create or re-use the worktree for the **same branch** with
    `base="${BASE_BRANCH:-develop}"; WT="$(cadence worktree add <branch> "$base")" && cd "$WT"`,
@@ -112,9 +119,9 @@ in `docs/ARCHITECTURE.md` §5a, then exit without touching Linear, git, or files
    to *this* change into the working context. **The engine ships no rules; an empty
    recall is normal.**
    **Make the changes** that address the human's note, the code-review, **and each
-   Copilot finding**. Keep them minimal and on-point; do not expand scope. For a
-   Copilot finding, either fix it or — if it is wrong, a nit, or out of scope —
-   record a one-line reason rather than silently ignoring it. If the feedback was
+   Copilot and Redpen finding**. Keep them minimal and on-point; do not expand
+   scope. For a Copilot or Redpen finding, either fix it or — if it is wrong, a
+   nit, or out of scope — record a one-line reason rather than silently ignoring it. If the feedback was
    about a weak test, make the test genuinely guard (fails before the fix).
 5. **Gates (all green) — fast + synchronous.** Run the configured gates, each
    non-zero exit = a gate failure: `$GATE_LINT`, `$GATE_ANALYSE`, then the
@@ -133,7 +140,7 @@ in `docs/ARCHITECTURE.md` §5a, then exit without touching Linear, git, or files
    resolved and the tests guard the change. After the push and re-review, post a
    follow-up PR comment with `gh pr comment <n> --body-file <file>` so the human
    can see the revise loop has run. The comment must include an "addressed review comments"
-   section listing each human/code-review/Copilot finding with its
+   section listing each human/code-review/Copilot/Redpen finding with its
    disposition, plus any unresolved or out-of-scope item and why. Never
    approve/merge.
 8. **Linear.**

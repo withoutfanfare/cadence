@@ -258,8 +258,10 @@ still tagged.
 With autonomous mode on, the conductor feeds the queue so you do not have to tag
 issues by hand. Every 3 hours it ranks the ready backlog (priority → current cycle
 → oldest), skips anything not buildable yet (held, needs-attention, terminal,
-already-auto, anything without acceptance criteria, and, for Linear, blocked or
-parent issues with children), and tops up `agent:auto` to `CONDUCT_WIP`
+already-auto, anything without acceptance criteria, blocked issues — a
+dependency chain's blocker not yet at `DEPS_SATISFIED_WHEN`, see
+CONFIGURATION.md — and, for Linear, parent issues with children), and tops up
+`agent:auto` to `CONDUCT_WIP`
 (default 1) — one issue in flight at a time until you raise it. A task with no
 acceptance criteria is never queued, so triage stubs them in. An issue that
 stalls into `agent:needs-attention` (or `agent:hold`) releases its WIP slot, so
@@ -267,7 +269,7 @@ one stuck item cannot freeze the whole queue — the conductor moves on and feed
 the next.
 
 - **Shadow it first:** `AUTONOMOUS=on cadence conduct --dry-run` prints which issue
-  it would set loose (and, for Linear, which it skipped as blocked or parent work),
+  it would set loose (and which it skipped as blocked or, for Linear, parent work),
   writing nothing to the active task backend. The decision summary is still
   recorded in the normal Cadence feed, digest, and throughput ledger.
 - **Schedule it:** set `CADENCE_SCHEDULED=1`; the scheduler runs conductor work

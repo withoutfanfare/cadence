@@ -79,6 +79,16 @@ Cadence always scopes issue lists to both `LINEAR_TEAM_ID` and
 | --- | --- | --- |
 | `TASK_BACKEND` | `linear` | `linear` uses the Linear adapter. `file` uses a local markdown task file and skips Linear credential checks. |
 | `TASK_FILE` | `cadence/tasks.md` | Local task file for `TASK_BACKEND=file`, resolved relative to `PROJECT_DIR` when not absolute. |
+| `DEPS_SATISFIED_WHEN` | `merged` | When a blocking task stops blocking its dependants. `merged`: the blocker must be done or cancelled (its PR merged by a human) — the safe default, because the dependant's branch is cut from the base branch and only then contains the blocker's changes. `pr-open`: the blocker having an open draft PR is enough — lets an unattended overnight run work through a dependency chain without waiting on human merges, but the dependant is built *without* the blocker's unmerged changes. Unknown values fall back to `merged`. |
+
+**Dependency chains.** Declare that issue B must wait for issue A with Linear's
+"blocked by" relation (`cadence linear issue-relate <A> <B> --type blocks` — A
+blocks B — or in Linear's UI), or with a `blocked-by:` header line in the file
+backend (see [TASKS.md](TASKS.md)). Both backends then report `blocked: true`
+on the dependant until the blocker satisfies `DEPS_SATISFIED_WHEN`; the build
+loop skips blocked issues, and autonomous advance will not grant `agent:build`
+on them. Spec-writing is deliberately not gated — a spec can be written while
+its blocker is still in flight.
 
 The file backend is intentionally small. It stores human-editable tasks as
 markdown sections, exposes them through `cadence tasks list|get|update`, and is
