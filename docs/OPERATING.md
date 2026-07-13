@@ -218,6 +218,76 @@ cadence labels ensure agent:spec
 cadence doctor --labels
 ```
 
+## Dependency chains (run tasks in a set order)
+
+When one task builds on another, declare the dependency and the loops execute
+them in order — gate the whole chain at once and walk away. A dependant task
+reports `blocked: true` until its blocker is finished; while blocked, the build
+loop skips it, and (in autonomous mode) the advancer will not grant
+`agent:build` and the conductor will not queue it. Nothing is ever cancelled or
+escalated by a dependency — a blocked task simply waits, and a later run picks
+it up once the blocker completes. Spec-writing is deliberately not gated: a
+spec can be written while its blocker is still in flight.
+
+### Declaring a dependency — Linear
+
+Use Linear's native "blocked by" relation, either in the Linear UI (issue →
+*Relations* → *Blocked by*) or from the CLI. The direction matters: **A blocks
+B** means B waits for A.
+
+```bash
+cadence linear issue-relate STU-101 STU-102 --type blocks   # STU-101 blocks STU-102
+cadence linear issue-get STU-102                            # shows blocked_by: ["STU-101"], blocked: true
+```
+
+Chains longer than two work as expected (A blocks B, B blocks C), and a task
+may list several blockers — it stays blocked until all of them are done.
+
+### Declaring a dependency — file backend
+
+Add a `blocked-by:` line to the task's header block in `cadence/tasks.md`
+(comma-separated for multiple blockers, no blank line before it):
+
+```markdown
+## TASK-1: Build the API
+status: open
+labels: agent:triaged
+
+### Acceptance Criteria
+- [ ] Endpoint returns the list
+
+## TASK-2: Build the UI on top
+status: open
+labels: agent:triaged
+blocked-by: TASK-1
+
+### Acceptance Criteria
+- [ ] Screen renders the list
+```
+
+`cadence tasks list` and `get` then report `blocked` on each task. `cadence
+doctor` guards the format: it flags a blocker that names an unknown task, a
+task that blocks itself, and dependency cycles (A waits for B waits for A) —
+all of which would otherwise stall silently forever.
+
+### When does a blocker stop blocking?
+
+Set `DEPS_SATISFIED_WHEN` in the project's `cadence/.env` (both backends):
+
+| Value | Blocker stops blocking when… | Use it for |
+| --- | --- | --- |
+| `merged` (default) | the blocker is done or cancelled — its PR merged by a human | the safe default: the dependant's branch is cut from the base branch, so only then does it contain the blocker's changes |
+| `pr-open` | the blocker has an open draft PR | unattended overnight chains — work is sequenced without waiting on human merges, but the dependant is built *without* the blocker's unmerged changes, so best when the tasks are related rather than code-stacked |
+
+### Overnight chains, end to end
+
+1. Create the issues and declare the dependencies (above).
+2. Set `DEPS_SATISFIED_WHEN=pr-open` (if you accept the caveat) and enable
+   [autonomous mode](#autonomous-mode-opt-in) (`AUTONOMOUS=1`, tag the chain
+   `agent:auto` or let the conductor feed it).
+3. In the morning, review the draft PRs in order and merge them yourself —
+   dependencies change nothing about the human-gated endpoint.
+
 ## Autonomous mode (opt-in)
 
 Autonomous mode lets the advancer grant gates on `agent:auto` issues, carrying

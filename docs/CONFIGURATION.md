@@ -88,7 +88,8 @@ backend (see [TASKS.md](TASKS.md)). Both backends then report `blocked: true`
 on the dependant until the blocker satisfies `DEPS_SATISFIED_WHEN`; the build
 loop skips blocked issues, and autonomous advance will not grant `agent:build`
 on them. Spec-writing is deliberately not gated — a spec can be written while
-its blocker is still in flight.
+its blocker is still in flight. Worked examples for both backends:
+[OPERATING.md — Dependency chains](OPERATING.md#dependency-chains-run-tasks-in-a-set-order).
 
 The file backend is intentionally small. It stores human-editable tasks as
 markdown sections, exposes them through `cadence tasks list|get|update`, and is

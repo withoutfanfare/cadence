@@ -57,6 +57,11 @@ revise   →  agent pushes fixes to the same PR, leaves `agent:revised`
 Nothing advances without a human adding the next gate label. See
 [docs/OPERATING.md](docs/OPERATING.md) for the day-to-day commands.
 
+Tasks that build on each other can be chained: declare "B is blocked by A"
+(Linear's *blocked by* relation, or a `blocked-by:` line in the file backend)
+and the loops execute the chain in order — see
+[Dependency chains](docs/OPERATING.md#dependency-chains-run-tasks-in-a-set-order).
+
 ## Autonomous mode (opt-in)
 
 Cadence can also run *without* a human granting each gate. Tag issues `agent:auto`
