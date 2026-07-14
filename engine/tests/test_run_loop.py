@@ -254,7 +254,7 @@ exec {real_python} "$@"
         record = json.loads(lines[0])
         self.assertTrue(record["runner_record"])
         self.assertEqual(record["triaged"], 1)
-        self.assertEqual(record["errors"], "none")  # untouched summary field, only parsing degrades
+        self.assertEqual(record["errors"], 0)  # non-numeric summary field normalised to 0
         self.assertEqual(record["exit"], 0)
 
     def test_zero_exit_with_no_summary_records_summary_missing(self):

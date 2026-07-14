@@ -40,6 +40,15 @@ def _ts_of(rec):
         return None
 
 
+def _int(value):
+    # A misbehaving provider can leave a non-numeric ledger field (e.g. "none")
+    # in a record; degrade to 0 rather than crash the whole rollup.
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _count_field(rec, field):
     if field == "blocked":
         value = rec.get("skipped_blocked")
@@ -47,7 +56,7 @@ def _count_field(rec, field):
         value = rec.get(field)
     if isinstance(value, list):
         return len(value)
-    return int(value or 0)
+    return _int(value)
 
 
 def aggregate(records, since=None):
@@ -72,7 +81,7 @@ def aggregate(records, since=None):
                 continue
         st = stages[s]
         st["runs"] += 1
-        st["errors"] += int(rec.get("errors") or 0)
+        st["errors"] += _int(rec.get("errors"))
         if rec.get("paused"):
             st["paused"] += 1
         for field, _ in PRODUCED[s]:

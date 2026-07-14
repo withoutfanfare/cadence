@@ -485,6 +485,10 @@ record["stage"] = record.get("stage") or record.get("loop") or stage
 record["ts"] = ts
 record["exit"] = rc
 record["runner_record"] = True
+if "errors" in record:
+    # A misbehaving provider can leave a non-numeric "errors" value (e.g. "none")
+    # in the summary; normalise it here so every ledger consumer can int() it safely.
+    record["errors"] = _int(record.get("errors") or 0)
 if last is None:
     record["summary_missing"] = True
 if rc != 0:
