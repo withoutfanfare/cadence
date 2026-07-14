@@ -160,8 +160,9 @@ check fails, emit the standard pause JSON and records described in
      confirmed, add a line `🔗 supersedes [<ID>](url), [<ID>](url) — one shared
      fix`. Then **Your move:** review → set `agent:build`. Dry-run sections are
      titled `(dry run — nothing written)`.
-   - **Machine ledger:** append one JSON line per run (the same object from "On
-     finishing") to `$CADENCE_STATE_DIR/runs/runs.jsonl`.
+   - **Machine ledger:** finish with one CADENCE_SUMMARY JSON line on stdout.
+     The runner records it in the machine ledger; do not write runs.jsonl
+     yourself.
    - Get the date with `date -u +%F` and the timestamp with `date -u +%FT%TZ` —
      never invent one.
 
@@ -184,9 +185,8 @@ UK English. Plain and specific. Name files, lines, models. No hype, no padding.
 
 ## On finishing
 
-Emit the JSON summary as the final line of stdout, prefixed with the fixed marker
-`CADENCE_SUMMARY ` so the runner finds it reliably even if prose surrounds it.
-Append the bare JSON object (no marker) to `runs.jsonl`:
+Finish with one CADENCE_SUMMARY JSON line on stdout. The runner records it in
+the machine ledger; do not write runs.jsonl yourself.
 
 ```text
 CADENCE_SUMMARY {"loop":"spec","dry_run":false,"specced":0,"superseded":0,"skipped":0,"errors":0}

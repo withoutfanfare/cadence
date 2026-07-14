@@ -162,6 +162,14 @@ launchd stdout and stderr logs live under:
 $CADENCE_STATE_DIR/logs/
 ```
 
+The scheduler's own launchd stderr (`logs/scheduler.launchd.err`) grows
+unbounded — nothing rotates it automatically (a deliberate scope decision, not
+an oversight). `run-loop.sh` quietly reaps its lock-heartbeat subprocess rather
+than killing it and leaving it unwaited, so it no longer spams that file with
+routine "Terminated: 15" lines on every run's normal shutdown; truncate the
+file by hand (e.g. `: > "$CADENCE_STATE_DIR/logs/scheduler.launchd.err"`) if it
+grows large.
+
 `cadence logs conduct` shows conductor activity recorded by `cadence conduct`.
 
 ## Notifications and Failure Alerts
