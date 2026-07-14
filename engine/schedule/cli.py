@@ -273,14 +273,12 @@ def main(argv):
 
     if cmd == "render-scheduler":
         merged, settings_path = load_scheduler_env(os.environ)
-        settings_exists = os.path.isfile(settings_path)
-        settings = read_env_file(settings_path) if settings_exists else {}
-        # An older capacity-only settings file still authorises project-local
-        # `apply`. Fall back to the fleet default here, never that project's
-        # state directory, so its launchd paths cannot leak into the global job.
+        settings = read_env_file(settings_path) if os.path.isfile(settings_path) else {}
+        # The scheduler's log paths are fleet-owned. Never inherit a project's
+        # state directory when the settings file is missing or partial.
         scheduler_state = _path_value(
             settings.get("CADENCE_STATE_DIR"),
-            os.path.expanduser("~/.cadence") if settings_exists else state,
+            os.path.expanduser("~/.cadence"),
         )
         interval = int(merged.get("CADENCE_SCHEDULER_INTERVAL") or SCHEDULER_DEFAULT_INTERVAL)
         sys.stdout.write(render_scheduler_plist(home, scheduler_state, interval, settings_path))
