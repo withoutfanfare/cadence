@@ -580,8 +580,10 @@ def upsert_env_var(path, key, value):
 def scheduler_config_path(env):
     """Where the global scheduler settings file lives: CADENCE_SCHEDULER_CONFIG,
     or ~/.cadence/scheduler.env by default."""
-    return env.get("CADENCE_SCHEDULER_CONFIG") or os.path.expanduser(
-        "~/.cadence/scheduler.env")
+    explicit = env.get("CADENCE_SCHEDULER_CONFIG")
+    if explicit:
+        return os.path.expanduser(os.path.expandvars(explicit))
+    return os.path.expanduser("~/.cadence/scheduler.env")
 
 
 def load_scheduler_env(env):
@@ -641,9 +643,23 @@ def configure(env, args, out=print):
         parsed[opt] = n
 
     path = scheduler_config_path(env)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    creating = not os.path.exists(path)
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     for opt, n in parsed.items():
         upsert_env_var(path, SCHEDULER_KEYS[opt], str(n))
+    if creating:
+        # A freshly created settings file is what satisfies lib-env.sh's apply
+        # guard for a project-local config (cadence_require_launchd_root_config).
+        # Without these two seeded here, `apply` from a project-local config
+        # would bake that project's own CADENCE_STATE_DIR into the global
+        # scheduler plist's launchd log paths — the fleet-vs-project leak the
+        # settings file exists to prevent. Never overwritten on an update: an
+        # operator's own values in an existing file always win.
+        fleet_state = os.path.expanduser("~/.cadence")
+        upsert_env_var(path, "CADENCE_STATE_DIR", fleet_state)
+        upsert_env_var(path, "CADENCE_PROJECTS_FILE", os.path.join(fleet_state, "projects.txt"))
     out(f"  settings: {path}")
     for opt, n in parsed.items():
         out(f"  {SCHEDULER_KEYS[opt]}={n}")

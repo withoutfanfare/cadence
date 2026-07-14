@@ -365,6 +365,9 @@ Write it with `cadence schedule configure`, which only ever touches this file
 cadence schedule configure --max-runs 4 --concurrency 2 [--interval SECONDS] [--timeout SECONDS]
 ```
 
+Every flag is independently optional — pass any subset (at least one) and only
+those settings are written; the rest of the file is left as-is.
+
 `--max-runs`/`--concurrency` must be at least `1`, `--interval` at least `60`,
 and `--timeout` at least `0`; a bad value is rejected before anything is
 written. The file lives at `$HOME/.cadence/scheduler.env` by default, or at

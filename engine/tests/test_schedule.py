@@ -668,6 +668,95 @@ class TestSchedulerSettings(unittest.TestCase):
             with open(config, "rb") as f:
                 self.assertEqual(f.read(), original_bytes)  # active config untouched
 
+    def test_configure_on_fresh_path_seeds_fleet_state_dir_and_projects_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = os.path.join(tmp, "cadence", "scheduler.env")
+            expected_state = os.path.join(tmp, ".cadence")
+            env = {"CADENCE_SCHEDULER_CONFIG": settings, "HOME": tmp}
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    contextlib.redirect_stdout(buf):
+                rc = cli.main(["configure", "--max-runs", "4", "--concurrency", "2"])
+
+            self.assertEqual(rc, 0)
+            values = cli.read_env_file(settings)
+            self.assertEqual(values.get("CADENCE_SCHEDULER_MAX_RUNS"), "4")
+            self.assertEqual(values.get("CADENCE_SCHEDULER_CONCURRENCY"), "2")
+            self.assertEqual(values.get("CADENCE_STATE_DIR"), expected_state)
+            self.assertEqual(values.get("CADENCE_PROJECTS_FILE"),
+                             os.path.join(expected_state, "projects.txt"))
+
+    def test_configure_on_existing_file_does_not_overwrite_seeded_fleet_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = os.path.join(tmp, "scheduler.env")
+            custom_state = os.path.join(tmp, "custom-state")
+            with open(settings, "w", encoding="utf-8") as f:
+                f.write("CADENCE_STATE_DIR=%s\nCADENCE_PROJECTS_FILE=%s\n"
+                        % (custom_state, os.path.join(custom_state, "projects.txt")))
+            env = {"CADENCE_SCHEDULER_CONFIG": settings}
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    contextlib.redirect_stdout(buf):
+                rc = cli.main(["configure", "--max-runs", "4"])
+
+            self.assertEqual(rc, 0)
+            values = cli.read_env_file(settings)
+            self.assertEqual(values.get("CADENCE_SCHEDULER_MAX_RUNS"), "4")
+            # An operator's own values in an already-existing file are never touched.
+            self.assertEqual(values.get("CADENCE_STATE_DIR"), custom_state)
+            self.assertEqual(values.get("CADENCE_PROJECTS_FILE"),
+                             os.path.join(custom_state, "projects.txt"))
+
+    def test_configure_on_bare_relative_scheduler_config_does_not_crash(self):
+        # A CADENCE_SCHEDULER_CONFIG with no directory component made
+        # os.makedirs(os.path.dirname(path)) raise FileNotFoundError('').
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = os.getcwd()
+            os.chdir(tmp)
+            try:
+                env = {"CADENCE_SCHEDULER_CONFIG": "scheduler.env"}
+                buf = io.StringIO()
+                with mock.patch.dict(os.environ, env, clear=True), \
+                        contextlib.redirect_stdout(buf):
+                    rc = cli.main(["configure", "--max-runs", "4"])
+            finally:
+                os.chdir(cwd)
+
+            self.assertEqual(rc, 0)
+            self.assertTrue(os.path.isfile(os.path.join(tmp, "scheduler.env")))
+
+    def test_render_scheduler_after_configure_created_file_resolves_fleet_state_dir(self):
+        # Even when the process env carries a project's own CADENCE_STATE_DIR
+        # (as it does when `apply` runs from a project-local config), a
+        # configure-created settings file must win for the scheduler plist's
+        # own log paths — that is exactly what the settings file exists to
+        # guarantee.
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = os.path.join(tmp, "cadence", "scheduler.env")
+            project_state = os.path.join(tmp, "project-state")
+            expected_state = os.path.join(tmp, ".cadence")
+            configure_env = {"CADENCE_SCHEDULER_CONFIG": settings, "HOME": tmp}
+            with mock.patch.dict(os.environ, configure_env, clear=True), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                rc = cli.main(["configure", "--max-runs", "4", "--concurrency", "2"])
+            self.assertEqual(rc, 0)
+
+            env = {
+                "CADENCE_HOME": "/cadence",
+                "CADENCE_SCHEDULER_CONFIG": settings,
+                "CADENCE_STATE_DIR": project_state,  # the active project's own value
+                "HOME": tmp,
+            }
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    contextlib.redirect_stdout(buf):
+                rc = cli.main(["render-scheduler"])
+            out = buf.getvalue()
+
+            self.assertEqual(rc, 0)
+            self.assertNotIn(project_state, out)
+            self.assertIn(os.path.join(expected_state, "logs", "scheduler.launchd.log"), out)
+
 
 class TestScheduleApplyScript(unittest.TestCase):
     def test_apply_rejects_project_local_config_until_launchd_supports_it(self):

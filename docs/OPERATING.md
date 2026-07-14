@@ -497,6 +497,8 @@ with:
 cadence schedule configure --max-runs 4 --concurrency 2
 ```
 
+Each flag is independently optional — pass just the ones you want to change.
+
 This writes only the global scheduler settings file
 (`~/.cadence/scheduler.env` by default); it never touches a project's
 `cadence/.env`. See [Configuration](CONFIGURATION.md#schedule) for the full
