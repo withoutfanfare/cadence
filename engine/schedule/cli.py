@@ -702,6 +702,10 @@ def _slot_key(stage, spec, now, window):
     return None
 
 
+def _is_paused(state):
+    return os.path.isfile(os.path.join(state, "runs", "PAUSED"))
+
+
 def _marker(state, stage):
     return os.path.join(state, "scheduler", f"{stage}.last")
 
@@ -835,6 +839,9 @@ def tick(env, now=None, run=subprocess.run):
             print(f"{item['project']}: skipped (CADENCE_SCHEDULED not enabled)")
             continue
         state = _path_value(values.get("CADENCE_STATE_DIR"), os.path.expanduser("~/.cadence"))
+        if _is_paused(state):
+            print(f"{item['project']}: skipped (paused)")
+            continue
         candidates.append((item, values, state, idx))
     candidates.sort(key=lambda c: (_last_served(c[2]), c[3]))
 

@@ -477,7 +477,10 @@ projects (default 1), running up to `CADENCE_SCHEDULER_CONCURRENCY` of them at
 once (default 4), so many projects share the scheduler fairly rather than one
 project starving the rest. Raise `MAX_RUNS` as the fleet grows; keep
 `CONCURRENCY` modest to bound simultaneous model spend. `cadence pause` is per
-state directory — pausing one project does not pause the others.
+state directory — pausing one project does not pause the others. A paused
+project is skipped before admission, so it never consumes one of the tick's
+`MAX_RUNS` slots — with most of the fleet paused, the live projects still get
+served.
 
 Set fleet-wide capacity once, independent of any single project's config,
 with:

@@ -30,7 +30,8 @@ tidy or to read what the agents produced.
 1. **launchd** fires one job, `com.cadence.scheduler`, which runs
    `cadence schedule tick`.
 2. The scheduler reads the explicit projects file, skips any project without
-   `CADENCE_SCHEDULED=1`, and launches at most `CADENCE_SCHEDULER_MAX_RUNS`
+   `CADENCE_SCHEDULED=1` or whose own `$CADENCE_STATE_DIR/runs/PAUSED` flag is
+   set, and launches at most `CADENCE_SCHEDULER_MAX_RUNS`
    due stages per tick — at most one per project, admitted in
    least-recently-served order and dispatched through a pool of at most
    `CADENCE_SCHEDULER_CONCURRENCY` simultaneous runs. A run that crashes or
@@ -199,7 +200,12 @@ run log, prints `{"stage":…,"paused":true,"reason":…}`, and exits.
    the board yourself); delete it to resume. `reason: manual`. The runner
    (`run-loop.sh`) also checks this flag *before* invoking the model, so a paused
    stage exits immediately and costs nothing — enforcement does not depend on the
-   prompt.
+   prompt. For scheduled runs, `cadence schedule tick` checks the same flag
+   earlier still, at candidate construction (§1a step 2): a paused project is
+   excluded before due counts, fairness ordering, or slot markers, so it never
+   consumes one of the tick's limited admission slots. `run-loop.sh`'s check
+   remains the race-safe backstop for manual runs and any tick that started
+   just before a pause was set.
 2. **Backend guard.** With the default `TASK_BACKEND=linear`, the loop calls
    `cadence linear teams` and proceeds only if the configured team id is present
    in the response. If the API key cannot see that team, the loop pauses with

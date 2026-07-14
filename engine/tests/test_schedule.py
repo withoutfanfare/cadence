@@ -386,6 +386,45 @@ class TestSchedulerTick(unittest.TestCase):
 
         self.assertIn("CADENCE_DAILY_RUN_CAP=1 reached", out.getvalue())
 
+    def test_tick_skips_paused_project_without_marking_its_slot_served(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+
+            def make(name):
+                config_dir = os.path.join(tmp, name, "cadence")
+                state = os.path.join(tmp, name, "state")
+                os.makedirs(config_dir)
+                with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                    f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n" % state)
+                return os.path.join(tmp, name), state
+
+            first, s1 = make("first")
+            second, _s2 = make("second")
+            os.makedirs(os.path.join(s1, "runs"))
+            with open(os.path.join(s1, "runs", "PAUSED"), "w", encoding="utf-8"):
+                pass
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(first + "\n" + second + "\n")
+
+            calls = []
+
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
+                calls.append(cwd)
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "1"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                cli.tick(env, now=now, run=fake_run)
+
+            # Only the live project runs; the paused one never touches admission.
+            self.assertEqual(calls, [second])
+            self.assertIn("skipped (paused)", out.getvalue())
+            self.assertFalse(
+                os.path.isfile(os.path.join(s1, "scheduler", "triage.last")))
+
     def test_status_warns_only_when_projects_share_state_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
             registry = os.path.join(tmp, "projects.txt")
