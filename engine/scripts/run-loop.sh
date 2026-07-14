@@ -382,6 +382,16 @@ except (IndexError, ValueError):
     start = 0
 ts = sys.argv[5]
 MARKER = 'CADENCE_SUMMARY '   # skills print the summary on its own marked line
+
+
+def _int(x):
+    # A misbehaving provider can emit a non-numeric summary field (e.g. "none")
+    # instead of a count; that must degrade to 0, not blow up the whole heredoc
+    # and lose this run's ledger record.
+    try:
+        return int(x)
+    except (TypeError, ValueError):
+        return 0
 last = None
 read_err = None
 try:
@@ -429,7 +439,7 @@ def build_message():
     if d.get('paused'):
         return f"1|PAUSED — {d.get('reason','?')}"
     dry = bool(d.get('dry_run'))
-    err = int(d.get('errors', 0) or 0)
+    err = _int(d.get('errors', 0) or 0)
     parts = []
     def add(k, label):
         v = d.get(k, 0) or 0
@@ -442,7 +452,7 @@ def build_message():
     elif stage == 'spec':
         add('specced', 'specced'); add('superseded', 'superseded')
     elif stage == 'build':
-        b = int(d.get('built', 0) or 0)
+        b = _int(d.get('built', 0) or 0)
         if b: parts.append(f"{b} built")
         prs = d.get('pr_numbers') or []
         if prs: parts.append("draft PR " + ", ".join(f"#{p}" for p in prs))
@@ -478,7 +488,7 @@ record["runner_record"] = True
 if last is None:
     record["summary_missing"] = True
 if rc != 0:
-    record["errors"] = max(1, int(record.get("errors") or 0))
+    record["errors"] = max(1, _int(record.get("errors") or 0))
     record["runner_error"] = True
 
 print(json.dumps(record, separators=(",", ":")))

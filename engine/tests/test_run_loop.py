@@ -223,6 +223,40 @@ exec {real_python} "$@"
             feed = f.read()
         self.assertIn("LIVE 1 triaged", feed)
 
+    def test_non_numeric_summary_errors_field_still_records_one_clean_ledger_line(self):
+        # A misbehaving provider can emit a non-numeric "errors" value. That must not
+        # crash the runner's summary heredoc — which would append a blank line to
+        # runs.jsonl and lose the run's record entirely — it should degrade to 0.
+        real_python = sys.executable
+        linear_cli = os.path.join(self.root, "engine", "linear", "cli.py")
+        os.makedirs(os.path.join(self.root, "skills", "cadence-loop-triage"))
+        with open(os.path.join(self.root, "skills", "cadence-loop-triage", "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: cadence-loop-triage\n---\nLoop body\n")
+        shutil.copytree(os.path.join(ROOT, "engine", "prompts"),
+                        os.path.join(self.root, "engine", "prompts"))
+        self._write_exe("python3", f"""#!/bin/sh
+if [ "$1" = "{linear_cli}" ] && [ "$2" = "teams" ]; then
+  printf '[{{"id":"team-1","name":"Team"}}]\\n'
+  exit 0
+fi
+exec {real_python} "$@"
+""")
+        self._write_exe("codex", "#!/bin/sh\n"
+                        "printf 'CADENCE_SUMMARY {\"stage\":\"triage\",\"triaged\":1,\"errors\":\"none\"}\\n'\n")
+
+        result = self._run("triage", ORCHESTRATOR_TRIAGE="codex:gpt-test")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        raw = self._read_ledger()
+        lines = raw.strip().splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(len([ln for ln in raw.splitlines() if ln == ""]), 0)  # no blank line
+        record = json.loads(lines[0])
+        self.assertTrue(record["runner_record"])
+        self.assertEqual(record["triaged"], 1)
+        self.assertEqual(record["errors"], "none")  # untouched summary field, only parsing degrades
+        self.assertEqual(record["exit"], 0)
+
     def test_zero_exit_with_no_summary_records_summary_missing(self):
         real_python = sys.executable
         linear_cli = os.path.join(self.root, "engine", "linear", "cli.py")
