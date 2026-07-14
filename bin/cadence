@@ -65,7 +65,7 @@ Usage: cadence [--config path|--profile name] <command> [args]
   throughput [days] Per-stage rollup of recent runs (default 7 days)
   prune [--days N] [--dry-run]  Prune old local run/log history (default 30 days)
   restart           Reload all launchd jobs after editing plists
-  schedule [show|status|register|tick|apply]  Manage the single launchd scheduler and its project registry
+  schedule [show|status|register|tick|apply|configure]  Manage the single launchd scheduler and its project registry
   autonomous on|off|status  Flip autonomous mode in the active config
   inspect           Read-only setup/status bundle for support and onboarding
   tend              Run the Clio hygiene pass now

@@ -338,11 +338,54 @@ at `CADENCE_SCHEDULER_RUN_TIMEOUT` seconds so a hung run cannot hold a pool
 slot forever.
 
 `cadence schedule` with no argument prints the stage cadence for the active
-config. `cadence schedule status` prints the projects file and whether each
-registered project has scheduling enabled.
+config. `cadence schedule status` prints the projects file, the scheduler
+settings file, and whether each registered project has scheduling enabled.
+
+### Global scheduler settings file
+
+`CADENCE_SCHEDULER_MAX_RUNS`, `CADENCE_SCHEDULER_CONCURRENCY`,
+`CADENCE_SCHEDULER_INTERVAL`, `CADENCE_SCHEDULER_RUN_TIMEOUT`,
+`CADENCE_STATE_DIR`, and `CADENCE_PROJECTS_FILE` — and only these six — can
+also be set fleet-wide in a global settings file, independent of any single
+project's config:
+
+```dotenv
+# ~/.cadence/scheduler.env
+CADENCE_STATE_DIR=$HOME/.cadence
+CADENCE_PROJECTS_FILE=$HOME/.cadence/projects.txt
+CADENCE_SCHEDULER_MAX_RUNS=4
+CADENCE_SCHEDULER_CONCURRENCY=2
+CADENCE_SCHEDULER_RUN_TIMEOUT=3600
+```
+
+Write it with `cadence schedule configure`, which only ever touches this file
+— never a project's `cadence/.env`:
+
+```bash
+cadence schedule configure --max-runs 4 --concurrency 2 [--interval SECONDS] [--timeout SECONDS]
+```
+
+Every flag is independently optional — pass any subset (at least one) and only
+those settings are written; the rest of the file is left as-is.
+
+`--max-runs`/`--concurrency` must be at least `1`, `--interval` at least `60`,
+and `--timeout` at least `0`; a bad value is rejected before anything is
+written. The file lives at `$HOME/.cadence/scheduler.env` by default, or at
+`CADENCE_SCHEDULER_CONFIG` if set.
+
+Precedence for these six keys, evaluated fresh on every scheduler decision
+(`status`, `tick`, `configure`, `check`, `render-scheduler`): the settings
+file wins first, then the process environment / active config, then the
+engine default. The whitelist is deliberate — the file is never sourced in
+bash (which would let it override `PATH`, `TASK_BACKEND`, `ORCHESTRATOR_*`,
+or any other variable), so it can never repoint `CADENCE_HOME`, the active
+profile, or orchestrator settings. Runs the scheduler launches still receive
+the untouched process environment plus `CADENCE_CONFIG`, so a project's own
+`CADENCE_STATE_DIR` keeps controlling that project's own run.
 
 | Variable | Default | Scope | Description |
 | --- | --- | --- | --- |
+| `CADENCE_SCHEDULER_CONFIG` | `$HOME/.cadence/scheduler.env` | scheduler | Path to the global scheduler settings file (see above). |
 | `CADENCE_PROJECTS_FILE` | `$CADENCE_STATE_DIR/projects.txt` | scheduler | Newline-separated project folders or explicit `cadence/.env` paths. |
 | `CADENCE_SCHEDULER_INTERVAL` | `300` | scheduler | Launchd wake interval in seconds. |
 | `CADENCE_SCHEDULER_MAX_RUNS` | `1` | scheduler | Maximum scheduled stage runs per tick across all projects (the throughput ceiling). |

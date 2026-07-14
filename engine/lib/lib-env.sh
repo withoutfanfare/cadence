@@ -121,11 +121,12 @@ cadence_runner_path() {
 
 cadence_require_launchd_root_config() {
   local _root_config="$CADENCE_HOME/.env"
-  if [ "$CADENCE_CONFIG" = "$_root_config" ]; then
+  local _scheduler_config="${CADENCE_SCHEDULER_CONFIG:-$HOME/.cadence/scheduler.env}"
+  if [ "$CADENCE_CONFIG" = "$_root_config" ] || [ -f "$_scheduler_config" ]; then
     return 0
   fi
-  echo "launchd scheduling currently requires $_root_config; active config is $CADENCE_CONFIG" >&2
-  echo "Use the root config fallback for scheduled jobs, or run manual commands against project-local cadence/.env with --config." >&2
+  echo "launchd scheduling currently requires $_root_config or a scheduler settings file ($_scheduler_config); active config is $CADENCE_CONFIG" >&2
+  echo "Run 'cadence schedule configure ...' to create the settings file, use the root config fallback, or run manual commands against project-local cadence/.env with --config." >&2
   return 1
 }
 

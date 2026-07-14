@@ -31,6 +31,22 @@ SCHEDULER_LABEL = "com.cadence.scheduler"
 SCHEDULER_DEFAULT_INTERVAL = 300
 TRUE = {"1", "on", "true", "yes"}
 
+# cadence schedule configure --<key> N -> the env var it sets.
+SCHEDULER_KEYS = {
+    "max-runs": "CADENCE_SCHEDULER_MAX_RUNS",
+    "concurrency": "CADENCE_SCHEDULER_CONCURRENCY",
+    "interval": "CADENCE_SCHEDULER_INTERVAL",
+    "timeout": "CADENCE_SCHEDULER_RUN_TIMEOUT",
+}
+
+# The only keys the global settings file may set. Deliberately narrow: letting
+# it set arbitrary variables (PATH, TASK_BACKEND, ORCHESTRATOR_*, ...) would
+# make it a second, invisible way to repoint a project's runtime — the file is
+# for fleet capacity only.
+SCHEDULER_ENV_KEYS = set(SCHEDULER_KEYS.values()) | {
+    "CADENCE_STATE_DIR", "CADENCE_PROJECTS_FILE",
+}
+
 # stage -> (launchd label, runner kind, runner arg, default spec)
 JOBS = {
     "triage":  ("com.cadence.loop-triage",  "run-loop", "triage",  ":00"),
@@ -209,19 +225,21 @@ def main(argv):
         return 0
 
     if cmd == "check":
+        merged, _ = load_scheduler_env(os.environ)
         bad = 0
         for stage in JOBS:
-            if is_off(spec_for(stage)):
+            if is_off(spec_for(stage, merged)):
                 continue
             try:
-                parse_spec(spec_for(stage))
+                parse_spec(spec_for(stage, merged))
             except ValueError as e:
                 print(f"  ❌ SCHED_{stage.upper()}: {e}", file=sys.stderr)
                 bad += 1
         return 1 if bad else 0
 
     if cmd == "status":
-        return print_status(os.environ)
+        merged, _ = load_scheduler_env(os.environ)
+        return print_status(merged)
 
     if cmd == "register":
         return register(os.environ, argv[1:])
@@ -236,11 +254,17 @@ def main(argv):
         return offboard(os.environ, argv[1:])
 
     if cmd == "tick":
-        return tick(os.environ)
+        merged, _ = load_scheduler_env(os.environ)
+        return tick(merged)
+
+    if cmd == "configure":
+        return configure(os.environ, argv[1:])
 
     if cmd == "render-scheduler":
-        interval = int(os.environ.get("CADENCE_SCHEDULER_INTERVAL") or SCHEDULER_DEFAULT_INTERVAL)
-        sys.stdout.write(render_scheduler_plist(home, state, interval))
+        merged, _ = load_scheduler_env(os.environ)
+        scheduler_state = merged.get("CADENCE_STATE_DIR") or state
+        interval = int(merged.get("CADENCE_SCHEDULER_INTERVAL") or SCHEDULER_DEFAULT_INTERVAL)
+        sys.stdout.write(render_scheduler_plist(home, scheduler_state, interval))
         return 0
 
     if cmd == "render":
@@ -255,7 +279,7 @@ def main(argv):
             return 1
         return 0
 
-    print("usage: cadence schedule [show|status|register|unregister|tick|apply]", file=sys.stderr)
+    print("usage: cadence schedule [show|status|register|unregister|tick|apply|configure]", file=sys.stderr)
     return 2
 
 
@@ -553,6 +577,95 @@ def upsert_env_var(path, key, value):
         f.write(txt)
 
 
+def scheduler_config_path(env):
+    """Where the global scheduler settings file lives: CADENCE_SCHEDULER_CONFIG,
+    or ~/.cadence/scheduler.env by default."""
+    explicit = env.get("CADENCE_SCHEDULER_CONFIG")
+    if explicit:
+        return os.path.expanduser(os.path.expandvars(explicit))
+    return os.path.expanduser("~/.cadence/scheduler.env")
+
+
+def load_scheduler_env(env):
+    """Merge the whitelisted keys of the scheduler settings file over `env` for
+    scheduler decisions only. Returns (merged, settings_path). Not sourced in
+    bash on purpose: sourcing would let the file override the whole process
+    environment (PATH, TASK_BACKEND, ORCHESTRATOR_*, ...) rather than just the
+    handful of scheduler keys it is meant to control."""
+    path = scheduler_config_path(env)
+    merged = dict(env)
+    if os.path.isfile(path):
+        for key, value in read_env_file(path).items():
+            if key in SCHEDULER_ENV_KEYS:
+                merged[key] = value
+    return merged, path
+
+
+def configure(env, args, out=print):
+    """cadence schedule configure --max-runs N --concurrency N [--interval SECONDS]
+    [--timeout SECONDS] — writes only to the scheduler settings file, never to a
+    project's own cadence/.env."""
+    flags = {"--max-runs": "max-runs", "--concurrency": "concurrency",
+             "--interval": "interval", "--timeout": "timeout"}
+    values = {}
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg not in flags:
+            out(f"unknown option: {arg}")
+            return 2
+        if i + 1 >= len(args):
+            out(f"{arg} requires a value")
+            return 2
+        values[flags[arg]] = args[i + 1]
+        i += 2
+    if not values:
+        out("usage: cadence schedule configure --max-runs N --concurrency N "
+            "[--interval SECONDS] [--timeout SECONDS]")
+        return 2
+
+    parsed = {}
+    for opt, raw in values.items():
+        try:
+            n = int(raw)
+        except ValueError:
+            out(f"--{opt} must be an integer: {raw!r}")
+            return 2
+        if opt in ("max-runs", "concurrency") and n < 1:
+            out(f"--{opt} must be at least 1")
+            return 2
+        if opt == "interval" and n < 60:
+            out("--interval must be at least 60")
+            return 2
+        if opt == "timeout" and n < 0:
+            out("--timeout must be at least 0")
+            return 2
+        parsed[opt] = n
+
+    path = scheduler_config_path(env)
+    creating = not os.path.exists(path)
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    for opt, n in parsed.items():
+        upsert_env_var(path, SCHEDULER_KEYS[opt], str(n))
+    if creating:
+        # A freshly created settings file is what satisfies lib-env.sh's apply
+        # guard for a project-local config (cadence_require_launchd_root_config).
+        # Without these two seeded here, `apply` from a project-local config
+        # would bake that project's own CADENCE_STATE_DIR into the global
+        # scheduler plist's launchd log paths — the fleet-vs-project leak the
+        # settings file exists to prevent. Never overwritten on an update: an
+        # operator's own values in an existing file always win.
+        fleet_state = os.path.expanduser("~/.cadence")
+        upsert_env_var(path, "CADENCE_STATE_DIR", fleet_state)
+        upsert_env_var(path, "CADENCE_PROJECTS_FILE", os.path.join(fleet_state, "projects.txt"))
+    out(f"  settings: {path}")
+    for opt, n in parsed.items():
+        out(f"  {SCHEDULER_KEYS[opt]}={n}")
+    return 0
+
+
 def _path_value(value, default):
     return os.path.expanduser(os.path.expandvars(value or default))
 
@@ -603,6 +716,10 @@ def _slot_key(stage, spec, now, window):
     if now.hour % every == 0 and minute <= now.minute < minute + window:
         return f"{stage}:{now:%Y%m%dT%H}"
     return None
+
+
+def _is_paused(state):
+    return os.path.isfile(os.path.join(state, "runs", "PAUSED"))
 
 
 def _marker(state, stage):
@@ -738,6 +855,9 @@ def tick(env, now=None, run=subprocess.run):
             print(f"{item['project']}: skipped (CADENCE_SCHEDULED not enabled)")
             continue
         state = _path_value(values.get("CADENCE_STATE_DIR"), os.path.expanduser("~/.cadence"))
+        if _is_paused(state):
+            print(f"{item['project']}: skipped (paused)")
+            continue
         candidates.append((item, values, state, idx))
     candidates.sort(key=lambda c: (_last_served(c[2]), c[3]))
 
@@ -811,6 +931,7 @@ def tick(env, now=None, run=subprocess.run):
 def print_status(env):
     path = projects_file(env)
     print(f"projects: {path}")
+    print(f"settings: {scheduler_config_path(env)}")
     print(f"max runs/tick: {env.get('CADENCE_SCHEDULER_MAX_RUNS') or 1}")
     print(f"concurrency: {env.get('CADENCE_SCHEDULER_CONCURRENCY') or 4}")
     projects = read_projects(path)

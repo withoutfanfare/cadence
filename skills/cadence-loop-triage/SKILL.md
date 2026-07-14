@@ -240,9 +240,9 @@ check fails, emit the standard pause JSON and records described in
      (reason); flagged for spec to validate`. Get the date via `date -u +%F` and the
      timestamp via `date -u +%FT%TZ` — never invent one. Dry-run sections are titled
      `(dry run — nothing written)`.
-   - **Machine ledger** — append one JSON line per run to
-     `$CADENCE_STATE_DIR/runs/runs.jsonl` (the same object you print to stdout in "On
-     finishing").
+   - **Machine ledger** — finish with one CADENCE_SUMMARY JSON line on stdout.
+     The runner records it in the machine ledger; do not write runs.jsonl
+     yourself.
 
    Use UK English. The dated files are the only digest notification — do not post a
    Linear comment for it. (Linear comments are still used only for per-issue failure
@@ -262,8 +262,8 @@ Report a JSON summary as the final line of stdout, prefixed with the fixed marke
 `CADENCE_SUMMARY ` so the runner finds it reliably even if prose surrounds it. It
 MUST include `"stage":"triage"` so the run ledger, `cadence throughput`, and
 `cadence overview` can attribute the run; then mode, dry_run, and the same counts
-as the digest. Append the bare JSON object (no marker) to
-`$CADENCE_STATE_DIR/runs/runs.jsonl`. Example stdout line:
+as the digest. The runner records it in the machine ledger; do not write
+`runs.jsonl` yourself. Example stdout line:
 
 ```text
 CADENCE_SUMMARY {"stage":"triage","mode":"enrich","dry_run":true,"prioritised":0,"cycled":0,"labelled":0,"stubbed":0,"dupe_candidates":0,"triaged":0,"parked":0,"stale":0,"backfilled":0,"skipped":0,"errors":0}

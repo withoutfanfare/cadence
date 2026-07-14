@@ -177,15 +177,14 @@ Record the run in the dated files in `$PROJECT_DIR`, per `docs/ARCHITECTURE.md` 
   line and the per-issue list (each `🤖 **Revisions pushed** · [PR #N](<pr-url>) ·
   [<ID> — <title>](<issue-url>)`, what changed + re-review verdict, **Your move:**
   …). Dry-run sections are titled `(dry run — nothing written)`.
-- **Machine ledger:** append one JSON line per run to
-  `$CADENCE_STATE_DIR/runs/runs.jsonl` — the same object printed to stdout below.
+- **Machine ledger:** finish with one CADENCE_SUMMARY JSON line on stdout. The
+  runner records it in the machine ledger; do not write runs.jsonl yourself.
 
 Get the date via `date -u +%F` and the timestamp via `date -u +%FT%TZ` — never
 invent one.
 
 Emit the JSON summary as the final line of stdout, prefixed with the fixed marker
-`CADENCE_SUMMARY ` so the runner finds it reliably even if prose surrounds it.
-Append the bare JSON object (no marker) to `runs.jsonl`:
+`CADENCE_SUMMARY ` so the runner finds it reliably even if prose surrounds it:
 
 ```text
 CADENCE_SUMMARY {"loop":"revise","dry_run":false,"revised":0,"skipped":0,"errors":0}
