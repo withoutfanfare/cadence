@@ -70,8 +70,12 @@ public enum CadenceActions {
         projectCommand(cadencePath: cadencePath, project: project, args: ["run", stage])
     }
 
+    public static func autonomousCommand(cadencePath: String, project: CadenceProject) -> [String] {
+        projectCommand(cadencePath: cadencePath, project: project, args: ["autonomous", project.autonomous ? "off" : "on"])
+    }
+
     public static func worktreeRemoveCommand(cadencePath: String, project: CadenceProject, item: CadenceItem) -> [String] {
-        projectCommand(cadencePath: cadencePath, project: project, args: ["worktree", "remove", branchName(for: item)])
+        projectCommand(cadencePath: cadencePath, project: project, args: ["worktree", "remove", branchName(for: item), "--if-merged"])
     }
 
     public static func updateCommand(

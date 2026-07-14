@@ -220,6 +220,30 @@ class TestWorktreeGit(unittest.TestCase):
         self.assertFalse(os.path.isdir(path), "worktree dir should be gone")
         self.assertFalse(self._branch_exists("stu-1"), "branch should be deleted")
 
+    def test_if_merged_remove_rechecks_for_uncommitted_changes(self):
+        self._remote_develop()
+        _, path, _ = self._wt("add", "stu-1", "develop")
+        self._git("-c", "user.email=t@t", "-c", "user.name=t",
+                  "-C", path, "commit", "--allow-empty", "-qm", "work")
+        self._git("-C", self.proj, "merge", "-q", "--no-ff", "stu-1")
+        self._git("-C", self.proj, "push", "-q", "origin", "develop")
+        dirty = os.path.join(path, "uncommitted.txt")
+        with open(dirty, "w", encoding="utf-8") as f:
+            f.write("keep me")
+
+        rc, _, err = self._wt("remove", "stu-1", "--if-merged")
+
+        self.assertNotEqual(rc, 0)
+        self.assertIn("not clean and merged", err)
+        self.assertTrue(os.path.isdir(path), "dirty worktree must remain")
+        self.assertTrue(self._branch_exists("stu-1"), "dirty branch must remain")
+
+        os.remove(dirty)
+        rc, _, err = self._wt("remove", "stu-1", "--if-merged")
+        self.assertEqual(rc, 0, err)
+        self.assertFalse(os.path.isdir(path))
+        self.assertFalse(self._branch_exists("stu-1"))
+
     def test_cleanup_removes_clean_worktree_merged_into_origin_base(self):
         self._remote_develop()
         _, path, _ = self._wt("add", "stu-1", "develop")

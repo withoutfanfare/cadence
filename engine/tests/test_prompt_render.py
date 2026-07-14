@@ -110,6 +110,24 @@ class TestPromptRender(unittest.TestCase):
         self.assertIn("Never open a new PR", text)
         self.assertNotIn("cadence linear", text)
 
+    def test_file_backend_advance_prompt_never_grants_build_to_blocked_task(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = pathlib.Path(tmp) / "prompt.md"
+            env = os.environ.copy()
+            env["TASK_BACKEND"] = "file"
+            env["TASK_FILE"] = "/tmp/tasks.md"
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "engine" / "prompts" / "render.py"),
+                 "advance", "--output", str(out)],
+                cwd=ROOT, env=env, text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            text = out.read_text(encoding="utf-8")
+
+        self.assertIn("`blocked` is `true`", text)
+        self.assertIn("never add `agent:build`", text)
+        self.assertIn("other tasks waiting for a human do not block selection", text)
+        self.assertNotIn("cadence linear", text)
+
     def test_file_backend_roadmap_prompt_reads_goal_and_uses_tasks_add(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = pathlib.Path(tmp) / "prompt.md"

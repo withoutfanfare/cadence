@@ -568,7 +568,9 @@ task row in `Cadence.app`):
 - **Hold / Release hold** — toggles `agent:hold`, the brake every loop honours.
 - **Clean up worktree** — shown only when the task's feature-branch worktree is
   clean and already merged into `origin/BASE_BRANCH`; removes that generated
-  worktree through `cadence worktree remove`.
+  worktree after confirmation, with
+  `cadence worktree remove <branch> --if-merged` rechecking both conditions
+  immediately before deletion.
 - **Open PR** — shown when the task/issue description contains a GitHub pull
   request URL.
 - **Open** — file tasks open `tasks.md` for hand-editing; Linear issues open in

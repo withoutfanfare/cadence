@@ -9,6 +9,7 @@ final class PanelState: ObservableObject {
     @Published var cleanableWorktrees: Set<String> = []
     @Published var feedback: ActionFeedback?
     @Published var errorText: String?
+    @Published var showingHelp = false
     @Published var expandedTask: String?
     @Published var expandedProjects: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "expandedProjects") ?? []) {
         didSet { UserDefaults.standard.set(Array(expandedProjects), forKey: "expandedProjects") }
@@ -83,44 +84,54 @@ struct PanelView: View {
             header
             Divider()
 
-            if let feedback = state.feedback {
-                HStack(spacing: 6) {
-                    Image(systemName: feedback.symbol)
-                        .foregroundColor(colour(feedback.colourHex))
-                    Text(feedback.message)
-                        .font(.callout)
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                Divider()
-            }
-
-            Group {
-                if let error = state.errorText {
-                    errorContent(error)
-                } else if let snapshot = state.snapshot {
-                    mainContent(snapshot)
-                } else {
-                    VStack {
-                        Spacer()
-                        ProgressView()
-                        Text("Loading Cadence...")
-                            .font(.caption)
+            if state.showingHelp {
+                helpContent
+            } else {
+                if let feedback = state.feedback {
+                    HStack(spacing: 6) {
+                        Image(systemName: feedback.symbol)
+                            .foregroundColor(colour(feedback.colourHex))
+                        Text(feedback.message)
+                            .font(.callout)
                             .foregroundColor(.secondary)
-                            .padding(.top, 6)
-                        Spacer()
+                            .lineLimit(2)
+                        Spacer(minLength: 0)
                     }
-                    .frame(height: 120)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    Divider()
                 }
+
+                Group {
+                    if let error = state.errorText {
+                        errorContent(error)
+                    } else if let snapshot = state.snapshot {
+                        mainContent(snapshot)
+                    } else {
+                        VStack {
+                            Spacer()
+                            ProgressView()
+                            Text("Loading Cadence...")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .padding(.top, 6)
+                            Spacer()
+                        }
+                        .frame(height: 120)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
             Divider()
             HStack {
-                Button("Refresh Now") { actions.refresh() }
+                Button(state.showingHelp ? "Back to Cadence" : "Refresh Now") {
+                    if state.showingHelp {
+                        state.showingHelp = false
+                    } else {
+                        actions.refresh()
+                    }
+                }
                 Spacer()
                 Button("Quit Cadence") { actions.quit() }
             }
@@ -141,12 +152,12 @@ struct PanelView: View {
             Text("Cadence")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(.primary)
-            Text(summary)
+            Text(state.showingHelp ? "How it works" : summary)
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
             Spacer(minLength: 8)
-            if let projects = state.snapshot?.projects, !projects.isEmpty {
+            if !state.showingHelp, let projects = state.snapshot?.projects, !projects.isEmpty {
                 Button("Expand all") { state.expandedProjects = Set(projects.map(\.id)) }
                 Button("Collapse all") { state.expandedProjects = [] }
             }
@@ -168,6 +179,56 @@ struct PanelView: View {
             bits.append("refreshed \(refreshed)")
         }
         return bits.joined(separator: " · ")
+    }
+
+    private var helpContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Cadence is a human-gated agent loop. Agents do the work, but you decide when each task moves forward.")
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                helpSection(
+                    "The workflow",
+                    systemImage: "arrow.triangle.2.circlepath",
+                    text: "Tasks move through triage → spec → build → revise. Cadence runs only the stage you have authorised, then waits for your next decision."
+                )
+                helpSection(
+                    "Using the menu-bar app",
+                    systemImage: "menubar.rectangle",
+                    text: "Left-click the Cadence icon for the detailed project panel. Right-click for overall status. Expand a project or task to see its controls, open its board or task file, and act on work awaiting you."
+                )
+                helpSection(
+                    "Status colours",
+                    systemImage: "circle.lefthalf.filled",
+                    text: "Green is running and healthy. Grey is paused or idle. Amber means a human decision is waiting. Red means a run failed and needs attention."
+                )
+                helpSection(
+                    "Project controls",
+                    systemImage: "pause.circle",
+                    text: "Pause stops scheduled and manual runs for that project. Autonomous mode lets Cadence select ready, unblocked work and grant its next gate. “Run now” opens the selected stage command in Terminal so the live action stays visible."
+                )
+                helpSection(
+                    "Safety boundaries",
+                    systemImage: "hand.raised",
+                    text: "The app uses the Cadence CLI as its source of truth. It can apply a gate only from your click, creates draft pull requests, and never marks a pull request ready or merges it for you."
+                )
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func helpSection(_ title: String, systemImage: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+            Text(text)
+                .font(.callout)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func errorContent(_ error: String) -> some View {
@@ -193,6 +254,12 @@ struct PanelView: View {
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.secondary)
                     .textSelection(.enabled)
+                ForEach(Array(snapshot.warnings.enumerated()), id: \.offset) { _, warning in
+                    Label(warning, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
@@ -229,7 +296,10 @@ private func colour(_ hex: String) -> Color {
 /// Config and task content feed these links, so only allow `https` — anything
 /// else (`file:`, custom schemes) could launch arbitrary URL handlers.
 func httpsURL(_ string: String) -> URL? {
-    guard let url = URL(string: string), url.scheme?.lowercased() == "https" else { return nil }
+    guard let url = URL(string: string),
+          url.scheme?.lowercased() == "https",
+          url.host?.lowercased() == "linear.app"
+    else { return nil }
     return url
 }
 
@@ -257,6 +327,7 @@ private struct ProjectPanelSection: View {
                 header.contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
 
             if isExpanded {
                 projectBody
@@ -364,19 +435,27 @@ private struct ProjectPanelSection: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityValue(controlsShown ? "Expanded" : "Collapsed")
 
             if controlsShown {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(project.stages, id: \.name) { stage in
-                        Text("\(stage.name.padding(toLength: 8, withPad: " ", startingAt: 0)) \(stage.detail)")
+                        Text("\(stage.name)\(String(repeating: " ", count: max(0, 8 - stage.name.count))) \(stage.detail)")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(.primary.opacity(0.8))
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
-                    Text("Autonomous  \(project.project.autonomous ? "on" : "off")")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(.secondary)
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(colour(project.project.autonomous ? MenuModel.green : MenuModel.grey))
+                            .frame(width: 7, height: 7)
+                        Text("Autonomous mode")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityValue(project.project.autonomous ? "On" : "Off")
 
                     FlowButtons {
                         if project.project.paused {
@@ -387,6 +466,13 @@ private struct ProjectPanelSection: View {
                             Button("Pause project") {
                                 actions.runCommand(CadenceActions.projectCommand(cadencePath: actions.cadencePath, project: project.project, args: ["pause"]), project.project, "Pause project")
                             }
+                        }
+                        Button(project.project.autonomous ? "Turn autonomous off" : "Turn autonomous on") {
+                            actions.runCommand(
+                                CadenceActions.autonomousCommand(cadencePath: actions.cadencePath, project: project.project),
+                                project.project,
+                                project.project.autonomous ? "Turn autonomous mode off" : "Turn autonomous mode on"
+                            )
                         }
                         Button("View logs") {
                             actions.openTerminal(CadenceActions.projectCommand(cadencePath: actions.cadencePath, project: project.project, args: ["logs"]))
@@ -440,7 +526,8 @@ private struct FlowLayout: Layout {
         let maxWidth = proposal.width ?? .infinity
         var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, widest: CGFloat = 0
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let childProposal = fittedProposal(for: subview, maxWidth: maxWidth)
+            let size = subview.sizeThatFits(childProposal)
             if x > 0, x + size.width > maxWidth {
                 x = 0
                 y += rowHeight + spacing
@@ -456,16 +543,23 @@ private struct FlowLayout: Layout {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let childProposal = fittedProposal(for: subview, maxWidth: bounds.width)
+            let size = subview.sizeThatFits(childProposal)
             if x > bounds.minX, x + size.width > bounds.maxX {
                 x = bounds.minX
                 y += rowHeight + spacing
                 rowHeight = 0
             }
-            subview.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+            subview.place(at: CGPoint(x: x, y: y), proposal: childProposal)
             x += size.width + spacing
             rowHeight = max(rowHeight, size.height)
         }
+    }
+
+    private func fittedProposal(for subview: LayoutSubview, maxWidth: CGFloat) -> ProposedViewSize {
+        subview.sizeThatFits(.unspecified).width > maxWidth
+            ? ProposedViewSize(width: maxWidth, height: nil)
+            : .unspecified
     }
 }
 
@@ -476,6 +570,7 @@ private struct TaskRow: View {
     let actions: PanelActions
 
     @State private var hovering = false
+    @State private var confirmingCleanup = false
 
     private var key: String { actionKey(project: project.project, item: item) }
     private var isExpanded: Bool { state.expandedTask == key }
@@ -506,6 +601,7 @@ private struct TaskRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
             .background(
                 RoundedRectangle(cornerRadius: 5)
                     .fill(Color.primary.opacity(hovering || isExpanded ? 0.06 : 0))
@@ -548,13 +644,7 @@ private struct TaskRow: View {
                         }
                     }
                     if state.cleanableWorktrees.contains(key) {
-                        Button("Clean up worktree") {
-                            actions.runCommand(
-                                CadenceActions.worktreeRemoveCommand(cadencePath: actions.cadencePath, project: project.project, item: item),
-                                project.project,
-                                "Clean up worktree"
-                            )
-                        }
+                        Button("Clean up worktree") { confirmingCleanup = true }
                     }
                     if let url = pullRequestURL {
                         Button("Open PR") { NSWorkspace.shared.open(url) }
@@ -571,6 +661,18 @@ private struct TaskRow: View {
                 .padding(.trailing, 6)
                 .padding(.vertical, 6)
             }
+        }
+        .confirmationDialog("Clean up worktree?", isPresented: $confirmingCleanup, titleVisibility: .visible) {
+            Button("Clean Up", role: .destructive) {
+                actions.runCommand(
+                    CadenceActions.worktreeRemoveCommand(cadencePath: actions.cadencePath, project: project.project, item: item),
+                    project.project,
+                    "Clean up worktree"
+                )
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the merged task worktree and its local branch.")
         }
     }
 

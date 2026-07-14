@@ -7,6 +7,7 @@ import SwiftUI
 final class StatusItemController: NSObject, NSWindowDelegate {
     private let client: CadenceClient
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let overallMenu = NSMenu()
     private let state = PanelState()
     private var overview: Overview?
     private var projectCache: [String: CachedProjectData]
@@ -70,7 +71,8 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         statusItem.button?.toolTip = "Cadence"
         statusItem.button?.imagePosition = .imageLeading
         statusItem.button?.target = self
-        statusItem.button?.action = #selector(togglePanel)
+        statusItem.button?.action = #selector(handleStatusItemClick)
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
     }
 
     func start() {
@@ -81,7 +83,18 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         }
     }
 
-    @objc private func togglePanel() {
+    @objc private func handleStatusItemClick() {
+        if let event = NSApp.currentEvent, event.type == .rightMouseUp,
+           let button = statusItem.button {
+            renderOverallMenu()
+            NSMenu.popUpContextMenu(overallMenu, with: event, for: button)
+        } else {
+            state.showingHelp = false
+            togglePanel()
+        }
+    }
+
+    private func togglePanel() {
         if panel.isVisible {
             closePanel()
             return
@@ -92,6 +105,104 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         positionPanel()
         refresh()
         panel.makeKeyAndOrderFront(nil)
+    }
+
+    private func renderOverallMenu() {
+        overallMenu.removeAllItems()
+        let heading = NSMenuItem(title: "Cadence — Overall Status", action: nil, keyEquivalent: "")
+        heading.isEnabled = false
+        overallMenu.addItem(heading)
+        overallMenu.addItem(.separator())
+
+        if let error = state.errorText {
+            let item = NSMenuItem(title: "Unavailable — \(error)", action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            overallMenu.addItem(item)
+        } else if let projects = state.snapshot?.projects, !projects.isEmpty {
+            for project in projects {
+                let item = NSMenuItem(title: project.project.name, action: nil, keyEquivalent: "")
+                item.image = symbolImage("circle.fill", colour: NSColor(hex: project.project.paused ? MenuModel.grey : MenuModel.green))
+                let submenu = NSMenu()
+                let status = NSMenuItem(title: project.subline, action: nil, keyEquivalent: "")
+                status.isEnabled = false
+                submenu.addItem(status)
+                submenu.addItem(.separator())
+                let action = NSMenuItem(
+                    title: project.project.paused ? "Resume project" : "Pause project",
+                    action: #selector(toggleProjectPause(_:)),
+                    keyEquivalent: ""
+                )
+                action.target = self
+                action.representedObject = project.project
+                submenu.addItem(action)
+                let autonomous = NSMenuItem(
+                    title: "Autonomous mode",
+                    action: #selector(toggleProjectAutonomous(_:)),
+                    keyEquivalent: ""
+                )
+                autonomous.target = self
+                autonomous.representedObject = project.project
+                autonomous.image = symbolImage(
+                    "circle.fill",
+                    colour: NSColor(hex: project.project.autonomous ? MenuModel.green : MenuModel.grey)
+                )
+                autonomous.toolTip = project.project.autonomous
+                    ? "Autonomous mode is on. Click to turn it off."
+                    : "Autonomous mode is off. Click to turn it on."
+                submenu.addItem(autonomous)
+                item.submenu = submenu
+                overallMenu.addItem(item)
+            }
+        } else {
+            let item = NSMenuItem(title: "No registered projects", action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            overallMenu.addItem(item)
+        }
+
+        overallMenu.addItem(.separator())
+        let help = NSMenuItem(title: "Help", action: #selector(showHelp), keyEquivalent: "")
+        help.target = self
+        overallMenu.addItem(help)
+        overallMenu.addItem(.separator())
+        let refresh = NSMenuItem(title: "Refresh Now", action: #selector(refreshFromMenu), keyEquivalent: "r")
+        refresh.target = self
+        overallMenu.addItem(refresh)
+        let quit = NSMenuItem(title: "Quit Cadence", action: #selector(quitFromMenu), keyEquivalent: "q")
+        quit.target = self
+        overallMenu.addItem(quit)
+    }
+
+    @objc private func showHelp() {
+        state.showingHelp = true
+        positionPanel()
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func toggleProjectPause(_ sender: NSMenuItem) {
+        guard let project = sender.representedObject as? CadenceProject else { return }
+        let action = project.paused ? "resume" : "pause"
+        runCommand(
+            CadenceActions.projectCommand(cadencePath: client.cadencePath, project: project, args: [action]),
+            project: project,
+            title: project.paused ? "Resume project" : "Pause project"
+        )
+    }
+
+    @objc private func toggleProjectAutonomous(_ sender: NSMenuItem) {
+        guard let project = sender.representedObject as? CadenceProject else { return }
+        runCommand(
+            CadenceActions.autonomousCommand(cadencePath: client.cadencePath, project: project),
+            project: project,
+            title: project.autonomous ? "Turn autonomous mode off" : "Turn autonomous mode on"
+        )
+    }
+
+    @objc private func refreshFromMenu() {
+        refresh()
+    }
+
+    @objc private func quitFromMenu() {
+        NSApplication.shared.terminate(nil)
     }
 
     private func closePanel() {
@@ -124,11 +235,16 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     private func positionPanel() {
         guard let button = statusItem.button, let buttonWindow = button.window else { return }
         let buttonFrame = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
-        let size = panel.frame.size
         let screen = (buttonWindow.screen ?? NSScreen.main)?.visibleFrame ?? .zero
+        guard screen.width > 16, screen.height > 16 else { return }
+        let size = NSSize(
+            width: min(panel.frame.width, screen.width - 16),
+            height: min(panel.frame.height, screen.height - 16)
+        )
         var x = buttonFrame.midX - size.width / 2
         x = max(screen.minX + 8, min(x, screen.maxX - size.width - 8))
-        let y = buttonFrame.minY - 6 - size.height
+        var y = buttonFrame.minY - 6 - size.height
+        y = max(screen.minY + 8, min(y, screen.maxY - size.height - 8))
         panel.setFrame(NSRect(x: x, y: y, width: size.width, height: size.height), display: true)
     }
 
@@ -219,11 +335,13 @@ final class StatusItemController: NSObject, NSWindowDelegate {
 
     private func renderError(_ error: Error) {
         state.errorText = shortError(error)
-        setStatus(symbol: "exclamationmark.triangle.fill", colourHex: MenuModel.red, count: 0)
+        updateStatusIcon()
     }
 
     private func updateStatusIcon() {
-        if let feedback = state.feedback {
+        if state.errorText != nil {
+            setStatus(symbol: "exclamationmark.triangle.fill", colourHex: MenuModel.red, count: 0)
+        } else if let feedback = state.feedback {
             setStatus(symbol: feedback.symbol, colourHex: feedback.colourHex, count: 0, useMenuBarIcon: false)
         } else if let snapshot = state.snapshot {
             setStatus(symbol: snapshot.menuBar.symbol, colourHex: snapshot.menuBar.colourHex, count: snapshot.menuBar.count)
