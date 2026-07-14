@@ -504,6 +504,10 @@ if [ "$RC" -eq 0 ]; then
   fi
 fi
 [ "$_skip_runner_append" -eq 0 ] && echo "$RECORD_JSON" >> "$RUNS/runs.jsonl"
+# The run is now ledgered: mark it done immediately so an unexpected termination
+# in the digest/notification code below cannot make the EXIT trap append a second
+# "crashed" record. The trap now handles only an unlogged early crash.
+_CADENCE_DONE=1
 # A failed run (non-zero exit or reported errors) is also recorded in the dated
 # digest, so the failure survives in the human record — not just a transient alert.
 [ "$FLAG" = "2" ] && echo "❌ $STAGE — $MSG · $(date -u +%FT%TZ)" >> "$RUNS/$(date -u +%F).md"
@@ -516,5 +520,4 @@ if [ "$FLAG" != "0" ] && [ "$NOTIFY" = "on" ]; then
   fi
   osascript -e "display notification \"$MSG\" with title \"$TITLE\" sound name \"$SOUND\"" 2>/dev/null || true
 fi
-_CADENCE_DONE=1   # run reached its normal logging; a non-zero RC here is already surfaced
 exit $RC
