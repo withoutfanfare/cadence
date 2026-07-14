@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Global scheduler capacity settings.** A first-class settings file
+  (`~/.cadence/scheduler.env`, overridable via `CADENCE_SCHEDULER_CONFIG`)
+  now controls fleet-wide scheduler capacity, written with
+  `cadence schedule configure --max-runs N --concurrency N
+  [--interval SECONDS] [--timeout SECONDS]` (each flag independently
+  optional). Only a whitelist of six keys is honoured — the four scheduler
+  values plus `CADENCE_STATE_DIR` and `CADENCE_PROJECTS_FILE` — so the file
+  can never repoint the engine, the active profile, or orchestrator
+  settings, and children launched by the tick still see their own project
+  configuration. `cadence schedule status` prints the settings path and the
+  effective values, and `schedule apply` now works from a project-local
+  config when the settings file exists (creating the file seeds the fleet
+  state paths, so a project profile can never leak its state directory into
+  the global scheduler job's launchd log paths).
+- **Runner-owned machine ledger.** `run-loop.sh` now appends exactly one
+  normalised record to `runs/runs.jsonl` for every invocation — successful
+  runs included (previously only pauses, failures and crashes were
+  recorded, so `cadence throughput` under-reported real work). A quiet
+  success with no parseable summary is recorded with
+  `summary_missing: true`; failures carry `runner_error: true`. The loop
+  skills now only emit their `CADENCE_SUMMARY` stdout marker and no longer
+  write the ledger themselves; a transition guard prevents double counting
+  if a stale prompt still self-appends, and `cadence throughput` /
+  `cadence overview` tolerate malformed ledger fields instead of crashing.
+
 - **Dependency chains between tasks.** Declare that one task must wait for
   another — Linear's "blocked by" relation (`cadence linear issue-relate <A>
   <B> --type blocks`, or the Linear UI) or a `blocked-by: <ID>[, <ID>…]`
@@ -35,6 +60,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `findings_high: 0`) do not block, matching the folded-review rule — closing
   the build → independent review → revise loop without a human in it.
   Requires `REVIEW_POST_TO_PR="true"` in Redpen's own config.
+
+### Fixed
+
+- **Paused projects no longer consume scheduler admission.** The scheduler
+  tick now skips a project whose own `PAUSED` flag is set before admission,
+  so it never spends a `CADENCE_SCHEDULER_MAX_RUNS` slot, counts as due, or
+  writes a served marker — previously a mostly-paused fleet burned nearly
+  every tick on no-op launches while active projects waited. The run-loop
+  pause guard remains as the race-safe backstop.
+- **Heartbeat shutdown no longer pollutes the scheduler error log.** The
+  run-loop's exit trap now reaps its lock heartbeat quietly instead of
+  spamming `Terminated: 15` lines into `scheduler.launchd.err`.
 
 ### Changed
 

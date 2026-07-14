@@ -164,9 +164,10 @@ nothing). Still write the dry-run-titled dated run files.
    Always `--remove-label agent:claimed` when done with the issue.
 7. **Log** per architecture §7: a dated digest section headed
    `## advance · <live|dry-run> · <UTC timestamp>` with the counts line and a
-   per-issue line (`<ID> — <title> (url) · <action> — <reason>`), and one JSON line
-   to `runs.jsonl`. Capture the run's reported cost if available and include it as
-   `"cost"` in the summary (logged only, never enforced).
+   per-issue line (`<ID> — <title> (url) · <action> — <reason>`), and the
+   CADENCE_SUMMARY line on stdout (see "On finishing"). Capture the run's
+   reported cost if available and include it as `"cost"` in the summary (logged
+   only, never enforced).
 
 ## Failure handling
 
@@ -184,9 +185,8 @@ padding. No "Claude"/"AI" mention in any comment.
 
 ## On finishing
 
-Emit the JSON summary as the final line of stdout, prefixed with the fixed marker
-`CADENCE_SUMMARY ` so the runner finds it reliably even if prose surrounds it.
-Append the bare JSON object (no marker) to `runs.jsonl`:
+Finish with one CADENCE_SUMMARY JSON line on stdout. The runner records it in
+the machine ledger; do not write runs.jsonl yourself:
 
 ```text
 CADENCE_SUMMARY {"loop":"advance","dry_run":false,"advanced":0,"accepted":0,"repaired":0,"escalated":0,"skipped":0,"errors":0,"cost":""}

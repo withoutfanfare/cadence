@@ -86,6 +86,24 @@ class TestOverview(unittest.TestCase):
             self.assertEqual(data["projects"][0]["health"], "failed")
             self.assertEqual(data["projects"][0]["stages"]["build"]["errors"], 2)
 
+    def test_non_numeric_ledger_errors_field_does_not_crash(self):
+        # A misbehaving provider can leave a non-numeric "errors" value (e.g. "none")
+        # in a ledger record. Overview must not crash on int() coercion — it should
+        # treat the malformed value as 0, same as a malformed JSON line is already
+        # skipped rather than sinking the whole overview.
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+            p1 = self._project(
+                tmp, "app", scheduled=True, state=os.path.join(tmp, "s"),
+                ledger=[{"stage": "triage", "errors": "none", "ts": "2026-07-02T08:00:00Z"}])
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(p1 + "\n")
+            data = cli.overview({"CADENCE_PROJECTS_FILE": registry})
+            project = data["projects"][0]
+            self.assertEqual(project["health"], "ok")
+            self.assertEqual(project["stages"]["triage"]["errors"], 0)
+            self.assertEqual(project["stages"]["triage"]["result"], "ok")
+
     def test_stale_paused_entry_does_not_mask_stage_result(self):
         # Project was paused, then resumed; spec ran once (paused) and hasn't run
         # since. No PAUSED flag now -> health ok, and the stale paused entry must

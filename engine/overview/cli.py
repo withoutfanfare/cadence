@@ -63,12 +63,21 @@ def _last_run_per_stage(state_dir):
     return out
 
 
+def _int(value):
+    # A misbehaving provider can leave a non-numeric ledger field (e.g. "none")
+    # in a record; degrade to 0 rather than crash the overview.
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _stage_result(d):
     """Compact outcome string for one ledger entry. Paused runs never reach here
     — _last_run_per_stage skips them."""
     if d.get("idle"):
         return "idle"
-    errors = int(d.get("errors") or 0)
+    errors = _int(d.get("errors"))
     if errors:
         return "%d error(s)" % errors
     return "ok"
@@ -108,7 +117,7 @@ def _project_overview(item, now=None):
         if d is None:
             stages[stage] = None
             continue
-        errors = int(d.get("errors") or 0)
+        errors = _int(d.get("errors"))
         any_error = any_error or errors > 0
         stages[stage] = {"ts": d.get("ts"), "errors": errors, "result": _stage_result(d)}
 

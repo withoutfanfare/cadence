@@ -134,7 +134,7 @@ _HB=$!
 # PROMPT_FILE is removed on the normal path too; the trap covers signal interruption
 # (SIGTERM mid-orchestrator) so an orphan prompt is never left in $RUNS.
 PROMPT_FILE=""
-trap '_crash_log; kill "$_HB" 2>/dev/null; rm -f "$PROMPT_FILE"; [ -n "$GUARD_DIR" ] && rm -rf "$GUARD_DIR"; rm -rf "$LOCKDIR"' EXIT
+trap '_crash_log; kill "$_HB" 2>/dev/null || true; wait "$_HB" 2>/dev/null || true; rm -f "$PROMPT_FILE"; [ -n "$GUARD_DIR" ] && rm -rf "$GUARD_DIR"; rm -rf "$LOCKDIR"' EXIT
 
 pause_before_launch() {
   reason="$1"
@@ -349,6 +349,10 @@ fi
 LOG="$LOGDIR/$STAGE.log"
 touch "$LOG"
 _LOG_START=$(wc -c < "$LOG" 2>/dev/null || echo 0)   # scan only THIS run's output for a summary
+# Snapshot the ledger's byte size too, so a zero-exit run whose skill still
+# self-appends (stale rendered prompt, or a disobedient model) can be detected
+# below and the runner's own append skipped rather than double-counted.
+_RUNS_LEDGER_START=$(wc -c < "$RUNS/runs.jsonl" 2>/dev/null || echo 0)
 PROMPT_FILE="$RUNS/prompt-$STAGE-$(date -u +%Y%m%dT%H%M%SZ)-$$.md"
 # ${arr[@]+…} guard: macOS /bin/bash 3.2 treats an empty array as unbound under set -u
 python3 "$CADENCE_HOME/engine/prompts/render.py" "$STAGE" ${CMD_ARGS[@]+"${CMD_ARGS[@]}"} --output "$PROMPT_FILE" >> "$LOG" 2>&1
@@ -365,16 +369,29 @@ rm -f "$PROMPT_FILE"
 
 # --- Informative + surfaceable: one-line summary → activity feed → push on activity ---
 # Parse this run's JSON summary (triage uses "stage", others use "loop"), build a plain
-# one-liner, append it to a single chronological activity feed, and fire a macOS
-# notification only when a LIVE run actually did something (or paused / errored).
-SUM=$(python3 - "$STAGE" "$LOG" "$RC" "$_LOG_START" <<'PY'
+# one-liner for the activity feed, and derive the single runner-owned ledger record —
+# one pass over the log, not two. run-loop.sh is the sole writer of runs.jsonl: loops
+# emit only the CADENCE_SUMMARY marker on stdout.
+TS_SUMMARY="$(date -u +%FT%TZ)"
+SUMOUT=$(python3 - "$STAGE" "$LOG" "$RC" "$_LOG_START" "$TS_SUMMARY" <<'PY'
 import sys, json
 stage, logpath, rc = sys.argv[1], sys.argv[2], int(sys.argv[3])
 try:
     start = int(sys.argv[4])
 except (IndexError, ValueError):
     start = 0
+ts = sys.argv[5]
 MARKER = 'CADENCE_SUMMARY '   # skills print the summary on its own marked line
+
+
+def _int(x):
+    # A misbehaving provider can emit a non-numeric summary field (e.g. "none")
+    # instead of a count; that must degrade to 0, not blow up the whole heredoc
+    # and lose this run's ledger record.
+    try:
+        return int(x)
+    except (TypeError, ValueError):
+        return 0
 last = None
 read_err = None
 try:
@@ -405,74 +422,106 @@ try:
                     last = d
 except Exception as e:
     read_err = str(e)
+
+
+def build_message():
+    if last is None:
+        # A log-read failure is itself a failure to surface, not something to swallow.
+        if read_err is not None:
+            return f"2|FAILED — could not read log: {read_err}"
+        elif rc != 0:
+            return f"2|FAILED — exit {rc}, no summary"
+        else:
+            # Exit 0 but nothing parseable = a silently-degraded run. Flag 1 (notable)
+            # so the lost activity surfaces in the feed rather than passing as quiet.
+            return f"1|exit {rc}, no summary"
+    d = last
+    if d.get('paused'):
+        return f"1|PAUSED — {d.get('reason','?')}"
+    dry = bool(d.get('dry_run'))
+    err = _int(d.get('errors', 0) or 0)
+    parts = []
+    def add(k, label):
+        v = d.get(k, 0) or 0
+        if v: parts.append(f"{v} {label}")
+    if stage == 'triage':
+        for k, l in [('triaged','triaged'),('cycled','cycled'),('labelled','labelled'),
+                     ('stubbed','AC-stubbed'),('dupe_candidates','dupe-flagged'),
+                     ('stale','stale'),('backfilled','back-filled'),('parked','parked')]:
+            add(k, l)
+    elif stage == 'spec':
+        add('specced', 'specced'); add('superseded', 'superseded')
+    elif stage == 'build':
+        b = _int(d.get('built', 0) or 0)
+        if b: parts.append(f"{b} built")
+        prs = d.get('pr_numbers') or []
+        if prs: parts.append("draft PR " + ", ".join(f"#{p}" for p in prs))
+    elif stage == 'revise':
+        add('revised', 'revised')
+    elif stage == 'advance':
+        for k, l in [('advanced','advanced'),('accepted','accepted'),
+                     ('repaired','repaired'),('escalated','escalated')]:
+            add(k, l)
+    elif stage == 'roadmap':
+        add('proposed', 'proposed')
+    body = ", ".join(parts) if parts else "nothing to do"
+    prefix = ("LIVE " if not dry else "dry ")
+    if err: body += f" · {err} ERROR(S)"
+    if rc != 0: body += f" · exit {rc}"
+    your_move = stage in ('spec', 'build', 'revise', 'roadmap') and bool(parts)
+    failed = rc != 0 or err > 0
+    # 2 = failure (alert), 1 = notable activity (your move), 0 = quiet
+    flag = 2 if failed else (1 if ((not dry and parts) or your_move) else 0)
+    return f"{flag}|{prefix}{body}"
+
+
+msg_line = build_message()
+
+# One normalised record per invocation: the parsed summary (if any), stamped with
+# the fields only the runner can know (stage/ts/exit) and marked as runner-owned so
+# `cadence throughput` can tell a real record from a stale/self-appended one.
+record = dict(last or {})
+record["stage"] = stage
+record["ts"] = ts
+record["exit"] = rc
+record["runner_record"] = True
+if "errors" in record:
+    # A misbehaving provider can leave a non-numeric "errors" value (e.g. "none")
+    # in the summary; normalise it here so every ledger consumer can int() it safely.
+    record["errors"] = _int(record.get("errors") or 0)
 if last is None:
-    # A log-read failure is itself a failure to surface, not something to swallow.
-    if read_err is not None:
-        print(f"2|FAILED — could not read log: {read_err}")
-    elif rc != 0:
-        print(f"2|FAILED — exit {rc}, no summary")
-    else:
-        # Exit 0 but nothing parseable = a silently-degraded run. Flag 1 (notable)
-        # so the lost activity surfaces in the feed rather than passing as quiet.
-        print(f"1|exit {rc}, no summary")
-    sys.exit()
-d = last
-if d.get('paused'):
-    print(f"1|PAUSED — {d.get('reason','?')}"); sys.exit()
-dry = bool(d.get('dry_run'))
-err = int(d.get('errors', 0) or 0)
-parts = []
-def add(k, label):
-    v = d.get(k, 0) or 0
-    if v: parts.append(f"{v} {label}")
-if stage == 'triage':
-    for k, l in [('triaged','triaged'),('cycled','cycled'),('labelled','labelled'),
-                 ('stubbed','AC-stubbed'),('dupe_candidates','dupe-flagged'),
-                 ('stale','stale'),('backfilled','back-filled'),('parked','parked')]:
-        add(k, l)
-elif stage == 'spec':
-    add('specced', 'specced'); add('superseded', 'superseded')
-elif stage == 'build':
-    b = int(d.get('built', 0) or 0)
-    if b: parts.append(f"{b} built")
-    prs = d.get('pr_numbers') or []
-    if prs: parts.append("draft PR " + ", ".join(f"#{p}" for p in prs))
-elif stage == 'revise':
-    add('revised', 'revised')
-elif stage == 'advance':
-    for k, l in [('advanced','advanced'),('accepted','accepted'),
-                 ('repaired','repaired'),('escalated','escalated')]:
-        add(k, l)
-elif stage == 'roadmap':
-    add('proposed', 'proposed')
-body = ", ".join(parts) if parts else "nothing to do"
-prefix = ("LIVE " if not dry else "dry ")
-if err: body += f" · {err} ERROR(S)"
-if rc != 0: body += f" · exit {rc}"
-your_move = stage in ('spec', 'build', 'revise', 'roadmap') and bool(parts)
-failed = rc != 0 or err > 0
-# 2 = failure (alert), 1 = notable activity (your move), 0 = quiet
-flag = 2 if failed else (1 if ((not dry and parts) or your_move) else 0)
-print(f"{flag}|{prefix}{body}")
+    record["summary_missing"] = True
+if rc != 0:
+    record["errors"] = max(1, _int(record.get("errors") or 0))
+    record["runner_error"] = True
+
+print(json.dumps(record, separators=(",", ":")))
+print(msg_line)
 PY
 )
+RECORD_JSON="$(printf '%s\n' "$SUMOUT" | sed -n '1p')"
+SUM="$(printf '%s\n' "$SUMOUT" | sed -n '2p')"
 FLAG="${SUM%%|*}"; MSG="${SUM#*|}"
 mkdir -p "$RUNS"
 echo "[$(date -u +%FT%TZ)] $STAGE — $MSG" >> "$RUNS/activity.log"
-if [ "$FLAG" = "2" ]; then
-  TS="$(date -u +%FT%TZ)"
-  STAGE="$STAGE" TS="$TS" RC="$RC" MSG="$MSG" python3 - <<'PY' >> "$RUNS/runs.jsonl" 2>/dev/null || true
-import json, os
-print(json.dumps({
-    "stage": os.environ["STAGE"],
-    "ts": os.environ["TS"],
-    "errors": 1,
-    "runner_error": True,
-    "exit": int(os.environ["RC"]),
-    "summary": os.environ["MSG"],
-}, separators=(",", ":")))
-PY
+# Double-count guard for the transition: the loop skills used to append their own
+# ledger line, and a stale rendered prompt or a disobedient model can still do so.
+# Only skip the runner's own append on a clean exit — a failure must always be
+# recorded even if something upstream misbehaved.
+_skip_runner_append=0
+if [ "$RC" -eq 0 ]; then
+  _ledger_now=$(wc -c < "$RUNS/runs.jsonl" 2>/dev/null || echo 0)
+  if [ "$_ledger_now" -gt "$_RUNS_LEDGER_START" ] \
+      && tail -c "+$((_RUNS_LEDGER_START + 1))" "$RUNS/runs.jsonl" 2>/dev/null \
+        | grep -qE "\"(stage|loop)\":[[:space:]]*\"$STAGE\""; then
+    _skip_runner_append=1
+  fi
 fi
+[ "$_skip_runner_append" -eq 0 ] && echo "$RECORD_JSON" >> "$RUNS/runs.jsonl"
+# The run is now ledgered: mark it done immediately so an unexpected termination
+# in the digest/notification code below cannot make the EXIT trap append a second
+# "crashed" record. The trap now handles only an unlogged early crash.
+_CADENCE_DONE=1
 # A failed run (non-zero exit or reported errors) is also recorded in the dated
 # digest, so the failure survives in the human record — not just a transient alert.
 [ "$FLAG" = "2" ] && echo "❌ $STAGE — $MSG · $(date -u +%FT%TZ)" >> "$RUNS/$(date -u +%F).md"
@@ -485,5 +534,4 @@ if [ "$FLAG" != "0" ] && [ "$NOTIFY" = "on" ]; then
   fi
   osascript -e "display notification \"$MSG\" with title \"$TITLE\" sound name \"$SOUND\"" 2>/dev/null || true
 fi
-_CADENCE_DONE=1   # run reached its normal logging; a non-zero RC here is already surfaced
 exit $RC

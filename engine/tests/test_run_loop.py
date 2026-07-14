@@ -182,10 +182,141 @@ exec {real_python} "$@"
             feed = f.read()
         self.assertIn("FAILED — exit 7", feed)
         self.assertIn("FAILED", self._read_today_digest())
-        record = json.loads(self._read_ledger().strip().splitlines()[-1])
+        # Exactly one record for the whole run: a duplicate — whether from the
+        # EXIT trap or from a record the skill appended itself — must not pass
+        # unnoticed.
+        lines = self._read_ledger().strip().splitlines()
+        self.assertEqual(len(lines), 1)
+        record = json.loads(lines[0])
         self.assertEqual(record["stage"], "triage")
         self.assertTrue(record["runner_error"])
         self.assertEqual(record["exit"], 7)
+
+    def test_successful_run_records_one_runner_owned_ledger_line(self):
+        real_python = sys.executable
+        linear_cli = os.path.join(self.root, "engine", "linear", "cli.py")
+        os.makedirs(os.path.join(self.root, "skills", "cadence-loop-triage"))
+        with open(os.path.join(self.root, "skills", "cadence-loop-triage", "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: cadence-loop-triage\n---\nLoop body\n")
+        shutil.copytree(os.path.join(ROOT, "engine", "prompts"),
+                        os.path.join(self.root, "engine", "prompts"))
+        self._write_exe("python3", f"""#!/bin/sh
+if [ "$1" = "{linear_cli}" ] && [ "$2" = "teams" ]; then
+  printf '[{{"id":"team-1","name":"Team"}}]\\n'
+  exit 0
+fi
+exec {real_python} "$@"
+""")
+        self._write_exe("codex", "#!/bin/sh\n"
+                        "printf 'CADENCE_SUMMARY {\"stage\":\"build\",\"loop\":\"triage\",\"triaged\":1,\"errors\":0}\\n'\n")
+
+        result = self._run("triage", ORCHESTRATOR_TRIAGE="codex:gpt-test")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = self._read_ledger().strip().splitlines()
+        self.assertEqual(len(lines), 1)
+        record = json.loads(lines[0])
+        self.assertTrue(record["runner_record"])
+        self.assertEqual(record["stage"], "triage")
+        self.assertEqual(record["triaged"], 1)
+        self.assertEqual(record["exit"], 0)
+        with open(os.path.join(self.state, "runs", "activity.log"), encoding="utf-8") as f:
+            feed = f.read()
+        self.assertIn("LIVE 1 triaged", feed)
+
+    def test_non_numeric_summary_errors_field_still_records_one_clean_ledger_line(self):
+        # A misbehaving provider can emit a non-numeric "errors" value. That must not
+        # crash the runner's summary heredoc — which would append a blank line to
+        # runs.jsonl and lose the run's record entirely — it should degrade to 0.
+        real_python = sys.executable
+        linear_cli = os.path.join(self.root, "engine", "linear", "cli.py")
+        os.makedirs(os.path.join(self.root, "skills", "cadence-loop-triage"))
+        with open(os.path.join(self.root, "skills", "cadence-loop-triage", "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: cadence-loop-triage\n---\nLoop body\n")
+        shutil.copytree(os.path.join(ROOT, "engine", "prompts"),
+                        os.path.join(self.root, "engine", "prompts"))
+        self._write_exe("python3", f"""#!/bin/sh
+if [ "$1" = "{linear_cli}" ] && [ "$2" = "teams" ]; then
+  printf '[{{"id":"team-1","name":"Team"}}]\\n'
+  exit 0
+fi
+exec {real_python} "$@"
+""")
+        self._write_exe("codex", "#!/bin/sh\n"
+                        "printf 'CADENCE_SUMMARY {\"stage\":\"triage\",\"triaged\":1,\"errors\":\"none\"}\\n'\n")
+
+        result = self._run("triage", ORCHESTRATOR_TRIAGE="codex:gpt-test")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        raw = self._read_ledger()
+        lines = raw.strip().splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(len([ln for ln in raw.splitlines() if ln == ""]), 0)  # no blank line
+        record = json.loads(lines[0])
+        self.assertTrue(record["runner_record"])
+        self.assertEqual(record["triaged"], 1)
+        self.assertEqual(record["errors"], 0)  # non-numeric summary field normalised to 0
+        self.assertEqual(record["exit"], 0)
+
+    def test_zero_exit_with_no_summary_records_summary_missing(self):
+        real_python = sys.executable
+        linear_cli = os.path.join(self.root, "engine", "linear", "cli.py")
+        os.makedirs(os.path.join(self.root, "skills", "cadence-loop-triage"))
+        with open(os.path.join(self.root, "skills", "cadence-loop-triage", "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: cadence-loop-triage\n---\nLoop body\n")
+        shutil.copytree(os.path.join(ROOT, "engine", "prompts"),
+                        os.path.join(self.root, "engine", "prompts"))
+        self._write_exe("python3", f"""#!/bin/sh
+if [ "$1" = "{linear_cli}" ] && [ "$2" = "teams" ]; then
+  printf '[{{"id":"team-1","name":"Team"}}]\\n'
+  exit 0
+fi
+exec {real_python} "$@"
+""")
+        self._write_exe("codex", "#!/bin/sh\nexit 0\n")
+
+        result = self._run("triage", ORCHESTRATOR_TRIAGE="codex:gpt-test")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = self._read_ledger().strip().splitlines()
+        self.assertEqual(len(lines), 1)
+        record = json.loads(lines[0])
+        self.assertTrue(record["runner_record"])
+        self.assertTrue(record["summary_missing"])
+        self.assertEqual(record["exit"], 0)
+        self.assertEqual(record.get("errors", 0), 0)
+
+    def test_self_appended_record_during_run_is_not_double_counted(self):
+        # A stale rendered prompt or a disobedient model can still self-append its
+        # own ledger line during the transition. On a clean exit the runner must
+        # detect that and skip its own append rather than double-count the run.
+        real_python = sys.executable
+        linear_cli = os.path.join(self.root, "engine", "linear", "cli.py")
+        os.makedirs(os.path.join(self.root, "skills", "cadence-loop-triage"))
+        with open(os.path.join(self.root, "skills", "cadence-loop-triage", "SKILL.md"), "w", encoding="utf-8") as f:
+            f.write("---\nname: cadence-loop-triage\n---\nLoop body\n")
+        shutil.copytree(os.path.join(ROOT, "engine", "prompts"),
+                        os.path.join(self.root, "engine", "prompts"))
+        self._write_exe("python3", f"""#!/bin/sh
+if [ "$1" = "{linear_cli}" ] && [ "$2" = "teams" ]; then
+  printf '[{{"id":"team-1","name":"Team"}}]\\n'
+  exit 0
+fi
+exec {real_python} "$@"
+""")
+        self._write_exe("codex", f"""#!/bin/sh
+printf '{{"stage":"triage","triaged":2,"errors":0}}\\n' >> "{self.state}/runs/runs.jsonl"
+printf 'CADENCE_SUMMARY {{"stage":"triage","triaged":2,"errors":0}}\\n'
+""")
+
+        result = self._run("triage", ORCHESTRATOR_TRIAGE="codex:gpt-test")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = self._read_ledger().strip().splitlines()
+        self.assertEqual(len(lines), 1)
+        record = json.loads(lines[0])
+        self.assertNotIn("runner_record", record)
+        self.assertEqual(record["triaged"], 2)
 
     def test_successful_run_uses_selected_orchestrator_provider(self):
         real_python = sys.executable

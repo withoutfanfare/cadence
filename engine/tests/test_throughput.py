@@ -66,6 +66,20 @@ class TestAggregate(unittest.TestCase):
         self.assertEqual(agg["stages"]["conduct"]["tagged"], 2)
         self.assertEqual(agg["stages"]["conduct"]["blocked"], 1)
 
+    def test_non_numeric_ledger_fields_degrade_to_zero(self):
+        # A misbehaving provider can leave non-numeric fields in a ledger record
+        # (e.g. "errors":"none"). Aggregation must not crash on int() coercion —
+        # it should treat the malformed value as 0, same as a malformed JSON line
+        # is already skipped rather than sinking the whole rollup.
+        recs = [
+            {"stage": "triage", "ts": "2026-06-29T10:00:00Z",
+             "triaged": "none", "errors": "none"},
+        ]
+        agg = cli.aggregate(recs)
+        self.assertEqual(agg["stages"]["triage"]["runs"], 1)
+        self.assertEqual(agg["stages"]["triage"]["triaged"], 0)
+        self.assertEqual(agg["stages"]["triage"]["errors"], 0)
+
     def test_roadmap_stage_is_counted(self):
         agg = cli.aggregate([
             {"stage": "roadmap", "ts": "2026-06-29T14:00:00Z",

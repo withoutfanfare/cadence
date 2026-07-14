@@ -2,6 +2,7 @@ import importlib.util
 import contextlib
 import io
 import os
+import plistlib
 import stat
 import subprocess
 import sys
@@ -9,6 +10,7 @@ import tempfile
 import threading
 import unittest
 from datetime import datetime, timezone
+from unittest import mock
 
 _spec = importlib.util.spec_from_file_location(
     "schedule_cli", os.path.join(os.path.dirname(__file__), "..", "schedule", "cli.py"))
@@ -385,6 +387,45 @@ class TestSchedulerTick(unittest.TestCase):
 
         self.assertIn("CADENCE_DAILY_RUN_CAP=1 reached", out.getvalue())
 
+    def test_tick_skips_paused_project_without_marking_its_slot_served(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = os.path.join(tmp, "projects.txt")
+
+            def make(name):
+                config_dir = os.path.join(tmp, name, "cadence")
+                state = os.path.join(tmp, name, "state")
+                os.makedirs(config_dir)
+                with open(os.path.join(config_dir, ".env"), "w", encoding="utf-8") as f:
+                    f.write("CADENCE_SCHEDULED=1\nCADENCE_STATE_DIR=%s\n" % state)
+                return os.path.join(tmp, name), state
+
+            first, s1 = make("first")
+            second, _s2 = make("second")
+            os.makedirs(os.path.join(s1, "runs"))
+            with open(os.path.join(s1, "runs", "PAUSED"), "w", encoding="utf-8"):
+                pass
+            with open(registry, "w", encoding="utf-8") as f:
+                f.write(first + "\n" + second + "\n")
+
+            calls = []
+
+            def fake_run(cmd, cwd=None, env=None, timeout=None):
+                calls.append(cwd)
+                return type("Proc", (), {"returncode": 0})()
+
+            env = {"CADENCE_HOME": "/cadence", "CADENCE_PROJECTS_FILE": registry,
+                   "CADENCE_SCHEDULER_MAX_RUNS": "1"}
+            now = datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                cli.tick(env, now=now, run=fake_run)
+
+            # Only the live project runs; the paused one never touches admission.
+            self.assertEqual(calls, [second])
+            self.assertIn("skipped (paused)", out.getvalue())
+            self.assertFalse(
+                os.path.isfile(os.path.join(s1, "scheduler", "triage.last")))
+
     def test_status_warns_only_when_projects_share_state_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
             registry = os.path.join(tmp, "projects.txt")
@@ -577,6 +618,257 @@ class TestSchedulerTick(unittest.TestCase):
             self.assertIn(f"{paths[1]}: triage exit 0", out.getvalue())
 
 
+class TestSchedulerSettings(unittest.TestCase):
+    def test_status_prefers_whitelisted_settings_file_over_active_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = os.path.join(tmp, "scheduler.env")
+            with open(settings, "w", encoding="utf-8") as f:
+                f.write("CADENCE_SCHEDULER_MAX_RUNS=4\nCADENCE_SCHEDULER_CONCURRENCY=2\n")
+            registry = os.path.join(tmp, "projects.txt")
+            env = {
+                "CADENCE_HOME": "/cadence",
+                "CADENCE_SCHEDULER_CONFIG": settings,
+                "CADENCE_PROJECTS_FILE": registry,
+                # Simulates the active config's own (lower-precedence) value.
+                "CADENCE_SCHEDULER_MAX_RUNS": "1",
+            }
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    contextlib.redirect_stdout(buf):
+                rc = cli.main(["status"])
+            out = buf.getvalue()
+
+        self.assertEqual(rc, 0)
+        self.assertIn(settings, out)
+        self.assertIn("max runs/tick: 4", out)
+        self.assertIn("concurrency: 2", out)
+
+    def test_configure_writes_whitelisted_settings_and_leaves_active_config_untouched(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = os.path.join(tmp, "scheduler.env")
+            config_dir = os.path.join(tmp, "app", "cadence")
+            os.makedirs(config_dir)
+            config = os.path.join(config_dir, ".env")
+            with open(config, "w", encoding="utf-8") as f:
+                f.write("LINEAR_TEAM_ID=abc\n")
+            with open(config, "rb") as f:
+                original_bytes = f.read()
+            env = {
+                "CADENCE_SCHEDULER_CONFIG": settings,
+                "CADENCE_CONFIG": config,
+            }
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    contextlib.redirect_stdout(buf):
+                rc = cli.main(["configure", "--max-runs", "4", "--concurrency", "2"])
+
+            self.assertEqual(rc, 0)
+            values = cli.read_env_file(settings)
+            self.assertEqual(values.get("CADENCE_SCHEDULER_MAX_RUNS"), "4")
+            self.assertEqual(values.get("CADENCE_SCHEDULER_CONCURRENCY"), "2")
+            with open(config, "rb") as f:
+                self.assertEqual(f.read(), original_bytes)  # active config untouched
+
+    def test_configure_on_fresh_path_seeds_fleet_state_dir_and_projects_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = os.path.join(tmp, "cadence", "scheduler.env")
+            expected_state = os.path.join(tmp, ".cadence")
+            env = {"CADENCE_SCHEDULER_CONFIG": settings, "HOME": tmp}
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    contextlib.redirect_stdout(buf):
+                rc = cli.main(["configure", "--max-runs", "4", "--concurrency", "2"])
+
+            self.assertEqual(rc, 0)
+            values = cli.read_env_file(settings)
+            self.assertEqual(values.get("CADENCE_SCHEDULER_MAX_RUNS"), "4")
+            self.assertEqual(values.get("CADENCE_SCHEDULER_CONCURRENCY"), "2")
+            self.assertEqual(values.get("CADENCE_STATE_DIR"), expected_state)
+            self.assertEqual(values.get("CADENCE_PROJECTS_FILE"),
+                             os.path.join(expected_state, "projects.txt"))
+
+    def test_configure_on_existing_file_does_not_overwrite_seeded_fleet_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = os.path.join(tmp, "scheduler.env")
+            custom_state = os.path.join(tmp, "custom-state")
+            with open(settings, "w", encoding="utf-8") as f:
+                f.write("CADENCE_STATE_DIR=%s\nCADENCE_PROJECTS_FILE=%s\n"
+                        % (custom_state, os.path.join(custom_state, "projects.txt")))
+            env = {"CADENCE_SCHEDULER_CONFIG": settings}
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    contextlib.redirect_stdout(buf):
+                rc = cli.main(["configure", "--max-runs", "4"])
+
+            self.assertEqual(rc, 0)
+            values = cli.read_env_file(settings)
+            self.assertEqual(values.get("CADENCE_SCHEDULER_MAX_RUNS"), "4")
+            # An operator's own values in an already-existing file are never touched.
+            self.assertEqual(values.get("CADENCE_STATE_DIR"), custom_state)
+            self.assertEqual(values.get("CADENCE_PROJECTS_FILE"),
+                             os.path.join(custom_state, "projects.txt"))
+
+    def test_configure_on_bare_relative_scheduler_config_does_not_crash(self):
+        # A CADENCE_SCHEDULER_CONFIG with no directory component made
+        # os.makedirs(os.path.dirname(path)) raise FileNotFoundError('').
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = os.getcwd()
+            os.chdir(tmp)
+            try:
+                env = {"CADENCE_SCHEDULER_CONFIG": "scheduler.env"}
+                buf = io.StringIO()
+                with mock.patch.dict(os.environ, env, clear=True), \
+                        contextlib.redirect_stdout(buf):
+                    rc = cli.main(["configure", "--max-runs", "4"])
+            finally:
+                os.chdir(cwd)
+
+            self.assertEqual(rc, 0)
+            self.assertTrue(os.path.isfile(os.path.join(tmp, "scheduler.env")))
+
+    def test_render_scheduler_after_configure_created_file_resolves_fleet_state_dir(self):
+        # Even when the process env carries a project's own CADENCE_STATE_DIR
+        # (as it does when `apply` runs from a project-local config), a
+        # configure-created settings file must win for the scheduler plist's
+        # own log paths — that is exactly what the settings file exists to
+        # guarantee.
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = os.path.join(tmp, "cadence", "scheduler.env")
+            project_state = os.path.join(tmp, "project-state")
+            expected_state = os.path.join(tmp, ".cadence")
+            configure_env = {"CADENCE_SCHEDULER_CONFIG": settings, "HOME": tmp}
+            with mock.patch.dict(os.environ, configure_env, clear=True), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                rc = cli.main(["configure", "--max-runs", "4", "--concurrency", "2"])
+            self.assertEqual(rc, 0)
+
+            env = {
+                "CADENCE_HOME": "/cadence",
+                "CADENCE_SCHEDULER_CONFIG": settings,
+                "CADENCE_STATE_DIR": project_state,  # the active project's own value
+                "HOME": tmp,
+            }
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    contextlib.redirect_stdout(buf):
+                rc = cli.main(["render-scheduler"])
+            out = buf.getvalue()
+
+            self.assertEqual(rc, 0)
+            self.assertNotIn(project_state, out)
+            self.assertIn(os.path.join(expected_state, "logs", "scheduler.launchd.log"), out)
+
+    def test_render_scheduler_uses_fleet_default_for_legacy_capacity_only_settings(self):
+        # A pre-seeding settings file can have capacity only. It must never let
+        # a project-local apply put that project's state path in the fleet plist.
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = os.path.join(tmp, "scheduler.env")
+            project_state = os.path.join(tmp, "project-state")
+            with open(settings, "w", encoding="utf-8") as f:
+                f.write("CADENCE_SCHEDULER_MAX_RUNS=4\n")
+            env = {
+                "CADENCE_HOME": "/cadence",
+                "CADENCE_SCHEDULER_CONFIG": settings,
+                "CADENCE_STATE_DIR": project_state,
+                "HOME": tmp,
+            }
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    contextlib.redirect_stdout(buf):
+                rc = cli.main(["render-scheduler"])
+
+        self.assertEqual(rc, 0)
+        out = buf.getvalue()
+        self.assertNotIn(project_state, out)
+        self.assertIn(os.path.join(tmp, ".cadence", "logs", "scheduler.launchd.log"), out)
+
+    def test_render_scheduler_uses_fleet_default_for_empty_legacy_settings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = os.path.join(tmp, "scheduler.env")
+            project_state = os.path.join(tmp, "project-state")
+            open(settings, "w", encoding="utf-8").close()
+            env = {
+                "CADENCE_HOME": "/cadence",
+                "CADENCE_SCHEDULER_CONFIG": settings,
+                "CADENCE_STATE_DIR": project_state,
+                "HOME": tmp,
+            }
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    contextlib.redirect_stdout(buf):
+                rc = cli.main(["render-scheduler"])
+
+        self.assertEqual(rc, 0)
+        self.assertNotIn(project_state, buf.getvalue())
+        self.assertIn(os.path.join(tmp, ".cadence", "logs", "scheduler.launchd.log"),
+                      buf.getvalue())
+
+    def test_render_scheduler_expands_fleet_state_from_settings_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = os.path.join(tmp, "scheduler.env")
+            with open(settings, "w", encoding="utf-8") as f:
+                f.write("CADENCE_STATE_DIR=$HOME/fleet-state\n")
+            env = {
+                "CADENCE_HOME": "/cadence",
+                "CADENCE_SCHEDULER_CONFIG": settings,
+                "HOME": tmp,
+            }
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    contextlib.redirect_stdout(buf):
+                rc = cli.main(["render-scheduler"])
+
+        self.assertEqual(rc, 0)
+        out = buf.getvalue()
+        self.assertNotIn("$HOME/fleet-state", out)
+        self.assertIn(os.path.join(tmp, "fleet-state", "logs", "scheduler.launchd.log"), out)
+
+    def test_render_scheduler_carries_custom_settings_file_into_launchd(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = os.path.join(tmp, "custom", "scheduler.env")
+            os.makedirs(os.path.dirname(settings))
+            with open(settings, "w", encoding="utf-8") as f:
+                f.write("CADENCE_SCHEDULER_MAX_RUNS=4\n")
+            env = {
+                "CADENCE_HOME": "/cadence",
+                "CADENCE_SCHEDULER_CONFIG": settings,
+                "HOME": tmp,
+            }
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    contextlib.redirect_stdout(buf):
+                rc = cli.main(["render-scheduler"])
+
+        self.assertEqual(rc, 0)
+        self.assertIn("<key>EnvironmentVariables</key>", buf.getvalue())
+        self.assertIn("<key>CADENCE_SCHEDULER_CONFIG</key><string>%s</string>" % settings,
+                      buf.getvalue())
+
+    def test_render_scheduler_escapes_custom_settings_path_in_plist(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = os.path.join(tmp, "custom&fleet", "scheduler<settings.env")
+            os.makedirs(os.path.dirname(settings))
+            with open(settings, "w", encoding="utf-8") as f:
+                f.write("CADENCE_SCHEDULER_MAX_RUNS=4\n")
+            env = {
+                "CADENCE_HOME": "/cadence",
+                "CADENCE_SCHEDULER_CONFIG": settings,
+                "HOME": tmp,
+            }
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    contextlib.redirect_stdout(buf):
+                rc = cli.main(["render-scheduler"])
+
+        self.assertEqual(rc, 0)
+        self.assertIn("custom&amp;fleet/scheduler&lt;settings.env", buf.getvalue())
+        self.assertEqual(
+            plistlib.loads(buf.getvalue().encode())["EnvironmentVariables"]
+            ["CADENCE_SCHEDULER_CONFIG"],
+            settings,
+        )
+
+
 class TestScheduleApplyScript(unittest.TestCase):
     def test_apply_rejects_project_local_config_until_launchd_supports_it(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -649,6 +941,59 @@ exec {sys.executable} "$@"
             self.assertNotEqual(result.returncode, 0)
             with open(plist, encoding="utf-8") as f:
                 self.assertEqual(f.read(), "original scheduler plist")
+
+    def test_apply_allows_project_local_config_when_scheduler_settings_file_exists(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, "home")
+            app = os.path.join(tmp, "app")
+            config_dir = os.path.join(app, "cadence")
+            state = os.path.join(tmp, "state")
+            bin_dir = os.path.join(tmp, "bin")
+            launch_agents = os.path.join(home, "Library", "LaunchAgents")
+            os.makedirs(launch_agents)
+            os.makedirs(config_dir)
+            os.makedirs(bin_dir)
+            config = os.path.join(config_dir, ".env")
+            with open(config, "w", encoding="utf-8") as f:
+                f.write("CADENCE_STATE_DIR=%s\n" % state)
+            calls_file = os.path.join(tmp, "launchctl_calls.txt")
+            self._write_exe(os.path.join(bin_dir, "launchctl"), f"""#!/bin/sh
+echo "$@" >> "{calls_file}"
+exit 0
+""")
+            env = os.environ.copy()
+            env.update({
+                "HOME": home,
+                "CADENCE_CONFIG": config,
+                "PATH": bin_dir + os.pathsep + env.get("PATH", ""),
+            })
+
+            # No scheduler settings file yet: refuses exactly as it does today.
+            result = subprocess.run(
+                ["bash", os.path.join(os.path.dirname(__file__), "..", "scripts", "schedule.sh"), "apply"],
+                cwd=app, env=env, text=True, capture_output=True, timeout=10,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("launchd scheduling currently requires", result.stderr)
+
+            # Once one exists, apply proceeds and reloads the rendered scheduler plist.
+            settings = os.path.join(home, ".cadence", "scheduler.env")
+            os.makedirs(os.path.dirname(settings))
+            with open(settings, "w", encoding="utf-8") as f:
+                f.write("CADENCE_SCHEDULER_MAX_RUNS=4\n")
+
+            result = subprocess.run(
+                ["bash", os.path.join(os.path.dirname(__file__), "..", "scripts", "schedule.sh"), "apply"],
+                cwd=app, env=env, text=True, capture_output=True, timeout=10,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            plist = os.path.join(launch_agents, "com.cadence.scheduler.plist")
+            self.assertTrue(os.path.isfile(plist))
+            with open(calls_file, encoding="utf-8") as f:
+                calls = f.read()
+            self.assertIn("bootstrap", calls)
+            self.assertIn(plist, calls)
 
     def _write_exe(self, path, body):
         with open(path, "w", encoding="utf-8") as f:

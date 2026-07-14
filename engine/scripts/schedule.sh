@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# cadence schedule [show|status|register|tick|apply] — one launchd scheduler for project configs.
+# cadence schedule [show|status|register|tick|apply|configure] — one launchd scheduler for project configs.
 #   show      print each job's configured cadence (read-only)
 #   register  add a project (dir or config .env) to the scheduler registry
 #   unregister  remove a project (dir or config .env) from the scheduler registry
 #   apply     regenerate the single scheduler plist and reload it
+#   configure set global scheduler capacity (max-runs/concurrency/interval/timeout)
+#             in the scheduler settings file — see docs/CONFIGURATION.md#schedule
 # Generation lives in engine/schedule/cli.py; this script orchestrates files+launchd.
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -41,6 +43,9 @@ case "${1:-show}" in
     exec python3 "$CLI" unregister "$@" ;;
   tick)
     exec python3 "$CLI" tick ;;
+  configure)
+    shift 2>/dev/null || true
+    exec python3 "$CLI" configure "$@" ;;
   apply)
     cadence_require_launchd_root_config || exit 1
     python3 "$CLI" check || { echo "Fix the SCHED_* values in the active config, then re-run." >&2; exit 1; }
@@ -62,6 +67,6 @@ case "${1:-show}" in
     echo
     python3 "$CLI" status ;;
   *)
-    echo "usage: cadence schedule [show|status|register [path]|unregister [path]|tick|apply]" >&2
+    echo "usage: cadence schedule [show|status|register [path]|unregister [path]|tick|apply|configure]" >&2
     exit 2 ;;
 esac

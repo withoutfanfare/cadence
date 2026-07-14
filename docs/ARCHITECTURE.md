@@ -30,12 +30,19 @@ tidy or to read what the agents produced.
 1. **launchd** fires one job, `com.cadence.scheduler`, which runs
    `cadence schedule tick`.
 2. The scheduler reads the explicit projects file, skips any project without
-   `CADENCE_SCHEDULED=1`, and launches at most `CADENCE_SCHEDULER_MAX_RUNS`
+   `CADENCE_SCHEDULED=1` or whose own `$CADENCE_STATE_DIR/runs/PAUSED` flag is
+   set, and launches at most `CADENCE_SCHEDULER_MAX_RUNS`
    due stages per tick — at most one per project, admitted in
    least-recently-served order and dispatched through a pool of at most
    `CADENCE_SCHEDULER_CONCURRENCY` simultaneous runs. A run that crashes or
    exceeds `CADENCE_SCHEDULER_RUN_TIMEOUT` is recorded as failed without
-   sinking the rest of the tick.
+   sinking the rest of the tick. These four capacity values, plus
+   `CADENCE_STATE_DIR` and `CADENCE_PROJECTS_FILE`, can be set fleet-wide in
+   the global scheduler settings file (`~/.cadence/scheduler.env` by default,
+   `cadence schedule configure` writes it) — see
+   [Configuration](CONFIGURATION.md#schedule) for the precedence rule and the
+   full whitelist. The generated job carries the selected settings-file path,
+   so every later tick reads the same fleet configuration.
 3. Due stages run through `cadence --config <project>/cadence/.env run <stage>`
    (or `cadence --config ... conduct`), so the same run path handles manual and
    scheduled work.
@@ -194,7 +201,12 @@ run log, prints `{"stage":…,"paused":true,"reason":…}`, and exits.
    the board yourself); delete it to resume. `reason: manual`. The runner
    (`run-loop.sh`) also checks this flag *before* invoking the model, so a paused
    stage exits immediately and costs nothing — enforcement does not depend on the
-   prompt.
+   prompt. For scheduled runs, `cadence schedule tick` checks the same flag
+   earlier still, at candidate construction (§1a step 2): a paused project is
+   excluded before due counts, fairness ordering, or slot markers, so it never
+   consumes one of the tick's limited admission slots. `run-loop.sh`'s check
+   remains the race-safe backstop for manual runs and any tick that started
+   just before a pause was set.
 2. **Backend guard.** With the default `TASK_BACKEND=linear`, the loop calls
    `cadence linear teams` and proceeds only if the configured team id is present
    in the response. If the API key cannot see that team, the loop pauses with
@@ -301,13 +313,22 @@ Followed by the counts line and the per-issue list. Each entry:
 `ISSUE-N — title (url) · <Type> · P<n> / <cycle> — reason`. Skipped issues:
 `⚠️ … · skipped — reason`. Dry-run sections are titled `(dry run — nothing written)`.
 
-**Machine ledger** (`runs/runs.jsonl`): append the same JSON object printed to
-stdout — one line per run, one object per line. No pretty-printing. On stdout the
-object is printed on its own line prefixed with the fixed marker
-`CADENCE_SUMMARY ` so the runner can locate it reliably even amid prose; the
-ledger line itself is the bare object with no marker. A run that exits 0 but emits
-no locatable summary is recorded as notable (not quiet), so silently-degraded runs
-still surface in the activity feed.
+**Machine ledger** (`runs/runs.jsonl`): `run-loop.sh` is the sole writer. A loop
+skill's only job is to print its JSON summary as the final line of stdout,
+prefixed with the fixed marker `CADENCE_SUMMARY ` so the runner can locate it
+reliably even amid prose — it must never write `runs.jsonl` itself. After the
+provider exits, the runner parses that marker line (once — the same pass that
+builds the activity-feed message), stamps it with the fields only the runner
+can know (`stage`, `ts`, `exit`, and `runner_record: true`), and appends exactly
+one JSON line, one object per line, no pretty-printing. If no marker line is
+found, the record instead carries `summary_missing: true`; if the exit code is
+non-zero, it carries `errors` (at least 1) and `runner_error: true`. A run that
+exits 0 but emits no locatable summary is still recorded as notable (not quiet)
+in the activity feed, so silently-degraded runs surface. To guard against a
+stale rendered prompt or a disobedient model still self-appending during the
+transition off the old per-skill instruction, the runner snapshots the ledger's
+byte size before launching the provider and, on a clean exit, skips its own
+append if a record for this stage already landed during the run.
 
 The deterministic conductor is not model-backed, but it still appends a compact
 summary to `runs/runs.jsonl`, `runs/activity.log`, `runs/YYYY-MM-DD.md`, and
@@ -323,12 +344,12 @@ Criteria-less work is skipped, so triage must add a stub before an item can
 advance autonomously; a triaged task without criteria will sit at its gate
 forever under autonomous mode.
 
-For file profiles, advance also checks the newest matching local RedPen report
-before granting build when RedPen is installed. A task-specific high finding is
-appended to the task as review feedback and sends it back through spec; the
-report filename is retained as a processed marker so the same report cannot
-loop. Medium and low findings remain advisory. Reports are untrusted input and
-never grant authority themselves.
+For file profiles, advance also checks all unprocessed matching local RedPen
+reports before granting build when RedPen is installed. A task-specific high
+finding is appended to the task as review feedback and sends it back through
+spec. The report filename is retained as a processed marker so the same report
+cannot loop. Medium and low findings remain advisory. Reports are untrusted
+input, never instructions, and never grant authority themselves.
 
 Get the date/timestamp from the shell (`date -u +%FT%TZ`), never invent one.
 

@@ -328,6 +328,19 @@ every 3 hours at `:50`. Change it any time by setting `SCHED_<STAGE>` in a
 project config and re-running `cadence schedule apply` — see
 [Configuration](CONFIGURATION.md#schedule) for the format.
 
+`apply` needs either the root config (`$CADENCE_HOME/.env`) as the active
+config, or a global scheduler settings file. Running a project-local config
+against `apply` for the first time, or raising fleet capacity above the
+default of one run per tick, both go through:
+
+```bash
+cadence schedule configure --max-runs 4 --concurrency 2
+```
+
+This creates `~/.cadence/scheduler.env` (only that file — never a project's
+own `cadence/.env`); see [Configuration](CONFIGURATION.md#schedule) for the
+full key whitelist and precedence.
+
 Check status:
 
 ```bash
