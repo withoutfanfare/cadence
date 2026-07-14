@@ -73,7 +73,19 @@ final class CadenceActionsTests: XCTestCase {
             "cadence", "--config", "/p/cadence/.env", "run", "build"
         ])
         XCTAssertEqual(CadenceActions.worktreeRemoveCommand(cadencePath: "cadence", project: project, item: item), [
-            "cadence", "--config", "/p/cadence/.env", "worktree", "remove", "task-1"
+            "cadence", "--config", "/p/cadence/.env", "worktree", "remove", "task-1", "--if-merged"
+        ])
+    }
+
+    func testAutonomousCommandTogglesCurrentProjectState() {
+        let off = CadenceProject.fixture(name: "p", config: "/p/cadence/.env", backend: .file, health: .ok)
+        let on = CadenceProject.fixture(name: "p", config: "/p/cadence/.env", backend: .file, health: .ok, autonomous: true)
+
+        XCTAssertEqual(CadenceActions.autonomousCommand(cadencePath: "cadence", project: off), [
+            "cadence", "--config", "/p/cadence/.env", "autonomous", "on"
+        ])
+        XCTAssertEqual(CadenceActions.autonomousCommand(cadencePath: "cadence", project: on), [
+            "cadence", "--config", "/p/cadence/.env", "autonomous", "off"
         ])
     }
 }

@@ -46,7 +46,7 @@ FILE_STAGE_RULES = {
     ],
     "advance": [
         "Run `cadence tasks list --label agent:auto`.",
-        "Grant only the next local gate when the resting label is ready: `agent:triaged` to `agent:spec`, `agent:specced` to `agent:build`, or repair/review labels after build.",
+        "Grant only the next local gate when the resting label is ready: `agent:triaged` to `agent:spec`, `agent:specced` to `agent:build`, or repair/review labels after build. Before advancing a specced task, inspect its `blocked` field: if `blocked` is `true`, skip it and never add `agent:build`. Evaluate each task independently, so other tasks waiting for a human do not block selection.",
     ],
     "roadmap": [
         "Read the optional goal from the file named by the GOAL_FILE environment variable (default cadence/goal.md, relative to the project root). If it exists and is non-empty, it steers what you look for. If it is missing or empty, that is normal — do not idle; work against the standing quality rubric instead: real bugs and correctness errors, performance problems (payload, slow paths, N+1 queries, image and asset weight), accessibility gaps, security issues, dead code and unused assets, and consistency defects where code violates a pattern the codebase already establishes. Prefer what a senior engineer would stop and flag.",

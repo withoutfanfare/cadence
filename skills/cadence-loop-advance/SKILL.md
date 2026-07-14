@@ -107,7 +107,7 @@ nothing). Still write the dry-run-titled dated run files.
    - **pr-open / revised** → `gates` = true (build/revise escalate on gate failure
      rather than resting here, so resting here means the gates passed). Find the PR:
      the branch is the issue identifier lowercased (e.g. `stu-1799`); `gh pr view
-     --json number,url --head <branch>` then `gh pr diff <number>`.
+     <branch> --json number,url` then `gh pr diff <number>`.
      - `criteria_met` = run `cadence advance criteria` on the spec doc to get the
        list, then judge each criterion against the PR diff (and the test files it
        adds/changes). Every criterion must be demonstrably satisfied; if any is not,
@@ -141,8 +141,9 @@ nothing). Still write the dry-run-titled dated run files.
    is `pr-open` and the issue rests at `specced` with `blocked_by` entries but
    `blocked: false`, the labels alone unblocked it — verify each non-terminal
    blocker's PR really exists and is open or merged before granting build:
-   `gh pr view --head <blocker-identifier-lowercased> --json state`. A missing
-   or closed PR means a stale label; treat the issue as `blocked: true`.
+   `gh pr list --head <blocker-identifier-lowercased> --state all --json state
+   --limit 1`. An empty result or a closed PR means a stale label; treat the issue
+   as `blocked: true`.
    `issues_done` is how many you have already advanced this run.
 6. **Act** on `action` (skip all writes in `--dry-run`):
    - `grant-spec` → `cadence linear issue-update <ID> --add-label agent:spec`
