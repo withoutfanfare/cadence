@@ -481,7 +481,7 @@ msg_line = build_message()
 # the fields only the runner can know (stage/ts/exit) and marked as runner-owned so
 # `cadence throughput` can tell a real record from a stale/self-appended one.
 record = dict(last or {})
-record["stage"] = record.get("stage") or record.get("loop") or stage
+record["stage"] = stage
 record["ts"] = ts
 record["exit"] = rc
 record["runner_record"] = True

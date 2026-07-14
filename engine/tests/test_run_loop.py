@@ -208,7 +208,7 @@ fi
 exec {real_python} "$@"
 """)
         self._write_exe("codex", "#!/bin/sh\n"
-                        "printf 'CADENCE_SUMMARY {\"stage\":\"triage\",\"triaged\":1,\"errors\":0}\\n'\n")
+                        "printf 'CADENCE_SUMMARY {\"stage\":\"build\",\"loop\":\"triage\",\"triaged\":1,\"errors\":0}\\n'\n")
 
         result = self._run("triage", ORCHESTRATOR_TRIAGE="codex:gpt-test")
 
@@ -217,6 +217,7 @@ exec {real_python} "$@"
         self.assertEqual(len(lines), 1)
         record = json.loads(lines[0])
         self.assertTrue(record["runner_record"])
+        self.assertEqual(record["stage"], "triage")
         self.assertEqual(record["triaged"], 1)
         self.assertEqual(record["exit"], 0)
         with open(os.path.join(self.state, "runs", "activity.log"), encoding="utf-8") as f:

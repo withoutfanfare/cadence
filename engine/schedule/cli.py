@@ -21,6 +21,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from xml.sax.saxutils import escape
 
 ENGINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOME = os.path.dirname(ENGINE)
@@ -163,9 +164,19 @@ def _program_args(kind, arg, home):
     return [f"{home}/bin/cadence", arg]
 
 
-def render_scheduler_plist(home, state, interval=SCHEDULER_DEFAULT_INTERVAL):
-    args_xml = "\n".join(f"    <string>{a}</string>"
+def _xml(value):
+    return escape(str(value))
+
+
+def render_scheduler_plist(home, state, interval=SCHEDULER_DEFAULT_INTERVAL,
+                           scheduler_config=None):
+    args_xml = "\n".join(f"    <string>{_xml(a)}</string>"
                          for a in [f"{home}/bin/cadence", "schedule", "tick"])
+    config_xml = ""
+    if scheduler_config:
+        config_xml = ("  <key>EnvironmentVariables</key>\n"
+                      "  <dict><key>CADENCE_SCHEDULER_CONFIG</key>"
+                      f"<string>{_xml(scheduler_config)}</string></dict>\n")
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -177,8 +188,8 @@ def render_scheduler_plist(home, state, interval=SCHEDULER_DEFAULT_INTERVAL):
 {args_xml}
   </array>
   <key>StartInterval</key><integer>{interval}</integer>
-  <key>StandardOutPath</key><string>{state}/logs/scheduler.launchd.log</string>
-  <key>StandardErrorPath</key><string>{state}/logs/scheduler.launchd.err</string>
+{config_xml}  <key>StandardOutPath</key><string>{_xml(state)}/logs/scheduler.launchd.log</string>
+  <key>StandardErrorPath</key><string>{_xml(state)}/logs/scheduler.launchd.err</string>
   <key>RunAtLoad</key><false/>
 </dict>
 </plist>
@@ -187,7 +198,7 @@ def render_scheduler_plist(home, state, interval=SCHEDULER_DEFAULT_INTERVAL):
 
 def render_plist(stage, home, state, spec):
     label, kind, arg, _ = JOBS[stage]
-    args_xml = "\n".join(f"    <string>{a}</string>"
+    args_xml = "\n".join(f"    <string>{_xml(a)}</string>"
                          for a in _program_args(kind, arg, home))
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -200,8 +211,8 @@ def render_plist(stage, home, state, spec):
 {args_xml}
   </array>
 {_schedule_xml(spec)}
-  <key>StandardOutPath</key><string>{state}/logs/{stage}.launchd.log</string>
-  <key>StandardErrorPath</key><string>{state}/logs/{stage}.launchd.err</string>
+  <key>StandardOutPath</key><string>{_xml(state)}/logs/{stage}.launchd.log</string>
+  <key>StandardErrorPath</key><string>{_xml(state)}/logs/{stage}.launchd.err</string>
   <key>RunAtLoad</key><false/>
 </dict>
 </plist>
@@ -261,10 +272,18 @@ def main(argv):
         return configure(os.environ, argv[1:])
 
     if cmd == "render-scheduler":
-        merged, _ = load_scheduler_env(os.environ)
-        scheduler_state = merged.get("CADENCE_STATE_DIR") or state
+        merged, settings_path = load_scheduler_env(os.environ)
+        settings_exists = os.path.isfile(settings_path)
+        settings = read_env_file(settings_path) if settings_exists else {}
+        # An older capacity-only settings file still authorises project-local
+        # `apply`. Fall back to the fleet default here, never that project's
+        # state directory, so its launchd paths cannot leak into the global job.
+        scheduler_state = _path_value(
+            settings.get("CADENCE_STATE_DIR"),
+            os.path.expanduser("~/.cadence") if settings_exists else state,
+        )
         interval = int(merged.get("CADENCE_SCHEDULER_INTERVAL") or SCHEDULER_DEFAULT_INTERVAL)
-        sys.stdout.write(render_scheduler_plist(home, scheduler_state, interval))
+        sys.stdout.write(render_scheduler_plist(home, scheduler_state, interval, settings_path))
         return 0
 
     if cmd == "render":
@@ -582,7 +601,7 @@ def scheduler_config_path(env):
     or ~/.cadence/scheduler.env by default."""
     explicit = env.get("CADENCE_SCHEDULER_CONFIG")
     if explicit:
-        return os.path.expanduser(os.path.expandvars(explicit))
+        return os.path.abspath(os.path.expanduser(os.path.expandvars(explicit)))
     return os.path.expanduser("~/.cadence/scheduler.env")
 
 

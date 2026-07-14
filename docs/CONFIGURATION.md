@@ -385,7 +385,7 @@ the untouched process environment plus `CADENCE_CONFIG`, so a project's own
 
 | Variable | Default | Scope | Description |
 | --- | --- | --- | --- |
-| `CADENCE_SCHEDULER_CONFIG` | `$HOME/.cadence/scheduler.env` | scheduler | Path to the global scheduler settings file (see above). |
+| `CADENCE_SCHEDULER_CONFIG` | `$HOME/.cadence/scheduler.env` | scheduler | Path to the global scheduler settings file (see above). `schedule apply` resolves it and stores that path in the launchd job, so later ticks use the same file. |
 | `CADENCE_PROJECTS_FILE` | `$CADENCE_STATE_DIR/projects.txt` | scheduler | Newline-separated project folders or explicit `cadence/.env` paths. |
 | `CADENCE_SCHEDULER_INTERVAL` | `300` | scheduler | Launchd wake interval in seconds. |
 | `CADENCE_SCHEDULER_MAX_RUNS` | `1` | scheduler | Maximum scheduled stage runs per tick across all projects (the throughput ceiling). |

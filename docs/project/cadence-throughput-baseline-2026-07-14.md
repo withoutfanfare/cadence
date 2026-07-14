@@ -41,7 +41,7 @@ Ledger records under-count real work: successful runs write no record
 | Latest record | 2026-07-14T00:56:59Z | 2026-07-14T06:22:55Z |
 
 Throughput report, same window (runs = ledger lines, so mostly pause
-records): Scanway triage 2, spec 6, build 5, revise 98, advance 13, conduct 3
+records): Scanway triage 2, spec 6, build 5, revise 98, advance 13, conduct 2
 — nothing recorded as produced. Portfolio spec 3, revise 9, advance 1,
 conduct 3 — conduct produced “2 tagged”. Both ledgers go quiet after the
 projects were resumed today: post-resume successful runs leave no record,
