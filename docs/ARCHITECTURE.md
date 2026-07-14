@@ -35,7 +35,12 @@ tidy or to read what the agents produced.
    least-recently-served order and dispatched through a pool of at most
    `CADENCE_SCHEDULER_CONCURRENCY` simultaneous runs. A run that crashes or
    exceeds `CADENCE_SCHEDULER_RUN_TIMEOUT` is recorded as failed without
-   sinking the rest of the tick.
+   sinking the rest of the tick. These four capacity values, plus
+   `CADENCE_STATE_DIR` and `CADENCE_PROJECTS_FILE`, can be set fleet-wide in
+   the global scheduler settings file (`~/.cadence/scheduler.env` by default,
+   `cadence schedule configure` writes it) — see
+   [Configuration](CONFIGURATION.md#schedule) for the precedence rule and the
+   full whitelist.
 3. Due stages run through `cadence --config <project>/cadence/.env run <stage>`
    (or `cadence --config ... conduct`), so the same run path handles manual and
    scheduled work.

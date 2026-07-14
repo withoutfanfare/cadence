@@ -32,6 +32,7 @@ cadence run triage      # run one stage now; live unless paused
 cadence restart         # reload launchd jobs
 cadence schedule apply  # regenerate and reload the single scheduler plist
 cadence schedule register [path]  # add a project to the scheduler registry
+cadence schedule configure --max-runs N --concurrency N [--interval SECONDS] [--timeout SECONDS]  # set global scheduler capacity
 cadence onboard [path]  # put a project on the scheduler in one step (registry, CADENCE_SCHEDULED=1, scheduler job, doctor); new projects start paused
 cadence offboard [path] [--purge]  # take a project off the scheduler: pause, CADENCE_SCHEDULED=0, unregister; deletes nothing without --purge
 ```
@@ -413,6 +414,12 @@ checked when the scheduler reads them. For example, `SCHED_BUILD=:05` moves the
 build loop to `:05` each hour; `SCHED_TRIAGE=4h@0` runs triage every four hours
 (00:00, 04:00, …). Use `SCHED_BUILD=off` to disable a stage for one project.
 
+`apply` refuses to run from a project-local active config unless a global
+scheduler settings file exists (`cadence schedule configure` creates one) —
+otherwise that project's `CADENCE_STATE_DIR` would get baked into the
+fleet-wide plist's launchd log paths. Run it against the root config
+(`$CADENCE_HOME/.env`), or create the settings file first.
+
 `cadence restart` is the lighter sibling: it reloads the existing plist files
 without regenerating them — use it after the Cadence repo moves, or after editing a
 plist by hand.
@@ -471,6 +478,20 @@ once (default 4), so many projects share the scheduler fairly rather than one
 project starving the rest. Raise `MAX_RUNS` as the fleet grows; keep
 `CONCURRENCY` modest to bound simultaneous model spend. `cadence pause` is per
 state directory — pausing one project does not pause the others.
+
+Set fleet-wide capacity once, independent of any single project's config,
+with:
+
+```bash
+cadence schedule configure --max-runs 4 --concurrency 2
+```
+
+This writes only the global scheduler settings file
+(`~/.cadence/scheduler.env` by default); it never touches a project's
+`cadence/.env`. See [Configuration](CONFIGURATION.md#schedule) for the full
+key whitelist and precedence rule, and note that `cadence schedule apply` now
+also runs from a project-local active config once this settings file exists
+(see [Changing the Schedule](#changing-the-schedule) above).
 
 ### Adding and removing projects
 
