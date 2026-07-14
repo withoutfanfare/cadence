@@ -803,6 +803,26 @@ class TestSchedulerSettings(unittest.TestCase):
         self.assertIn(os.path.join(tmp, ".cadence", "logs", "scheduler.launchd.log"),
                       buf.getvalue())
 
+    def test_render_scheduler_uses_fleet_default_without_settings_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = os.path.join(tmp, "missing-scheduler.env")
+            project_state = os.path.join(tmp, "project-state")
+            env = {
+                "CADENCE_HOME": "/cadence",
+                "CADENCE_SCHEDULER_CONFIG": settings,
+                "CADENCE_STATE_DIR": project_state,
+                "HOME": tmp,
+            }
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env, clear=True), \
+                    contextlib.redirect_stdout(buf):
+                rc = cli.main(["render-scheduler"])
+
+        self.assertEqual(rc, 0)
+        self.assertNotIn(project_state, buf.getvalue())
+        self.assertIn(os.path.join(tmp, ".cadence", "logs", "scheduler.launchd.log"),
+                      buf.getvalue())
+
     def test_render_scheduler_expands_fleet_state_from_settings_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             settings = os.path.join(tmp, "scheduler.env")
