@@ -128,6 +128,29 @@ class TestPromptRender(unittest.TestCase):
         self.assertIn("other tasks waiting for a human do not block selection", text)
         self.assertNotIn("cadence linear", text)
 
+    def test_file_backend_routes_blocking_redpen_feedback_back_through_spec(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env["TASK_BACKEND"] = "file"
+            env["TASK_FILE"] = "/tmp/tasks.md"
+            rendered = {}
+            for stage in ("advance", "spec"):
+                out = pathlib.Path(tmp) / f"{stage}.md"
+                result = subprocess.run(
+                    [sys.executable, str(ROOT / "engine" / "prompts" / "render.py"),
+                     stage, "--output", str(out)],
+                    cwd=ROOT, env=env, text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                rendered[stage] = out.read_text(encoding="utf-8")
+
+        self.assertIn("redpen status", rendered["advance"])
+        self.assertIn("findings_high", rendered["advance"])
+        self.assertIn("RedPen reviewed:", rendered["advance"])
+        self.assertIn("remove `agent:specced`", rendered["advance"])
+        self.assertIn("add `agent:spec`", rendered["advance"])
+        self.assertIn("RedPen feedback", rendered["spec"])
+        self.assertIn("RedPen reviewed:", rendered["spec"])
+
     def test_file_backend_roadmap_prompt_reads_goal_and_uses_tasks_add(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = pathlib.Path(tmp) / "prompt.md"
