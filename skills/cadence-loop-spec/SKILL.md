@@ -58,7 +58,8 @@ remote `$REPO_SLUG`) and read against the origin tracking branch for `$BASE_BRAN
 
 - The only Linear writes you make: the **spec document**, the **stage-label
   transition** (`−agent:spec −agent:claimed +agent:specced`), `agent:claimed`
-  itself, `agent:needs-attention` on failure, a failure **comment**, and — when a
+  itself, `agent:needs-attention` on failure, a failure **comment**, one
+  **decision brief** comment posted after a successful transition, and — when a
   duplicate cluster is confirmed or cleared (see step 4) — `agent:superseded` +
   `duplicateOf` + a comment on the **siblings**, and removing `agent:dupe-candidate`
   / a stale `relatedTo` link.
@@ -148,7 +149,53 @@ check fails, emit the standard pause JSON and records described in
    you re-based (canonical ≠ the gated issue), also release the gated issue's claim
    (`cadence linear issue-update <gated-ID> --remove-label agent:claimed`); it
    already carries `agent:superseded` from step 4, which keeps every loop off it.
-7. **Log.** Record the run via the dated-file convention in `docs/ARCHITECTURE.md`
+7. **Brief.** Once the transition in step 6 has succeeded, post the decision
+   brief so the human's next move is a five-line read rather than a document.
+   Score the spec's named files first, then render:
+
+   ```bash
+   # Every repo-relative path the spec names, as a JSON array. `[]` if none.
+   SPEC_FILES='["app/Services/PricingService.php","tests/Feature/PricingTest.php"]'
+   if [ "$(printf '%s' "$SPEC_FILES" | jq 'length')" -eq 0 ]; then
+     # A spec with no identifiable code scope is uncertain, not a zero-risk change.
+     RISK='{"risk":"medium","reasons":["spec names no affected files"]}'
+   else
+     RISK=$(jq -nc --argjson files "$SPEC_FILES" \
+       '{files:$files,insertions:0,deletions:0,gates_passed:true}' \
+       | cadence brief risk)
+   fi
+   cadence brief render --payload "$(jq -nc \
+     --arg did "<one sentence: what the spec covers>" \
+     --arg unsure "<the single thing you are least confident about>" \
+     --arg check "<the one file or decision a human should look at first>" \
+     --argjson risk "$RISK" \
+     '{loop:"spec",issue:"<ID>",did:$did,unsure:$unsure,check_first:$check,
+       risk:$risk.risk,risk_reasons:$risk.reasons,next_gate:"agent:build"}')" \
+     > "$TMPDIR/brief-<ID>.md"
+   cadence linear issue-comment <ID> "$(cat "$TMPDIR/brief-<ID>.md")"
+   ```
+
+   `SPEC_FILES` must be assigned before use, as above — a JSON array of every
+   repo-relative path the spec names. Do **not** pass `tests_changed`: `cadence
+   brief risk` derives it from the paths, so a spec that names both a service and
+   its test scores `low` rather than being marked "no test changed". If the spec
+   names no paths, the brief reports `medium`: unknown code scope must not be
+   presented to a human as a measured low-risk change.
+
+   Rules for the three sentences:
+   - **did** — what changed, not how hard it was. One sentence.
+   - **unsure** — a real uncertainty, named specifically. If you are genuinely
+     confident, say what you assumed instead. Never write "nothing".
+   - **check_first** — one file, decision or acceptance criterion. The thing you
+     would look at first if you were reviewing this.
+
+   If the brief fails to post, do **not** roll back the transition and do not set
+   `agent:needs-attention` — the hand-back itself succeeded. Note the failure in
+   the run digest and carry on.
+
+   Skip entirely in `--dry-run`.
+
+8. **Log.** Record the run via the dated-file convention in `docs/ARCHITECTURE.md`
    §7 (skip the writes in `--dry-run`, but still write the dry-run-titled section):
    - **Human digest:** append to
      `$CADENCE_STATE_DIR/runs/<YYYY-MM-DD>.md`

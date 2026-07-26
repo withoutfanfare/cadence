@@ -152,7 +152,45 @@ in `docs/ARCHITECTURE.md` §5a, then exit without touching Linear, git, or files
    `cadence linear issue-update <ID> --remove-label agent:revise --remove-label agent:claimed --remove-label agent:pr-open --add-label agent:revised`
    (drop the superseded `agent:pr-open` — `agent:revised` is now the resting label;
    leaving both strands the issue on two lifecycle labels).
-9. **Log.** Append the **Revisions pushed** digest to the dated run files (see
+9. **Brief.** Once the transition in step 8 has succeeded, post the decision
+   brief. Score the real diff, and fold the re-review verdict into `unsure`:
+
+   ```bash
+   # BLOCKING=true if the step 7 re-review raised any blocking finding.
+   BLOCKING=false
+   # Run gh from the product checkout: it resolves the repo from the working
+   # directory, and this loop's cwd is the worktree, not $PROJECT_DIR.
+   PR=$(cd "$PROJECT_DIR" && gh pr view "$(echo '<ID>' | tr 'A-Z' 'a-z')" \
+          --json number -q .number)
+   RISK=$(cd "$PROJECT_DIR" && gh pr view "$PR" --json additions,deletions,files \
+     | jq -c --argjson blocking "$BLOCKING" \
+         '{files:[.files[].path],insertions:.additions,deletions:.deletions,
+           gates_passed:true,blocking_review:$blocking}' \
+     | cadence brief risk)
+   cadence brief render --payload "$(jq -nc \
+     --arg did "<one sentence: what the PR changes>" \
+     --arg unsure "<this re-review's highest finding, or your own biggest doubt>" \
+     --arg check "<the one file or criterion to look at first>" \
+     --argjson risk "$RISK" \
+     '{loop:"revise",issue:"<ID>",did:$did,unsure:$unsure,check_first:$check,
+       risk:$risk.risk,risk_reasons:$risk.reasons,next_gate:"agent:revise"}')" \
+     > "$TMPDIR/brief-<ID>.md"
+   cadence linear issue-comment <ID> "$(cat "$TMPDIR/brief-<ID>.md")"
+   ```
+
+   `gates_passed` is `true` because this loop escalates on gate failure rather
+   than reaching this step. `blocking_review` is the separate signal: **set
+   `BLOCKING=true` whenever the step 7 re-review still raises any blocking
+   finding**, which forces the band to `high`.
+
+   Both must happen: `unsure` names the finding, *and* the band says `high`.
+   Naming it in `unsure` alone is not enough — a reader who trusts a `low` band
+   may never read that far, which is the whole failure the brief exists to
+   prevent.
+
+   Same failure rule as the spec loop: a failed brief never rolls back the
+   transition. Skip entirely in `--dry-run`.
+10. **Log.** Append the **Revisions pushed** digest to the dated run files (see
    "On finishing"): the per-issue line
    `🤖 **Revisions pushed** · [PR #N](<pr-url>) · [<ID> — <title>](<issue-url>)`,
    what changed + re-review verdict, **Your move:** review → merge or another

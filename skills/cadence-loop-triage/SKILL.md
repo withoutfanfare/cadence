@@ -69,7 +69,10 @@ markers, and the duplicate-candidate proposal (a `relatedTo` link +
 `agent:dupe-candidate`, step 4). Full-mode PR back-fill may create a new Linear
 issue for a merged PR with no existing link, and may close an `agent:pr-open`
 issue whose PR a human has merged (step 6). Failure comments are allowed only
-when a per-issue failure needs a durable note. Never write documents. Never
+when a per-issue failure needs a durable note.
+One **decision brief** comment per issue is also allowed, posted after a
+successful hand-back — see step 7.
+Never write documents. Never
 overwrite a field a human has already set — you fill blanks only. In `--dry-run`,
 write none of these — list the intended changes in the digest instead.
 
@@ -80,8 +83,9 @@ write none of these — list the intended changes in the digest instead.
   `agent:needs-human` terminal markers (see "Terminal per issue"), and — for
   duplicate detection — the `relatedTo` link and the `agent:dupe-candidate` flag
   (see step 4). Full-mode PR back-fill (creating an issue for an unlinked merged
-  PR, or closing an `agent:pr-open` issue whose PR a human merged) and
-  failure-only comments are the only exceptions.
+  PR, or closing an `agent:pr-open` issue whose PR a human merged), failure-only
+  comments, and the single per-issue decision brief of step 7 are the only
+  exceptions.
 - Duplicate detection is **propose only**. Never set `duplicateOf`, never set
   `agent:superseded`, never `blockedBy`/`blocks`, never hold. You only *suggest*
   a cluster with `relatedTo` + `agent:dupe-candidate`; the spec loop validates it
@@ -174,7 +178,8 @@ check fails, emit the standard pause JSON and records described in
      `agent:needs-human` if the issue can't be classified at all. Exactly one, every
      time; in `--dry-run`, name the intended marker in the digest instead.
 
-3. Post nothing per-issue. Accumulate changes for the single digest in step 7.
+3. Post nothing per-issue except the decision brief in step 7. Accumulate every
+   other change for the single digest in step 8.
 
 4. Duplicate / common-fix scan (every run — enrich and full). Scan only issues **not
    already clustered** — exclude any carrying `agent:dupe-candidate` or
@@ -219,7 +224,37 @@ check fails, emit the standard pause JSON and records described in
      still open untouched.
    Count both as `backfilled`.
 
-7. Produce one digest: counts of issues prioritised, cycled, labelled, stubbed,
+7. **Brief.** For each issue this run left at `agent:triaged`, post one decision
+   brief. There is no spec and no diff yet, so pass an empty file list — the
+   score comes back `low`, which is correct for a gate that authorises a
+   document:
+
+   ```bash
+   RISK=$(jq -nc '{files:[],insertions:0,deletions:0,gates_passed:true}' \
+     | cadence brief risk)
+   cadence brief render --payload "$(jq -nc \
+     --arg did "<one sentence: what you filled in and what the issue is asking for>" \
+     --arg unsure "<the thing about this issue you could not settle from the text>" \
+     --arg check "<the acceptance criterion or field a human should confirm>" \
+     --argjson risk "$RISK" \
+     '{loop:"triage",issue:"<ID>",did:$did,unsure:$unsure,check_first:$check,
+       risk:$risk.risk,risk_reasons:$risk.reasons,next_gate:"agent:spec"}')" \
+     > "$TMPDIR/brief-<ID>.md"
+   cadence linear issue-comment <ID> "$(cat "$TMPDIR/brief-<ID>.md")"
+   ```
+
+   An issue also carrying `agent:dupe-candidate` still needs the human's Gate 1:
+   the spec loop acts only after `agent:spec`, then validates or clears the
+   proposed cluster. Its brief must say that explicitly: `did` names the
+   proposed cluster, `unsure` names whether one change really covers its members,
+   and `check_first` names the provisional canonical and siblings. `next_gate`
+   remains `agent:spec`. Post nothing for issues left at `agent:needs-human`,
+   `agent:needs-attention` or any parked state.
+
+   Record any brief that fails to post in the step 8 digest; never let a failed
+   brief change the issue's labels. Skip entirely in `--dry-run`.
+
+8. Produce one digest: counts of issues prioritised, cycled, labelled, stubbed,
    linked as duplicate candidates, marked triaged, parked as needs-human, flagged
    stale, and back-filled, then a per-issue list with links. List any issue newly
    parked `agent:needs-human` once as `⚠️ [<ID> — title](url) · parked — needs
@@ -245,10 +280,10 @@ check fails, emit the standard pause JSON and records described in
      yourself.
 
    Use UK English. The dated files are the only digest notification — do not post a
-   Linear comment for it. (Linear comments are still used only for per-issue failure
-   notes.)
+   Linear comment for it. (Linear comments are used only for per-issue failure
+   notes and the decision brief of step 7 — never for the digest itself.)
 
-8. Remove any `agent:claimed` markers you set.
+9. Remove any `agent:claimed` markers you set.
 
 ## Writing rules for anything you post
 
