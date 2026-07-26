@@ -118,6 +118,97 @@ def parse(text):
     return data if isinstance(data, dict) else None
 
 
+# Paths whose change deserves a human read regardless of how small the diff is.
+# ponytail: substring match on the path, not taint analysis — move to a
+# configured list per project if the false-positive rate starts to grate.
+SENSITIVE_PATTERNS = (
+    "auth", "login", "session", "password", "token", "secret", "credential",
+    "payment", "billing", "invoice", "charge", "refund", "price", "vat",
+    "migration", ".env", "config/", "middleware", "webhook",
+    "permission", "policy", "gate", "role",
+)
+
+_TEST_DIRS = {"test", "tests", "spec", "specs", "__tests__", "cypress", "e2e"}
+
+BIG_DIFF = 600
+MODERATE_DIFF = 200
+MANY_FILES = 12
+
+
+def _is_test(path):
+    """Recognise conventional test paths without substring false positives.
+
+    `LatestWidget.php` and `ContestEntry.php` are source files, despite containing
+    the letters "test". Directory names and filename boundaries are the useful
+    signals here.
+    """
+    clean = str(path or "").replace("\\", "/").strip("/")
+    parts = [part for part in clean.split("/") if part]
+    if not parts:
+        return False
+    if any(part.lower() in _TEST_DIRS for part in parts[:-1]):
+        return True
+    stem = parts[-1].rsplit(".", 1)[0]
+    lower = stem.lower()
+    return (
+        lower.startswith(("test_", "test-"))
+        or lower.endswith(("_test", "-test", ".test", ".spec"))
+        or bool(re.search(r"(?:^Test[A-Z]|Test$)", stem))
+    )
+
+
+def score(facts):
+    """Score a change low/medium/high with the reasons that drove it.
+
+    Highest band wins: any single high signal makes the whole change high.
+    """
+    files = [str(f) for f in (facts.get("files") or [])]
+    churn = int(facts.get("insertions") or 0) + int(facts.get("deletions") or 0)
+    source_files = [f for f in files if not _is_test(f)]
+    # Derive tests_changed from the file list when the caller does not state it.
+    # Callers that pass a flat `false` (a spec naming both a service and its test,
+    # say) would otherwise be scored medium for "no test changed" and, under the
+    # default low ceiling, escalate nearly every substantive issue. Deriving it
+    # fixes that at the source rather than at each call site.
+    tests_changed = facts.get("tests_changed")
+    tests_changed = (any(_is_test(f) for f in files) if tests_changed is None
+                     else bool(tests_changed))
+    gates_passed = facts.get("gates_passed", True)
+
+    high, medium = [], []
+
+    sensitive = sorted({p for f in files for p in SENSITIVE_PATTERNS if p in f.lower()})
+    if sensitive:
+        high.append("touches sensitive paths: " + ", ".join(sensitive))
+    if not gates_passed:
+        high.append("gates did not pass")
+    # A blocking review finding is a separate signal from the gates: the gates are
+    # CI, this is a reviewer saying "do not ship as-is". A small, clean, well-tested
+    # diff can still carry one, and it would otherwise be banded `low` — the band a
+    # reader skims past. Kept as its own fact rather than folded into
+    # `gates_passed`, so the two never get conflated.
+    if facts.get("blocking_review"):
+        high.append("the folded review raised a blocking finding")
+    if churn > BIG_DIFF:
+        high.append(f"very large diff ({churn} lines)")
+
+    if source_files and not tests_changed:
+        medium.append(f"no test changed alongside {len(source_files)} source file(s)")
+    if len(files) > MANY_FILES:
+        medium.append(f"{len(files)} files touched")
+    if churn > MODERATE_DIFF:
+        medium.append(f"moderate diff ({churn} lines)")
+
+    if high:
+        return {"risk": "high", "reasons": high}
+    if medium:
+        return {"risk": "medium", "reasons": medium}
+    if not files:
+        return {"risk": "low", "reasons": ["no file changes reported"]}
+    return {"risk": "low", "reasons": [f"{len(files)} file(s), {churn} lines, tests touched"
+                                       if tests_changed else f"{len(files)} test file(s)"]}
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     ap = argparse.ArgumentParser(prog="cadence-brief")
@@ -126,8 +217,14 @@ def main(argv=None):
     r.add_argument("--payload", help="brief JSON (default: read stdin)")
     p = sub.add_parser("parse")
     p.add_argument("--file", help="comment body file (default: read stdin)")
+    k = sub.add_parser("risk")
+    k.add_argument("--facts", help="facts JSON (default: read stdin)")
     args = ap.parse_args(argv)
 
+    if args.cmd == "risk":
+        raw = args.facts if args.facts else sys.stdin.read()
+        print(json.dumps(score(json.loads(raw)), separators=(",", ":"), sort_keys=True))
+        return 0
     if args.cmd == "render":
         raw = args.payload if args.payload else sys.stdin.read()
         try:

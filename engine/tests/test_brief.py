@@ -82,5 +82,100 @@ class TestParse(unittest.TestCase):
         self.assertIsNone(cli.parse(cli.MARKER + "{not json" + " -->"))
 
 
+def facts(**kw):
+    base = {"files": ["app/Models/Widget.php"], "insertions": 20, "deletions": 4,
+            "tests_changed": True, "gates_passed": True}
+    base.update(kw)
+    return base
+
+
+class TestRisk(unittest.TestCase):
+    def test_small_tested_change_is_low(self):
+        self.assertEqual(cli.score(facts())["risk"], "low")
+
+    def test_sensitive_path_is_high(self):
+        out = cli.score(facts(files=["app/Http/Middleware/Authenticate.php"]))
+        self.assertEqual(out["risk"], "high")
+        self.assertTrue(any("sensitive" in r for r in out["reasons"]))
+
+    def test_migration_is_high(self):
+        self.assertEqual(cli.score(facts(files=["database/migrations/2026_x.php"]))["risk"], "high")
+
+    def test_failed_gates_are_high(self):
+        out = cli.score(facts(gates_passed=False))
+        self.assertEqual(out["risk"], "high")
+        self.assertTrue(any("gates" in r for r in out["reasons"]))
+
+    def test_very_large_diff_is_high(self):
+        self.assertEqual(cli.score(facts(insertions=700, deletions=50))["risk"], "high")
+
+    def test_untested_source_change_is_medium(self):
+        out = cli.score(facts(tests_changed=False))
+        self.assertEqual(out["risk"], "medium")
+        self.assertTrue(any("no test" in r for r in out["reasons"]))
+
+    def test_many_files_is_medium(self):
+        out = cli.score(facts(files=[f"app/A{n}.php" for n in range(15)]))
+        self.assertEqual(out["risk"], "medium")
+
+    def test_moderate_diff_is_medium(self):
+        self.assertEqual(cli.score(facts(insertions=250, deletions=10))["risk"], "medium")
+
+    def test_test_only_change_is_low_without_tests_changed_flag(self):
+        out = cli.score(facts(files=["tests/Feature/WidgetTest.php"], tests_changed=False))
+        self.assertEqual(out["risk"], "low")
+
+    def test_blocking_review_finding_forces_high(self):
+        # A tiny, tested, non-sensitive change that a reviewer says blocks must
+        # not be banded `low` — `low` is the band a reader skims past.
+        out = cli.score(facts(blocking_review=True))
+        self.assertEqual(out["risk"], "high")
+        self.assertTrue(any("blocking finding" in r for r in out["reasons"]))
+
+    def test_absent_blocking_review_does_not_raise_the_band(self):
+        self.assertEqual(cli.score(facts())["risk"], "low")
+
+    def test_blocking_review_false_is_treated_as_clean(self):
+        self.assertEqual(cli.score(facts(blocking_review=False))["risk"], "low")
+
+    def test_derives_tests_changed_from_files_when_not_stated(self):
+        # A spec naming a service and its test must not score medium for
+        # "no test changed" — that would escalate almost everything.
+        out = cli.score({"files": ["app/Models/Widget.php", "tests/WidgetTest.php"]})
+        self.assertEqual(out["risk"], "low")
+
+    def test_derived_flag_is_false_when_no_test_file_is_named(self):
+        out = cli.score({"files": ["app/Models/Widget.php"]})
+        self.assertEqual(out["risk"], "medium")
+        self.assertTrue(any("no test" in r for r in out["reasons"]))
+
+    def test_explicit_false_still_wins_over_derivation(self):
+        out = cli.score(facts(files=["app/Models/Widget.php", "tests/WidgetTest.php"],
+                              tests_changed=False))
+        self.assertEqual(out["risk"], "medium")
+
+    def test_source_name_containing_test_is_not_a_test_file(self):
+        # `Latest` and `Contest` contain the letters "test" but are ordinary
+        # source names. Treating either as a test would under-report risk.
+        for path in ("app/LatestWidget.php", "app/ContestEntry.php"):
+            with self.subTest(path=path):
+                out = cli.score({"files": [path]})
+                self.assertEqual(out["risk"], "medium")
+                self.assertTrue(any("no test" in r for r in out["reasons"]))
+
+    def test_common_test_file_names_are_recognised(self):
+        for path in ("tests/Widget.php", "test_widget.py", "TestWidget.php",
+                     "WidgetTest.php",
+                     "widget.test.ts", "widget.spec.ts", "__tests__/widget.ts"):
+            with self.subTest(path=path):
+                out = cli.score({"files": ["app/Widget.php", path]})
+                self.assertEqual(out["risk"], "low")
+
+    def test_empty_facts_are_low_with_a_reason(self):
+        out = cli.score({})
+        self.assertEqual(out["risk"], "low")
+        self.assertTrue(out["reasons"])
+
+
 if __name__ == "__main__":
     unittest.main()
