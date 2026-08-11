@@ -1,7 +1,11 @@
 ---
 name: cadence-loop-spec
-description: Spec loop for the configured Linear project — turns a human-gated issue into a written spec in a linked Linear document, validates any duplicate / common-fix candidates the triage loop flagged (collapsing a confirmed cluster to one canonical issue and superseding the rest), then hands it back for review. Writes a spec document + label transitions only; never writes code, never opens a PR, never authorises a build. Runs unattended on a schedule. Triggers include "run the spec loop", "cadence-loop-spec", or a scheduled routine invoking it.
-version: 1.0.0
+description: >-
+  Spec loop for the configured Linear project — turns a human-gated issue into
+  a written spec document, validates flagged duplicate clusters, then hands it
+  back for review. Never writes code, never opens a PR, never authorises a
+  build. Runs on a schedule.
+version: 1.0.1
 model: opus
 argument-hint: "[--limit=N] [--dry-run]"
 allowed-tools:

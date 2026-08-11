@@ -1,6 +1,10 @@
 ---
 name: cadence-glance
-description: Glanceable status of the Cadence agent loops — live/paused state, launchd jobs and last exit codes, last run per stage, and the recent activity feed. Use when the user asks "loop status", "how are the loops", "cadence glance", "what are the agents doing", or invokes /cadence-glance.
+description: >-
+  Glanceable status of the Cadence agent loops — live/paused state, launchd
+  jobs and exit codes, last run per stage, recent activity. Use for 'loop
+  status', 'how are the loops', 'cadence glance', or 'what are the agents
+  doing'.
 ---
 
 # cadence-glance

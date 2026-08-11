@@ -1,7 +1,11 @@
 ---
 name: cadence-loop-advance
-description: Autonomous advancer for the configured Linear project — for each agent:auto issue, gathers the quality-bar facts, calls the decision core, and grants the next gate (or repairs/escalates). Gate-and-go: it never writes code or opens PRs; the existing loops do the work on their schedule. Opt-in via AUTONOMOUS + agent:auto; runs unattended on a schedule. Triggers include "run the advance loop", "cadence-loop-advance", or a scheduled routine invoking it.
-version: 1.0.0
+description: >-
+  Autonomous advancer for the configured Linear project — grants the next gate
+  for each agent:auto issue after checking the quality bar, or
+  repairs/escalates it. Gate-and-go: never writes code or opens PRs. Opt-in
+  via AUTONOMOUS; runs unattended on a schedule.
+version: 1.0.1
 model: sonnet
 argument-hint: "[--dry-run]"
 allowed-tools:

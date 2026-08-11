@@ -1,7 +1,11 @@
 ---
 name: cadence-loop-build
-description: Build loop for the configured Linear project — implements a human-gated, spec'd issue in an isolated worktree off the configured base branch, runs the gates, opens a DRAFT PR against that base branch, and folds in a code review. Never merges, never marks a PR ready, never moves an issue past In Review. Runs unattended on a schedule. Triggers include "run the build loop", "cadence-loop-build", or a scheduled routine invoking it.
-version: 1.2.1
+description: >-
+  Build loop for the configured Linear project — implements a human-gated,
+  spec'd issue in an isolated worktree, runs the gates, opens a draft PR, and
+  folds in a code review. Never merges, never marks a PR ready. Runs
+  unattended on a schedule.
+version: 1.2.2
 model: opus
 argument-hint: "[--limit=N] [--dry-run] [--implementer=claude|kimi|opencode|codex]"
 allowed-tools:
@@ -210,19 +214,25 @@ the diff, the red→green test, and the scope yourself.
    AGENTS.md` (and any other unrelated grove-imported file) so those never ride into
    the PR. (The default `git` tool imports nothing, so this restore is a no-op there.)
    Conventional commit (no AI mention). Push the branch.
-   `base="${BASE_BRANCH:-develop}"; gh pr create --draft --base "$base" --title "<ID> — <title>"`.
+   `base="${BASE_BRANCH:-develop}"; (cd "$WT" && gh pr create --draft
+   --base "$base" --title "<ID> — <title>") > "$TMPDIR/pr-url-<ID>"`.
    **Always pass an explicit `--title` of `<ID> — <title>`** (the issue identifier
    and its title) so the PR is trackable at a glance from the PR list — never let
-   `gh` infer the title from the commit. Add a full in-house `--body`:
+   `gh` infer the title from the commit. Read the returned URL from
+   `"$TMPDIR/pr-url-<ID>"` for every later PR command; do not reconstruct the
+   branch or rediscover the PR. Add a
+   full in-house `--body`:
    problem, approach, the reproduce-or-not finding, test evidence (gate results),
    leftover bug-check notes, risks, rollback, and the issue ID for Linear linking.
-8. **Folded review.** Write `$WT/REVIEW.md` containing the PR URL, issue URL,
+8. **Folded review.** Write `$WT/REVIEW.md` containing the PR URL from
+   `$(cat "$TMPDIR/pr-url-<ID>")`, issue URL,
    acceptance criteria, `git diff origin/${BASE_BRANCH:-develop}...HEAD`, and the
    exact request: review correctness, security, maintainability, performance, and
    test coverage; count only findings that should block or be consciously accepted.
    Run: `"$CADENCE_HOME/engine/scripts/run-reviewer.sh" "${REVIEW_PROVIDER:-claude}"
-   "${REVIEW_MODEL:-opus}" "$WT" "$WT/REVIEW.md"`. Post the reviewer output as a PR
-   comment (high = blocking, rest = suggestions); never approve/merge. **Capture
+   "${REVIEW_MODEL:-opus}" "$WT" "$WT/REVIEW.md"`. Post the reviewer output as a
+   comment on `$(cat "$TMPDIR/pr-url-<ID>")` (high = blocking, rest = suggestions);
+   never approve/merge. **Capture
    recurring findings to memory:** if a finding is a *recurring class* of mistake
    (not a one-off) that future briefs should warn against, store it per
    `docs/ARCHITECTURE.md` §7a — `kind: constraint`, importance by severity (5
@@ -239,11 +249,8 @@ the diff, the red→green test, and the scope yourself.
     ```bash
     # BLOCKING=true if the step 8 folded review raised any blocking finding.
     BLOCKING=false
-    # Run gh from the product checkout: it resolves the repo from the working
-    # directory, and this loop's cwd is the worktree, not $PROJECT_DIR.
-    PR=$(cd "$PROJECT_DIR" && gh pr view "$(echo '<ID>' | tr 'A-Z' 'a-z')" \
-           --json number -q .number)
-    RISK=$(cd "$PROJECT_DIR" && gh pr view "$PR" --json additions,deletions,files \
+    # Reuse the URL returned by `gh pr create` and query from its worktree.
+    RISK=$(cd "$WT" && gh pr view "$(cat "$TMPDIR/pr-url-<ID>")" --json additions,deletions,files \
       | jq -c --argjson blocking "$BLOCKING" \
           '{files:[.files[].path],insertions:.additions,deletions:.deletions,
             gates_passed:true,blocking_review:$blocking}' \

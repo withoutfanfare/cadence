@@ -1,6 +1,10 @@
 ---
 name: cadence-tend
-description: Periodic hygiene "dream" pass over a Clio memory namespace — dedupe near-identical memories, re-score importance against the current priority scale, archive stale/transient/superseded entries, and re-file misclassified ones. Clio auto-consolidates into summaries but does NOT archive duplicates or re-prioritise as priorities change; this fills that gap. Use when the user says "clean up Clio", "tidy the memories", "re-prioritise memories", "memory hygiene", "clio dream/tend", or on a schedule.
+description: >-
+  Periodic Clio memory hygiene pass for a namespace — dedupes near-identical
+  memories, re-scores importance, archives stale entries, re-files
+  misclassified ones. Use for 'clean up Clio', 'tidy the memories', 're-
+  prioritise memories', or on a schedule.
 argument-hint: "[namespace] [--apply]"
 ---
 

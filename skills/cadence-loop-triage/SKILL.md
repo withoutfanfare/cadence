@@ -1,7 +1,11 @@
 ---
 name: cadence-loop-triage
-description: Triage the configured Linear project board unattended — fill blanks (priority, cycle, type label, acceptance-criteria stubs), link duplicate / common-fix candidates, flag stale issues, and back-fill merged GitHub PRs into Linear issues. Runs against the configured Linear project on a schedule. Writes Linear metadata only; never runs application code, opens PRs, or authorises builds. Triggers include "run the triage loop", "cadence-loop-triage", "triage the board", or a scheduled routine invoking it.
-version: 1.0.0
+description: >-
+  Triage loop for the configured Linear project board — fills blanks
+  (priority, cycle, type, acceptance criteria), flags duplicate candidates and
+  stale issues, and back-fills merged PRs. Writes Linear metadata only; never
+  runs app code. Runs on a schedule.
+version: 1.0.1
 model: sonnet
 argument-hint: --mode=enrich|full --since=<date|last-run> [--dry-run] [--limit=N]
 allowed-tools:
@@ -224,8 +228,8 @@ check fails, emit the standard pause JSON and records described in
      still open untouched.
    Count both as `backfilled`.
 
-7. **Brief.** For each issue this run left at `agent:triaged`, post one decision
-   brief. There is no spec and no diff yet, so pass an empty file list — the
+7. **Brief.** For each issue newly transitioned to `agent:triaged` by this run,
+   post one decision brief. There is no spec and no diff yet, so pass an empty file list — the
    score comes back `low`, which is correct for a gate that authorises a
    document:
 

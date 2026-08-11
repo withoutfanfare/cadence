@@ -1,6 +1,10 @@
 ---
 name: cadence-deep
-description: Full per-run digest for the Cadence agent loops — the detailed human-readable report of exactly what each run changed (issues triaged with reasons, specs written, PRs opened, review verdicts). Use when the user asks "loop digest", "what did the loops change", "cadence deep", "show me the detail", or invokes /cadence-deep. Optional arg = a date (YYYY-MM-DD), defaults to today (UTC).
+description: >-
+  Show the full per-run digest for the Cadence agent loops — what each run
+  changed (issues triaged, specs written, PRs opened, review verdicts). Use
+  for 'loop digest', 'what did the loops change', 'cadence deep', or 'show me
+  the detail'.
 argument-hint: "[YYYY-MM-DD]"
 ---
 
