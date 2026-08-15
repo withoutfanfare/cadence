@@ -7,7 +7,7 @@ inspect or change those settings is the provider helper:
 cadence providers roles
 cadence providers show
 cadence providers help
-cadence providers set --build codex:gpt-5.4 --implementer codex
+cadence providers set --build codex:gpt-5.6-sol --implementer codex
 cadence doctor
 ```
 
@@ -37,7 +37,7 @@ opencode ignore it with a logged warning). `REVIEW_MODEL` accepts the same
 suffix. See [Configuration](CONFIGURATION.md) for details.
 
 ```dotenv
-ORCHESTRATOR_BUILD=codex:gpt-5.4
+ORCHESTRATOR_BUILD=codex:gpt-5.6-sol
 ORCHESTRATOR_REVISE=claude:sonnet:medium
 ```
 
@@ -58,14 +58,14 @@ Do not use the old alias shape for provider switching:
 
 ```dotenv
 # Wrong: MODEL_* is model-only
-MODEL_BUILD=codex:gpt-5.4
+MODEL_BUILD=codex:gpt-5.6-sol
 
 # Wrong: BUILD_IMPLEMENTER is provider-only
-BUILD_IMPLEMENTER=codex:gpt-5.4
+BUILD_IMPLEMENTER=codex:gpt-5.6-sol
 ```
 
 If `ORCHESTRATOR_BUILD` is missing and `ORCHESTRATOR_PROVIDER=claude`, then
-`MODEL_BUILD=codex:gpt-5.4` expands to `claude:codex:gpt-5.4`. That asks Claude
+`MODEL_BUILD=codex:gpt-5.6-sol` expands to `claude:codex:gpt-5.6-sol`. That asks Claude
 to use a Codex model name, which is not the intended provider switch.
 
 ## Common Configurations
@@ -76,7 +76,7 @@ This keeps Claude on planning/revise/advance and folded review, but makes Codex
 lead the build loop and write the implementation:
 
 ```bash
-cadence providers set --build codex:gpt-5.4 --review claude:opus --implementer codex
+cadence providers set --build codex:gpt-5.6-sol --review claude:opus --implementer codex
 cadence doctor
 ```
 
@@ -85,7 +85,7 @@ Result:
 ```text
 triage orchestrator   claude:sonnet
 spec orchestrator     claude:opus
-build orchestrator    codex:gpt-5.4
+build orchestrator    codex:gpt-5.6-sol
 revise orchestrator   claude:sonnet
 advance orchestrator  claude:sonnet
 folded reviewer       claude:opus
@@ -95,7 +95,7 @@ build implementer     codex
 ### Codex Across Every Loop
 
 ```bash
-cadence providers set --all codex:gpt-5.4 --review codex:gpt-5.4 --implementer codex
+cadence providers set --all codex:gpt-5.6-sol --review codex:gpt-5.6-sol --implementer codex
 cadence doctor
 ```
 
@@ -122,7 +122,7 @@ routine changes. If you edit `.env` manually, keep this shape:
 ORCHESTRATOR_PROVIDER=claude
 ORCHESTRATOR_TRIAGE=claude:sonnet
 ORCHESTRATOR_SPEC=claude:opus
-ORCHESTRATOR_BUILD=codex:gpt-5.4
+ORCHESTRATOR_BUILD=codex:gpt-5.6-sol
 ORCHESTRATOR_REVISE=claude:sonnet
 ORCHESTRATOR_ADVANCE=claude:sonnet
 

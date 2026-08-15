@@ -187,12 +187,12 @@ with `.env.example`: `MODEL_TRIAGE`, `MODEL_SPEC`, `MODEL_BUILD`,
 only; prefer the `ORCHESTRATOR_*` variables above.
 
 Important: `MODEL_*` values are model names only. Do not put `provider:model`
-values there. For example, `MODEL_BUILD=codex:gpt-5.4` expands through the
-default provider and becomes `claude:codex:gpt-5.4`, which asks Claude to run a
-Codex model name. Use `ORCHESTRATOR_BUILD=codex:gpt-5.4` instead.
+values there. For example, `MODEL_BUILD=codex:gpt-5.6-sol` expands through the
+default provider and becomes `claude:codex:gpt-5.6-sol`, which asks Claude to run a
+Codex model name. Use `ORCHESTRATOR_BUILD=codex:gpt-5.6-sol` instead.
 
 `BUILD_IMPLEMENTER` is also provider-only. Use `BUILD_IMPLEMENTER=codex`, not
-`BUILD_IMPLEMENTER=codex:gpt-5.4`.
+`BUILD_IMPLEMENTER=codex:gpt-5.6-sol`.
 
 ### Reasoning effort (optional third segment)
 
@@ -219,7 +219,7 @@ Use the helper command for routine changes:
 ```bash
 cadence providers roles
 cadence providers show
-cadence providers set --all codex:gpt-5.4 --implementer codex
+cadence providers set --all codex:gpt-5.6-sol --implementer codex
 cadence providers set --build opencode:zai-coding-plan/glm-5.2 --review claude:opus
 cadence doctor
 ```
@@ -231,14 +231,14 @@ and preserves unrelated profile values and comments.
 To make Codex the lead orchestrator for every loop:
 
 ```bash
-cadence providers set --all codex:gpt-5.4 --review codex:gpt-5.4 --implementer codex
+cadence providers set --all codex:gpt-5.6-sol --review codex:gpt-5.6-sol --implementer codex
 ```
 
 To keep Claude on planning stages but use Codex as the build orchestrator and
 Kimi as the coding implementer:
 
 ```bash
-cadence providers set --triage claude:sonnet --spec claude:opus --build codex:gpt-5.4 --revise claude:sonnet --advance claude:sonnet --roadmap claude:opus --review claude:opus --implementer kimi
+cadence providers set --triage claude:sonnet --spec claude:opus --build codex:gpt-5.6-sol --revise claude:sonnet --advance claude:sonnet --roadmap claude:opus --review claude:opus --implementer kimi
 ```
 
 To try Kimi as the lead loop provider while keeping Claude as the folded PR
@@ -258,7 +258,7 @@ For a one-off manual run, override values in the command environment without
 editing the active config file:
 
 ```bash
-ORCHESTRATOR_BUILD=codex:gpt-5.4
+ORCHESTRATOR_BUILD=codex:gpt-5.6-sol
 BUILD_IMPLEMENTER=codex
 cadence run build
 ```
@@ -273,7 +273,7 @@ If you prefer to edit the active config file by hand, use the equivalent keys
 directly:
 
 ```dotenv
-ORCHESTRATOR_BUILD=codex:gpt-5.4
+ORCHESTRATOR_BUILD=codex:gpt-5.6-sol
 REVIEW_PROVIDER=claude
 REVIEW_MODEL=opus
 BUILD_IMPLEMENTER=kimi
@@ -283,10 +283,10 @@ Do not use the old alias shape for provider switching:
 
 ```dotenv
 # Wrong: MODEL_* is model-only, not provider:model
-MODEL_BUILD=codex:gpt-5.4
+MODEL_BUILD=codex:gpt-5.6-sol
 
 # Wrong: BUILD_IMPLEMENTER is provider-only
-BUILD_IMPLEMENTER=codex:gpt-5.4
+BUILD_IMPLEMENTER=codex:gpt-5.6-sol
 ```
 
 ## Autonomous Mode

@@ -47,7 +47,7 @@ copyable all-Codex, mixed-provider, Kimi, and OpenCode profiles.
 
 Do not switch providers by putting `provider:model` into `MODEL_*` aliases.
 Those are legacy model-name-only fallbacks. Likewise, `BUILD_IMPLEMENTER` takes
-only the provider name, for example `codex`, not `codex:gpt-5.4`.
+only the provider name, for example `codex`, not `codex:gpt-5.6-sol`.
 
 By default the build loop uses plain `git worktree`, so nothing beyond Git is
 needed. Set `WORKTREE_TOOL=grove` only if you use grove for Laravel Herd sites.
@@ -421,7 +421,7 @@ config support is added.
 For example, to make Codex lead the build loop only:
 
 ```bash
-cadence providers set --build codex:gpt-5.4 --implementer codex
+cadence providers set --build codex:gpt-5.6-sol --implementer codex
 ```
 
 Then run:

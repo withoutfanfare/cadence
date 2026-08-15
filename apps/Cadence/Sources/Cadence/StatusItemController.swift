@@ -366,7 +366,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
             if result.exitCode == 0 {
                 setActionFeedback(.succeeded(title))
             } else {
-                setActionFeedback(.failed(title, commandFailureDetail(result)))
+                setActionFeedback(.failed(title, result.failureDetail))
             }
             refresh()
         }
@@ -464,18 +464,9 @@ final class StatusItemController: NSObject, NSWindowDelegate {
 
     private func shortError(_ error: Error) -> String {
         if case let CadenceClientError.commandFailed(_, stderr) = error {
-            return stderr.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").last.map(String.init) ?? "command failed"
+            return CommandResult(stdout: "", stderr: stderr, exitCode: 1).failureDetail
         }
         return String(describing: error)
-    }
-
-    private func commandFailureDetail(_ result: CommandResult) -> String {
-        let detail = (result.stderr.isEmpty ? result.stdout : result.stderr)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .split(separator: "\n")
-            .last
-            .map(String.init) ?? "exit \(result.exitCode)"
-        return detail.count > 90 ? String(detail.prefix(89)) + "..." : detail
     }
 
     private func shellQuote(_ value: String) -> String {

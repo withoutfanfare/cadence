@@ -327,9 +327,10 @@ def cmd_cycles_list(args, env, post=graphql):
 # ── write verbs ─────────────────────────────────────────────────────────────
 
 _LABELS_Q = """
-query($teamId: ID!) {
-  issueLabels(filter: { or: [{ team: { id: { eq: $teamId } } }, { team: { null: true } }] }, first: 250) {
-    nodes { id name }
+query($teamId: ID!, $after: String) {
+  issueLabels(filter: { or: [{ team: { id: { eq: $teamId } } }, { team: { null: true } }] }, first: 250, after: $after) {
+    nodes { id name parent { id } }
+    pageInfo { hasNextPage endCursor }
   }
 }"""
 
@@ -339,10 +340,28 @@ mutation($input: IssueLabelCreateInput!) {
 }"""
 
 
+def _label_nodes(env, post):
+    _require_env(env, "LINEAR_TEAM_ID")
+    after = None
+    nodes = []
+    for _ in range(100):
+        page = post(_LABELS_Q, {
+            "teamId": env.get("LINEAR_TEAM_ID"), "after": after,
+        }, env)["issueLabels"]
+        nodes.extend(page.get("nodes", []))
+        info = page.get("pageInfo") or {}
+        if not info.get("hasNextPage"):
+            return nodes
+        next_cursor = info.get("endCursor")
+        if not next_cursor or next_cursor == after:
+            raise LinearError("label pagination did not advance")
+        after = next_cursor
+    raise LinearError("label pagination exceeded 100 pages")
+
+
 def cmd_label_ensure(args, env, post=graphql):
     _require_env(env, "LINEAR_TEAM_ID")
-    data = post(_LABELS_Q, {"teamId": env.get("LINEAR_TEAM_ID")}, env)
-    for n in data["issueLabels"]["nodes"]:
+    for n in _label_nodes(env, post):
         if n["name"] == args.name:
             return {"name": n["name"], "id": n["id"], "created": False}
     res = post(_LABEL_CREATE_M,
@@ -352,8 +371,8 @@ def cmd_label_ensure(args, env, post=graphql):
 
 
 def cmd_labels_list(args, env, post=graphql):
-    _require_env(env, "LINEAR_TEAM_ID")
-    return post(_LABELS_Q, {"teamId": env.get("LINEAR_TEAM_ID")}, env)["issueLabels"]["nodes"]
+    nodes = _label_nodes(env, post)
+    return [{"id": n["id"], "name": n["name"]} for n in nodes]
 
 
 # The full agent:* state-machine vocabulary — single source of truth, mirrors
@@ -372,8 +391,7 @@ AGENT_LABELS = [
 def cmd_labels_init(args, env, post=graphql):
     _require_env(env, "LINEAR_TEAM_ID")
     team = env.get("LINEAR_TEAM_ID")
-    existing = {n["name"] for n in
-                post(_LABELS_Q, {"teamId": team}, env)["issueLabels"]["nodes"]}
+    existing = {n["name"] for n in _label_nodes(env, post)}
     created = []
     for name in AGENT_LABELS:
         if name in existing:
@@ -387,9 +405,7 @@ def cmd_labels_init(args, env, post=graphql):
 def _resolve_label_ids(names, env, post):
     if not names:
         return []
-    _require_env(env, "LINEAR_TEAM_ID")
-    data = post(_LABELS_Q, {"teamId": env.get("LINEAR_TEAM_ID")}, env)
-    by_name = {n["name"]: n["id"] for n in data["issueLabels"]["nodes"]}
+    by_name = {n["name"]: n["id"] for n in _label_nodes(env, post)}
     missing = [x for x in names if x not in by_name]
     if missing:
         raise LinearError(
@@ -511,20 +527,44 @@ def _issue_label_nodes(issue_id, env, post):
     return post(_ISSUE_GET_LABELS_Q, {"id": issue_id}, env)["issue"]["labels"]["nodes"]
 
 
+def _replace_exclusive_group_siblings(labels, add_names, catalog):
+    """When an added Linear label is a child of a label group, drop the
+    existing child from that group. Linear permits only one child per group and
+    rejects the whole atomic update if the old child is sent back alongside the
+    new one."""
+    by_name = {n["name"]: n for n in catalog}
+
+    def parent_id(name):
+        return (by_name.get(name, {}).get("parent") or {}).get("id")
+
+    winners = {}
+    for name in add_names:
+        parent = parent_id(name)
+        if parent:
+            winners[parent] = name
+    if not winners:
+        return labels
+    return [name for name in labels
+            if parent_id(name) not in winners or winners[parent_id(name)] == name]
+
+
 def _enforced_label_ids(issue_id, add_names, rem_names, env, post, strip_agent=False):
     """Current labels ± the requested changes, with the single-position invariant
     enforced by resolve_labels (adding a lifecycle label drops the others; stray
-    residue self-heals). With strip_agent, also drop every agent:* workflow label
-    (used when the issue moves to a terminal state). Returns the labelIds to set.
-    Shared by issue-update and bulk-label."""
+    residue self-heals) and Linear label-group exclusivity honoured. With
+    strip_agent, also drop every agent:* workflow label (used when the issue moves
+    to a terminal state). Returns the labelIds to set. Shared by issue-update and
+    bulk-label."""
     nodes = _issue_label_nodes(issue_id, env, post)
     name2id = {n["name"]: n["id"] for n in nodes}
     final = resolve_labels([n["name"] for n in nodes], add=add_names, remove=rem_names)
     if strip_agent:
         final = strip_workflow_labels(final)
-    need = [n for n in final if n not in name2id]
-    for nm, _id in zip(need, _resolve_label_ids(need, env, post)):
-        name2id[nm] = _id
+    if add_names:
+        catalog = _label_nodes(env, post)
+        final = _replace_exclusive_group_siblings(final, add_names, catalog)
+        for n in catalog:
+            name2id.setdefault(n["name"], n["id"])
     return [name2id[n] for n in final]
 
 

@@ -327,8 +327,8 @@ class TestWriteVerbs(unittest.TestCase):
 
     def test_labels_list_returns_names_and_ids(self):
         cap = {"response": {"issueLabels": {"nodes": [
-            {"id": "l1", "name": "agent:build"},
-            {"id": "l2", "name": "agent:spec"}]}}}
+            {"id": "l1", "name": "agent:build", "parent": {"id": "group-1"}},
+            {"id": "l2", "name": "agent:spec", "parent": {"id": "group-1"}}]}}}
         out = cli.cmd_labels_list(types.SimpleNamespace(), ENV, post=fake_post(cap))
         self.assertEqual(out, [{"id": "l1", "name": "agent:build"},
                                {"id": "l2", "name": "agent:spec"}])
@@ -394,6 +394,83 @@ class TestWriteVerbs(unittest.TestCase):
             state_type=None, cycle=None, add_label=["agent:pr-open"], remove_label=None)
         cli.cmd_issue_update(args, ENV, post=post)
         self.assertEqual(set(sent["ids"]), {"lt", "lp"})   # specced (ls) dropped
+
+    def test_issue_update_replaces_existing_exclusive_group_sibling(self):
+        # Linear label groups permit one child per issue. A human granting the
+        # build gate must replace the grouped specced breadcrumb atomically.
+        sent = {}
+
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            if "issueLabels(" in query:
+                grouped = "parent { id }" in query
+                parent = {"id": "agent-group"} if grouped else None
+                return {"issueLabels": {"nodes": [
+                    {"id": "lb", "name": "agent:build", "parent": parent},
+                    {"id": "ls", "name": "agent:specced", "parent": parent},
+                    {"id": "lt", "name": "agent:triaged", "parent": None},
+                    {"id": "li", "name": "Improvement", "parent": None},
+                    {"id": "li-shadow", "name": "Improvement", "parent": None}]}}
+            if "labels{ nodes{ id name } }" in query:
+                return {"issue": {"labels": {"nodes": [
+                    {"id": "ls", "name": "agent:specced"},
+                    {"id": "lt", "name": "agent:triaged"},
+                    {"id": "li", "name": "Improvement"}]}}}
+            if "issueUpdate(" in query:
+                sent["ids"] = variables["input"]["labelIds"]
+                return {"issueUpdate": {"success": True, "issue": {"id": "i1"}}}
+            raise AssertionError(query)
+
+        args = types.SimpleNamespace(
+            id="i1", priority=None, title=None, estimate=None, state=None,
+            state_type=None, cycle=None, add_label=["agent:build"],
+            remove_label=["agent:spec", "agent:revise"])
+
+        cli.cmd_issue_update(args, ENV, post=post)
+
+        self.assertEqual(set(sent["ids"]), {"lb", "lt", "li"})
+
+    def test_issue_update_replaces_group_sibling_from_later_catalog_page(self):
+        sent = {}
+
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            if "issueLabels(" in query:
+                if variables.get("after") is None:
+                    return {"issueLabels": {
+                        "nodes": [{"id": "li", "name": "Improvement", "parent": None}],
+                        "pageInfo": {"hasNextPage": True, "endCursor": "labels-page-2"}}}
+                return {"issueLabels": {
+                    "nodes": [
+                        {"id": "lb", "name": "agent:build",
+                         "parent": {"id": "agent-group"}},
+                        {"id": "ls", "name": "agent:specced",
+                         "parent": {"id": "agent-group"}},
+                    ],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None}}}
+            if "labels{ nodes{ id name } }" in query:
+                return {"issue": {"labels": {"nodes": [
+                    {"id": "ls", "name": "agent:specced"},
+                    {"id": "li", "name": "Improvement"}]}}}
+            if "issueUpdate(" in query:
+                sent["ids"] = variables["input"]["labelIds"]
+                return {"issueUpdate": {"success": True, "issue": {"id": "i1"}}}
+            raise AssertionError(query)
+
+        args = types.SimpleNamespace(
+            id="i1", priority=None, title=None, estimate=None, state=None,
+            state_type=None, cycle=None, add_label=["agent:build"],
+            remove_label=["agent:spec", "agent:revise"])
+
+        cli.cmd_issue_update(args, ENV, post=post)
+
+        self.assertEqual(set(sent["ids"]), {"lb", "li"})
 
     def test_loop_cannot_grant_human_gate_label(self):
         def post(query, variables, env):

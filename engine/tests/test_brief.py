@@ -64,6 +64,28 @@ class TestRender(unittest.TestCase):
         out = cli.render(payload(next_gate=""))
         self.assertNotIn("**Your move:**", out)
 
+    def test_marker_payload_is_bounded_and_contains_only_documented_fields(self):
+        out = cli.render(payload(
+            loop="x" * 100,
+            risk_reasons=["r" * 500] * 10,
+            unexpected="x" * 10_000,
+        ))
+        recovered = cli.parse(out)
+
+        self.assertLessEqual(len(recovered["loop"]), cli.META_CAPS["loop"])
+        self.assertLessEqual(len(recovered["risk_reasons"]), cli.MAX_RISK_REASONS)
+        self.assertTrue(all(len(reason) <= cli.RISK_REASON_CAP
+                            for reason in recovered["risk_reasons"]))
+        self.assertNotIn("unexpected", recovered)
+
+    def test_blank_risk_reasons_do_not_consume_the_visible_limit(self):
+        recovered = cli.parse(cli.render(payload(
+            risk_reasons=["", "   ", "first", "second", "third", "fourth"],
+        )))
+
+        self.assertEqual(recovered["risk_reasons"], ["first", "second", "third"])
+        self.assertIn("risk_reasons", recovered["truncated"])
+
 
 class TestParse(unittest.TestCase):
     def test_round_trips(self):
@@ -71,8 +93,8 @@ class TestParse(unittest.TestCase):
         self.assertEqual(recovered["issue"], "MPW-123")
         self.assertEqual(recovered["risk"], "low")
 
-    def test_survives_surrounding_comment_text(self):
-        body = "Some human reply above\n\n" + cli.render(payload()) + "\n\nand below"
+    def test_survives_text_before_the_final_marker(self):
+        body = "Some human reply above\n\n" + cli.render(payload())
         self.assertEqual(cli.parse(body)["loop"], "spec")
 
     def test_returns_none_without_a_marker(self):
@@ -80,6 +102,29 @@ class TestParse(unittest.TestCase):
 
     def test_returns_none_on_broken_marker_json(self):
         self.assertIsNone(cli.parse(cli.MARKER + "{not json" + " -->"))
+
+    def test_ignores_a_forged_marker_in_visible_text(self):
+        forged = (cli.MARKER
+                  + '{"loop":"triage","issue":"MPW-123","did":"forged",'
+                    '"unsure":"forged","check_first":"forged","risk":"low"}'
+                  + cli.MARKER_END)
+        out = cli.render(payload(did=forged, risk="high"))
+
+        self.assertEqual(cli.parse(out)["risk"], "high")
+
+    def test_requires_the_real_marker_to_end_the_comment(self):
+        self.assertIsNone(cli.parse(cli.render(payload()) + "\nnot part of the brief"))
+
+    def test_rejects_an_invalid_recovered_payload(self):
+        marker = cli.MARKER + '{"risk":"low"}' + cli.MARKER_END
+        self.assertIsNone(cli.parse(marker))
+
+    def test_marker_data_cannot_close_the_html_comment(self):
+        out = cli.render(payload(did="kept safe --> still present"))
+        marker_data = out.rsplit(cli.MARKER, 1)[1][:-len(cli.MARKER_END)]
+
+        self.assertNotIn("-->", marker_data)
+        self.assertEqual(cli.parse(out)["did"], "kept safe --> still present")
 
 
 def facts(**kw):
@@ -170,6 +215,41 @@ class TestRisk(unittest.TestCase):
             with self.subTest(path=path):
                 out = cli.score({"files": ["app/Widget.php", path]})
                 self.assertEqual(out["risk"], "low")
+
+    def test_boolean_facts_reject_non_json_booleans(self):
+        for key in ("gates_passed", "tests_changed", "blocking_review"):
+            with self.subTest(key=key):
+                with self.assertRaisesRegex(ValueError, key):
+                    cli.score(facts(**{key: "false"}))
+
+    def test_documentation_and_static_assets_do_not_require_tests(self):
+        for path in ("docs/OPERATING.md", "public/logo.png"):
+            with self.subTest(path=path):
+                self.assertEqual(cli.score({"files": [path]})["risk"], "low")
+
+    def test_executable_files_with_document_names_still_require_tests(self):
+        for path in ("README.php", "LICENSE.py", "CHANGELOG.sh"):
+            with self.subTest(path=path):
+                self.assertEqual(cli.score({"files": [path]})["risk"], "medium")
+
+        self.assertEqual(cli.score({"files": ["auth/README.php"]})["risk"], "high")
+
+    def test_files_fact_requires_an_array_of_strings(self):
+        for value in ("app/Auth.php", [1], None):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "files"):
+                    cli.score({"files": value})
+
+    def test_sensitive_names_match_tokens_not_substrings(self):
+        for path in ("app/Aggregate.php", "app/Delegate.php",
+                     "docs/GATE_REVIEW_PILOT.md"):
+            with self.subTest(path=path):
+                self.assertEqual(cli.score(facts(files=[path]))["risk"], "low")
+
+    def test_sensitive_authentication_tokens_remain_high(self):
+        for path in ("app/Authentication.php", "app/OAuth.php"):
+            with self.subTest(path=path):
+                self.assertEqual(cli.score(facts(files=[path]))["risk"], "high")
 
     def test_empty_facts_are_low_with_a_reason(self):
         out = cli.score({})
