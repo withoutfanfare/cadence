@@ -1,6 +1,10 @@
 ---
 name: cadence-offboard
-description: Guided offboarding of a project from Cadence — pauses its loops, disables scheduling, and removes it from the scheduler registry, deleting nothing by default. Use when the user says "offboard this project", "remove this project from cadence", "stop cadence running here", "take this project off the scheduler", or invokes /cadence-offboard.
+description: >-
+  Guided offboarding of a project from Cadence — pauses its loops, disables
+  scheduling, and unregisters it, deleting nothing by default. Use for
+  'offboard this project', 'remove this project from cadence', 'stop cadence
+  running here', or '/cadence-offboard'.
 ---
 
 # cadence-offboard

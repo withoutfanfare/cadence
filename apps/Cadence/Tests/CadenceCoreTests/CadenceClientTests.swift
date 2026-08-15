@@ -93,6 +93,31 @@ final class CadenceClientTests: XCTestCase {
         XCTAssertEqual(result.exitCode, 0)
         XCTAssertEqual(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines).count, 200_000)
     }
+
+    func testCommandFailureDetailUsesLinearUserPresentableMessage() {
+        let stderr = #"{"error":"[{\"message\":\"labelIds not exclusive child labels\",\"extensions\":{\"userPresentableMessage\":\"The label 'agent:specced' is in the same group as 'agent:build'. Only one label in a group can be applied to an issue.\"}}]"}"#
+        let result = CommandResult(stdout: "", stderr: stderr, exitCode: 1)
+
+        XCTAssertEqual(
+            result.failureDetail,
+            "The label 'agent:specced' is in the same group as 'agent:build'. Only one label in a group can be applied to an issue."
+        )
+    }
+
+    func testCommandFailureDetailFallsBackToLastOutputLine() {
+        let result = CommandResult(stdout: "", stderr: "retrying\nplain failure", exitCode: 1)
+
+        XCTAssertEqual(result.failureDetail, "plain failure")
+    }
+
+    func testCommandFailureDetailCapsParsedHumanReadableMessage() {
+        let message = String(repeating: "x", count: 300)
+        let stderr = #"{"error":"[{\"extensions\":{\"userPresentableMessage\":\"\#(message)\"}}]"}"#
+        let result = CommandResult(stdout: "", stderr: stderr, exitCode: 1)
+
+        XCTAssertEqual(result.failureDetail, String(repeating: "x", count: 237) + "...")
+        XCTAssertEqual(result.failureDetail.count, 240)
+    }
 }
 
 private actor FakeRunner: CommandRunning {

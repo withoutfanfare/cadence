@@ -40,6 +40,25 @@ class TestFrontmatterTolerance(unittest.TestCase):
         self.assertEqual(render.strip_frontmatter(text), text)
         self.assertIsNone(render.extract_frontmatter_description(text))
 
+    def test_literal_description_preserves_internal_blank_lines(self):
+        text = "---\ndescription: |-\n  first paragraph\n\n  second paragraph\n---\nBody\n"
+
+        self.assertEqual(
+            render.extract_frontmatter_description(text),
+            "first paragraph\n\nsecond paragraph",
+        )
+
+    def test_literal_description_applies_chomping_indicator(self):
+        expected = {
+            "|-": "line",
+            "|": "line\n",
+            "|+": "line\n\n",
+        }
+        for indicator, description in expected.items():
+            with self.subTest(indicator=indicator):
+                text = f"---\ndescription: {indicator}\n  line\n\n---\nBody\n"
+                self.assertEqual(render.extract_frontmatter_description(text), description)
+
 
 if __name__ == "__main__":
     unittest.main()

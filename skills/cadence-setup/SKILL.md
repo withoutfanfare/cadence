@@ -1,6 +1,10 @@
 ---
 name: cadence-setup
-description: Guided, interactive setup of a Cadence project for any agent (Claude, Codex, or other). Interviews the user for folders and choices, discovers Linear ids for them, chooses the Linear or task-file backend, detects Grove/Clio, writes the project config, and validates it. Use when the user says "set up this project", "set up Cadence", "onboard a project", "configure Cadence for this repo", "cadence setup", or invokes /cadence-setup.
+description: >-
+  Interactive setup of a new Cadence project — interviews for folders,
+  discovers Linear ids, picks the Linear or task-file backend, detects
+  Grove/Clio, writes the config, and validates it. Use for 'set up Cadence',
+  'onboard a project', or '/cadence-setup'.
 ---
 
 # cadence-setup
@@ -136,7 +140,7 @@ or all stages, use the dedicated command rather than editing by hand:
 
 ```bash
 cadence --config <PROJECT_DIR>/cadence/.env providers roles   # what each slot does
-cadence --config <PROJECT_DIR>/cadence/.env providers set --build codex:gpt-5.4 --implementer codex
+cadence --config <PROJECT_DIR>/cadence/.env providers set --build codex:gpt-5.6-sol --implementer codex
 ```
 
 ## Step 8 — per-project state directory

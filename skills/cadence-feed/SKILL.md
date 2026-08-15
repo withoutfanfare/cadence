@@ -1,6 +1,9 @@
 ---
 name: cadence-feed
-description: Recent chronological activity feed of the Cadence agent loops — one plain line per run (what each triage/spec/build/revise run did). Use when the user asks "loop activity", "what have the loops been doing", "cadence feed", "recent runs", or invokes /cadence-feed. Optional arg = number of lines.
+description: >-
+  Show the recent chronological activity feed for the Cadence agent loops —
+  one plain line per run. Use for 'loop activity', 'what have the loops been
+  doing', 'cadence feed', or 'recent runs'.
 argument-hint: "[lines]"
 ---
 

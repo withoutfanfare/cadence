@@ -5,6 +5,48 @@ public struct CommandResult: Sendable {
     public let stdout: String
     public let stderr: String
     public let exitCode: Int32
+
+    public init(stdout: String, stderr: String, exitCode: Int32) {
+        self.stdout = stdout
+        self.stderr = stderr
+        self.exitCode = exitCode
+    }
+
+    public var failureDetail: String {
+        let output = stderr.isEmpty ? stdout : stderr
+        let fallback = output
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: "\n")
+            .last
+            .map(String.init) ?? "exit \(exitCode)"
+        let detail: String
+        if let data = fallback.data(using: .utf8),
+           let envelope = try? JSONDecoder().decode(CommandErrorEnvelope.self, from: data) {
+            if let nested = envelope.error.data(using: .utf8),
+               let errors = try? JSONDecoder().decode([LinearCommandError].self, from: nested),
+               let error = errors.first {
+                detail = error.extensions?.userPresentableMessage ?? error.message ?? envelope.error
+            } else {
+                detail = envelope.error
+            }
+        } else {
+            detail = fallback
+        }
+        return detail.count > 240 ? String(detail.prefix(237)) + "..." : detail
+    }
+}
+
+private struct CommandErrorEnvelope: Decodable {
+    let error: String
+}
+
+private struct LinearCommandError: Decodable {
+    let message: String?
+    let extensions: LinearCommandErrorExtensions?
+}
+
+private struct LinearCommandErrorExtensions: Decodable {
+    let userPresentableMessage: String?
 }
 
 public protocol CommandRunning: Sendable {

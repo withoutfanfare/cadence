@@ -1,7 +1,11 @@
 ---
 name: cadence-loop-roadmap
-description: Advisory roadmap scout for the configured Linear project — scans the codebase read-only for the strongest improvements (bugs and missing pieces), steered by a project goal when one is set and otherwise by a standing engineering-quality rubric, and files at most a capped number of proposal issues carrying agent:proposed. It never grants gates, never writes code, and its proposals are fenced from autonomous mode until a human accepts them. Opt-in per project via the schedule. Runs unattended. Triggers include "run the roadmap loop", "cadence-loop-roadmap", or a scheduled routine invoking it.
-version: 1.0.0
+description: >-
+  Advisory roadmap scout for the configured Linear project — scans the
+  codebase read-only for the strongest bug and feature proposals and files a
+  capped number as agent:proposed issues. Never grants gates, never writes
+  code. Runs unattended on a schedule.
+version: 1.0.1
 model: opus
 argument-hint: "[--dry-run]"
 allowed-tools:

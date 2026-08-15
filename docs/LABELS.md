@@ -39,6 +39,20 @@ creation step. See [TASKS.md](TASKS.md) for that format.
 | `agent:proposed` | Roadmap loop | Human (accept: remove it or set `agent:spec`; the spec loop also strips it on accept) or human dismissal (cancel the issue) | Advisory proposal awaiting a human verdict. The conductor never auto-queues an issue carrying this label |
 | `agent:later` | Human | Nobody — it stays on the cancelled issue as the roadmap loop's memory | "Not now" dismissal marker on a **cancelled** proposal: the roadmap loop may re-propose the idea after a 30-day cool-off from cancellation if it still serves the goal. Without it, a cancelled proposal is never re-proposed |
 
+The four normal resting labels — `agent:triaged`, `agent:specced`,
+`agent:pr-open` and `agent:revised` — each carry a **decision brief** comment:
+what the loop did, what it is least sure about, what to check first, and a risk
+band. Read the brief first; open the spec or the diff only if it gives you a
+reason to. See [OPERATING.md](OPERATING.md#reviewing-a-gate).
+
+`agent:needs-attention`, `agent:needs-human` and `agent:proposed` carry no brief.
+The first already gets a failure comment from the loop that failed, the second
+means triage could not classify the issue at all, and the third is a roadmap
+proposal whose body is itself the pitch. An issue carrying
+`agent:dupe-candidate` alongside `agent:triaged` gets a tailored triage brief:
+Gate 1 is still a human decision, and the spec loop uses that gate to validate or
+clear the proposed cluster.
+
 ---
 
 **Dismissing a roadmap proposal.** Cancel the issue to dismiss for good (file

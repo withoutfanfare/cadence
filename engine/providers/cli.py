@@ -103,15 +103,15 @@ Common commands
   cadence providers roles
   cadence providers show
   cadence providers registry
-  cadence providers set --build codex:gpt-5.4 --implementer codex
+  cadence providers set --build codex:gpt-5.6-sol --implementer codex
   cadence providers set --all kimi:k2 --review claude:opus --implementer kimi
   cadence doctor
 
 Common trap
-  Wrong: MODEL_BUILD=codex:gpt-5.4
-  Right: ORCHESTRATOR_BUILD=codex:gpt-5.4
+  Wrong: MODEL_BUILD=codex:gpt-5.6-sol
+  Right: ORCHESTRATOR_BUILD=codex:gpt-5.6-sol
 
-  Wrong: BUILD_IMPLEMENTER=codex:gpt-5.4
+  Wrong: BUILD_IMPLEMENTER=codex:gpt-5.6-sol
   Right: BUILD_IMPLEMENTER=codex
 
 Full guide: docs/PROVIDERS.md

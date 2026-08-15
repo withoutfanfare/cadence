@@ -1,7 +1,11 @@
 ---
 name: cadence-loop-build
-description: Build loop for the configured Linear project — implements a human-gated, spec'd issue in an isolated worktree off the configured base branch, runs the gates, opens a DRAFT PR against that base branch, and folds in a code review. Never merges, never marks a PR ready, never moves an issue past In Review. Runs unattended on a schedule. Triggers include "run the build loop", "cadence-loop-build", or a scheduled routine invoking it.
-version: 1.2.1
+description: >-
+  Build loop for the configured Linear project — implements a human-gated,
+  spec'd issue in an isolated worktree, runs the gates, opens a draft PR, and
+  folds in a code review. Never merges, never marks a PR ready. Runs
+  unattended on a schedule.
+version: 1.2.2
 model: opus
 argument-hint: "[--limit=N] [--dry-run] [--implementer=claude|kimi|opencode|codex]"
 allowed-tools:
@@ -105,7 +109,7 @@ The helper is the only thing that knows each vendor's command. Supported:
 implementer edits files in the worktree **only**; it never commits, pushes, opens a
 PR, or touches Linear.
 
-**Review independence:** with `--implementer=kimi` the folded review (step 9, via
+**Review independence:** with `--implementer=kimi` the folded review (step 8, via
 `run-reviewer.sh`) is genuinely cross-model. With `--implementer=claude` it is
 fresh-eyes but same-family — still useful, slightly weaker. Either way the review +
 gates + your GATE 3 all stand. **Never trust the implementer's word** — you verify
@@ -210,21 +214,25 @@ the diff, the red→green test, and the scope yourself.
    AGENTS.md` (and any other unrelated grove-imported file) so those never ride into
    the PR. (The default `git` tool imports nothing, so this restore is a no-op there.)
    Conventional commit (no AI mention). Push the branch.
-   `base="${BASE_BRANCH:-develop}"; gh pr create --draft --base "$base" --title "<ID> — <title>"`.
+   `base="${BASE_BRANCH:-develop}"; (cd "$WT" && gh pr create --draft
+   --base "$base" --title "<ID> — <title>") > "$TMPDIR/pr-url-<ID>"`.
    **Always pass an explicit `--title` of `<ID> — <title>`** (the issue identifier
    and its title) so the PR is trackable at a glance from the PR list — never let
-   `gh` infer the title from the commit. Add a full in-house `--body`:
+   `gh` infer the title from the commit. Read the returned URL from
+   `"$TMPDIR/pr-url-<ID>"` for every later PR command; do not reconstruct the
+   branch or rediscover the PR. Add a
+   full in-house `--body`:
    problem, approach, the reproduce-or-not finding, test evidence (gate results),
    leftover bug-check notes, risks, rollback, and the issue ID for Linear linking.
-8. **Linear.** Status → **In Review**.
-   `cadence linear issue-update <ID> --state "In Review" --remove-label agent:build --remove-label agent:claimed --add-label agent:pr-open`.
-9. **Folded review.** Write `$WT/REVIEW.md` containing the PR URL, issue URL,
+8. **Folded review.** Write `$WT/REVIEW.md` containing the PR URL from
+   `$(cat "$TMPDIR/pr-url-<ID>")`, issue URL,
    acceptance criteria, `git diff origin/${BASE_BRANCH:-develop}...HEAD`, and the
    exact request: review correctness, security, maintainability, performance, and
    test coverage; count only findings that should block or be consciously accepted.
    Run: `"$CADENCE_HOME/engine/scripts/run-reviewer.sh" "${REVIEW_PROVIDER:-claude}"
-   "${REVIEW_MODEL:-opus}" "$WT" "$WT/REVIEW.md"`. Post the reviewer output as a PR
-   comment (high = blocking, rest = suggestions); never approve/merge. **Capture
+   "${REVIEW_MODEL:-opus}" "$WT" "$WT/REVIEW.md"`. Post the reviewer output as a
+   comment on `$(cat "$TMPDIR/pr-url-<ID>")` (high = blocking, rest = suggestions);
+   never approve/merge. **Capture
    recurring findings to memory:** if a finding is a *recurring class* of mistake
    (not a one-off) that future briefs should warn against, store it per
    `docs/ARCHITECTURE.md` §7a — `kind: constraint`, importance by severity (5
@@ -233,7 +241,44 @@ the diff, the red→green test, and the scope yourself.
    `cadence memory remember`. One-offs stay in the PR comment only. Whenever this loop stores anything in
    Clio while working an issue, tag it `ticket:<issue-id>` (lowercase, e.g.
    `ticket:cad-42`) so future handoff briefs find it.
-10. **Record the run.** Append the human digest and the machine ledger line per the
+9. **Linear.** Status → **In Review**.
+   `cadence linear issue-update <ID> --state "In Review" --remove-label agent:build --remove-label agent:claimed --add-label agent:pr-open`.
+10. **Brief.** Once the transition in step 9 has succeeded, post the decision
+    brief. Score the real diff, and fold the review verdict into `unsure`:
+
+    ```bash
+    # BLOCKING=true if the step 8 folded review raised any blocking finding.
+    BLOCKING=false
+    # Reuse the URL returned by `gh pr create` and query from its worktree.
+    RISK=$(cd "$WT" && gh pr view "$(cat "$TMPDIR/pr-url-<ID>")" --json additions,deletions,files \
+      | jq -c --argjson blocking "$BLOCKING" \
+          '{files:[.files[].path],insertions:.additions,deletions:.deletions,
+            gates_passed:true,blocking_review:$blocking}' \
+      | cadence brief risk)
+    cadence brief render --payload "$(jq -nc \
+      --arg did "<one sentence: what the PR changes>" \
+      --arg unsure "<the review's highest finding, or your own biggest doubt>" \
+      --arg check "<the one file or criterion to look at first>" \
+      --argjson risk "$RISK" \
+      '{loop:"build",issue:"<ID>",did:$did,unsure:$unsure,check_first:$check,
+        risk:$risk.risk,risk_reasons:$risk.reasons,next_gate:"agent:revise"}')" \
+      > "$TMPDIR/brief-<ID>.md"
+    cadence linear issue-comment <ID> "$(cat "$TMPDIR/brief-<ID>.md")"
+    ```
+
+    `gates_passed` is `true` because this loop escalates on gate failure rather
+    than reaching this step. `blocking_review` is the separate signal: **set
+    `BLOCKING=true` whenever the step 8 folded review raised any blocking
+    finding**, which forces the band to `high`.
+
+    Both must happen: `unsure` names the finding, *and* the band says `high`.
+    Naming it in `unsure` alone is not enough — a reader who trusts a `low` band
+    may never read that far, which is the whole failure the brief exists to
+    prevent.
+
+    Same failure rule as the spec loop: a failed brief never rolls back the
+    transition. Skip entirely in `--dry-run`.
+11. **Record the run.** Append the human digest and the machine ledger line per the
     dated-file convention in `docs/ARCHITECTURE.md` §7:
     - Append a section to `$CADENCE_STATE_DIR/runs/<YYYY-MM-DD>.md` in `$PROJECT_DIR`,
       headed `## build · <mode> · <live|dry-run> · <UTC timestamp>`, followed by the

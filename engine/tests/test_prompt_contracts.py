@@ -46,6 +46,24 @@ class TestLoopPromptContracts(unittest.TestCase):
         self.assertIn("addressed review comments", text)
         self.assertRegex(text, r"After the push\s+and re-review")
 
+    def test_build_prompt_persists_the_created_pr_url(self):
+        path = os.path.join(SKILLS, "cadence-loop-build", "SKILL.md")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+
+        self.assertIn('> "$TMPDIR/pr-url-<ID>"', text)
+        self.assertIn('$(cat "$TMPDIR/pr-url-<ID>")', text)
+        self.assertNotIn("PR_URL=", text)
+
+    def test_revise_prompt_persists_the_pr_number(self):
+        path = os.path.join(SKILLS, "cadence-loop-revise", "SKILL.md")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+
+        self.assertIn('"$TMPDIR/pr-number-<ID>"', text)
+        self.assertIn('$(cat "$TMPDIR/pr-number-<ID>")', text)
+        self.assertNotIn("PR=<number>", text)
+
 
 if __name__ == "__main__":
     unittest.main()

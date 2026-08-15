@@ -80,14 +80,41 @@ def strip_frontmatter(text: str) -> str:
     return _split_frontmatter(text)[1]
 
 
+def _frontmatter_description(frontmatter: str) -> str | None:
+    lines = frontmatter.splitlines()
+    for index, line in enumerate(lines):
+        if not line.startswith("description:"):
+            continue
+        value = line.removeprefix("description:").strip()
+        if value not in {">", ">-", ">+", "|", "|-", "|+"}:
+            return value or None
+        continuation = []
+        for following in lines[index + 1:]:
+            if following and not following[0].isspace():
+                break
+            continuation.append(following)
+        if value.startswith(">"):
+            return " ".join(line.strip() for line in continuation if line.strip()) or None
+        content = [line for line in continuation if line.strip()]
+        if not content:
+            return None
+        indent = min(len(line) - len(line.lstrip()) for line in content)
+        literal = "\n".join(
+            line[indent:] if line.strip() else "" for line in continuation
+        ) + "\n"
+        if value.endswith("-"):
+            return literal.rstrip("\n") or None
+        if value.endswith("+"):
+            return literal
+        return literal.rstrip("\n") + "\n"
+    return None
+
+
 def extract_frontmatter_description(text: str) -> str | None:
     frontmatter, _ = _split_frontmatter(text)
     if frontmatter is None:
         return None
-    for line in frontmatter.splitlines():
-        if line.startswith("description: "):
-            return line.removeprefix("description: ").strip()
-    return None
+    return _frontmatter_description(frontmatter)
 
 
 def render_file_prompt(stage: str, args: list[str], task_file: str) -> str:
@@ -133,12 +160,7 @@ def render_prompt(stage: str, args: list[str], cadence_home: pathlib.Path) -> st
     skill_text = skill.read_text(encoding="utf-8")
     frontmatter, body = _split_frontmatter(skill_text)  # split once: one warning at most
     body = body.strip()
-    description = None
-    if frontmatter is not None:
-        for line in frontmatter.splitlines():
-            if line.startswith("description: "):
-                description = line.removeprefix("description: ").strip()
-                break
+    description = _frontmatter_description(frontmatter) if frontmatter is not None else None
     if description:
         body = f"{description}\n\n{body}"
     runtime_args = " ".join(args) if args else "(none)"

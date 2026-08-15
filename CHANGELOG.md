@@ -63,6 +63,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Linear label-group transitions no longer fail from the menu bar.** When a
+  gate or status label is added inside a Linear label group, the adapter now
+  replaces the group's existing child in the same atomic update instead of
+  sending both and triggering `labelIds not exclusive child labels`. The
+  native app also extracts Linear's human-readable explanation from failed CLI
+  responses instead of showing truncated escaped JSON.
+- **Folded skill descriptions render as prompt text.** Provider-neutral prompt
+  rendering now understands the folded and literal YAML forms used by skill
+  frontmatter, instead of leaking the `>-` marker and dropping the description.
 - **Paused projects no longer consume scheduler admission.** The scheduler
   tick now skips a project whose own `PAUSED` flag is set before admission,
   so it never spends a `CADENCE_SCHEDULER_MAX_RUNS` slot, counts as due, or
