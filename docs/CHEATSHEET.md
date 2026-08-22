@@ -58,7 +58,7 @@ project's config to use. `cadence help` prints the built-in summary.
 
 | Command | What it does |
 |---|---|
-| `cadence linear <verb>` | Linear adapter — `teams me projects project-get issues-list issue-get issue-update bulk-label issue-comment issue-relate cycles-list issue-create labels-list` |
+| `cadence linear <verb>` | Linear adapter — `teams me projects project-get issues-list issue-get issue-update bulk-label issue-comment issue-relate cycles-list states-list issue-create labels-list` |
 | `cadence tasks <verb>` | Local file backend — `list get add update path validate` |
 
 ## Occasional / advanced

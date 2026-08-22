@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Linear adapter reads for delivery tooling.** `cadence linear states-list`
+  returns the configured team's workflow states in board order (grouped by
+  Linear's type — triage, backlog, unstarted, started, completed, canceled,
+  duplicate — then by position), so a caller can check the board against a
+  documented lifecycle without any state name living in the engine.
+  `issue-get` now also returns `branch_name` (Linear's suggested branch) and
+  `attachments` (title, url, sourceType — linked pull requests arrive here).
+  `issue-update --description-file <path>` replaces an issue's description
+  from a file; Linear has no patch, so callers read, merge and write.
 - **Global scheduler capacity settings.** A first-class settings file
   (`~/.cadence/scheduler.env`, overridable via `CADENCE_SCHEDULER_CONFIG`)
   now controls fleet-wide scheduler capacity, written with
