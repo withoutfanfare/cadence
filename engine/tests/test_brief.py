@@ -251,6 +251,13 @@ class TestRisk(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(cli.score(facts(files=[path]))["risk"], "high")
 
+    def test_configuration_variants_remain_sensitive(self):
+        for path in ("app/Configuration.php", "app/configuration/services.php"):
+            with self.subTest(path=path):
+                out = cli.score(facts(files=[path]))
+                self.assertEqual(out["risk"], "high")
+                self.assertIn("touches sensitive paths: config", out["reasons"])
+
     def test_empty_facts_are_low_with_a_reason(self):
         out = cli.score({})
         self.assertEqual(out["risk"], "low")
