@@ -147,7 +147,7 @@ case "$PROVIDER" in
     _run_with_timeout "$TIMEOUT" "$WORKDIR" "$PROMPT_FILE" "${CMD[@]}"
     ;;
   codex)
-    CMD=(codex exec --model "$MODEL" --dangerously-bypass-approvals-and-sandbox -c 'mcp_servers={}' -C "$WORKDIR" --skip-git-repo-check)
+    CMD=(codex exec --thread-source cadence --model "$MODEL" --dangerously-bypass-approvals-and-sandbox -c 'mcp_servers={}' -C "$WORKDIR" --skip-git-repo-check)
     [ -n "$EFFORT" ] && CMD+=(-c "model_reasoning_effort=\"$EFFORT\"")
     _run_with_timeout "$TIMEOUT" "$WORKDIR" "$PROMPT_FILE" "${CMD[@]}" -
     ;;

@@ -83,7 +83,7 @@ case "$IMPL" in
   claude)   timeout "$TIMEOUT" claude -p "$PROMPT" --model sonnet --dangerously-skip-permissions ;;
   kimi)     timeout "$TIMEOUT" kimi   -p "$PROMPT" ;;
   opencode) timeout "$TIMEOUT" opencode run --model "${OPENCODE_MODEL:-zai-coding-plan/glm-5.2}" "$PROMPT" ;;
-  codex)    timeout "$TIMEOUT" codex exec --dangerously-bypass-approvals-and-sandbox -c 'mcp_servers={}' -C "$WT" --skip-git-repo-check "$PROMPT" ;;
+  codex)    timeout "$TIMEOUT" codex exec --thread-source cadence --dangerously-bypass-approvals-and-sandbox -c 'mcp_servers={}' -C "$WT" --skip-git-repo-check "$PROMPT" ;;
   *) echo "run-implementer: unknown implementer: $IMPL" >&2; exit 2 ;;
 esac
 RC=$?
