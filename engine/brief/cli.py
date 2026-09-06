@@ -229,6 +229,9 @@ def _sensitive_matches(path):
                 matched.add(pattern)
         elif pattern in words or pattern + "s" in words:
             matched.add(pattern)
+        elif pattern == "config" and any(
+                word in {"configuration", "configurations"} for word in words):
+            matched.add(pattern)
         elif pattern == "policy" and "policies" in words:
             matched.add(pattern)
         elif pattern == "auth" and any(

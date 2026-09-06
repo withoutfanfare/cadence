@@ -59,6 +59,22 @@ class TestFrontmatterTolerance(unittest.TestCase):
                 text = f"---\ndescription: {indicator}\n  line\n\n---\nBody\n"
                 self.assertEqual(render.extract_frontmatter_description(text), description)
 
+    def test_folded_description_preserves_paragraph_boundaries(self):
+        text = (
+            "---\ndescription: >-\n"
+            "  first line\n"
+            "  continues\n"
+            "\n"
+            "  second paragraph\n"
+            "  continues too\n"
+            "---\nBody\n"
+        )
+
+        self.assertEqual(
+            render.extract_frontmatter_description(text),
+            "first line continues\nsecond paragraph continues too",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

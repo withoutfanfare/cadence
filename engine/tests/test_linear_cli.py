@@ -167,6 +167,71 @@ class TestReadVerbs(unittest.TestCase):
         self.assertEqual(out[0]["number"], 5)
         self.assertEqual(out[0]["starts_at"], "2026-06-01")
 
+    def test_states_list_orders_by_type_then_position(self):
+        # Linear's position alone interleaves the board's type groups; the
+        # command must return states as the board shows them.
+        cap = {"response": {"workflowStates": {"nodes": [
+            {"id": "s3", "name": "Done", "type": "completed", "position": 0},
+            {"id": "s2", "name": "In Progress", "type": "started", "position": 1},
+            {"id": "s1", "name": "Todo", "type": "unstarted", "position": 2},
+            {"id": "s4", "name": "Cancelled", "type": "canceled", "position": 0},
+            {"id": "s0", "name": "Triage", "type": "triage", "position": 9},
+            {"id": "s2b", "name": "In Review", "type": "started", "position": 3}]}}}
+        out = cli.cmd_states_list(types.SimpleNamespace(), ENV, post=fake_post(cap))
+        self.assertEqual([n["name"] for n in out],
+                         ["Triage", "Todo", "In Progress", "In Review", "Done", "Cancelled"])
+        self.assertEqual(out[2]["type"], "started")
+        self.assertEqual(cap["variables"]["teamId"], "team-1")
+
+    def test_states_list_requires_team_id(self):
+        env = dict(ENV); env["LINEAR_TEAM_ID"] = ""
+        with self.assertRaises(cli.LinearError):
+            cli.cmd_states_list(types.SimpleNamespace(), env, post=lambda *a: {})
+
+    def test_issue_get_surfaces_branch_name_and_attachments(self):
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            self.assertIn("branchName", query)
+            self.assertIn("attachments", query)
+            return {"issue": {
+                "id": "i1", "identifier": "STU-1", "title": "T", "url": "u",
+                "branchName": "dee/stu-1-t",
+                "attachments": {"nodes": [
+                    {"title": "PR #7", "url": "https://github.com/x/y/pull/7",
+                     "sourceType": "github"}]}}}
+        out = cli.cmd_issue_get(types.SimpleNamespace(id="STU-1"), ENV, post=post)
+        self.assertEqual(out["branch_name"], "dee/stu-1-t")
+        self.assertEqual(out["attachments"][0]["url"], "https://github.com/x/y/pull/7")
+
+    def test_issue_update_description_file_replaces_description(self):
+        sent = {}
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            if "issueUpdate(" in query:
+                sent.update(variables["input"])
+                return {"issueUpdate": {"success": True, "issue": {"id": "i1"}}}
+            return {"issue": {"labels": {"nodes": []}}}
+        with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as fh:
+            fh.write("## Problem\nmerged text\n")
+            path = fh.name
+        try:
+            args = types.SimpleNamespace(
+                id="i1", priority=None, title=None, estimate=None, state=None,
+                state_type=None, cycle=None, description_file=path,
+                add_label=None, remove_label=None)
+            out = cli.cmd_issue_update(args, ENV, post=post)
+        finally:
+            os.unlink(path)
+        self.assertTrue(out["success"])
+        self.assertEqual(sent["description"], "## Problem\nmerged text\n")
+        self.assertNotIn("labelIds", sent)
+
     def test_issues_list_includes_canonical_stage(self):
         cap = {"response": {"issues": {"nodes": [{
             "id": "i1", "identifier": "ENG-1", "title": "T", "url": "u",

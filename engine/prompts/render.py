@@ -94,7 +94,19 @@ def _frontmatter_description(frontmatter: str) -> str | None:
                 break
             continuation.append(following)
         if value.startswith(">"):
-            return " ".join(line.strip() for line in continuation if line.strip()) or None
+            paragraphs = []
+            paragraph = []
+            for following in continuation:
+                if following.strip():
+                    paragraph.append(following.strip())
+                elif paragraph:
+                    paragraphs.append(" ".join(paragraph))
+                    paragraph = []
+                elif paragraphs:
+                    paragraphs.append("")
+            if paragraph:
+                paragraphs.append(" ".join(paragraph))
+            return "\n".join(paragraphs) or None
         content = [line for line in continuation if line.strip()]
         if not content:
             return None

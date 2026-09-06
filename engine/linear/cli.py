@@ -206,6 +206,10 @@ def _shape_issue(n, env=None):
         out["labels"] = [x["name"] for x in n["labels"].get("nodes", [])]
     if n.get("cycle"):
         out["cycle"] = n["cycle"].get("number")
+    if n.get("branchName"):
+        out["branch_name"] = n.get("branchName")
+    if n.get("attachments"):
+        out["attachments"] = n["attachments"].get("nodes", [])
     for rel, key in (("comments", "comments"), ("relations", "relations"),
                      ("inverseRelations", "inverseRelations"), ("children", "children"),
                      ("documents", "documents")):
@@ -270,6 +274,8 @@ _ISSUE_GET_Q = """
 query($id: String!) {
   issue(id: $id) {
     %s
+    branchName
+    attachments { nodes { title url sourceType } }
     comments { nodes { body user { name } createdAt } }
     relations { nodes { type relatedIssue { identifier url state { type } } } }
     inverseRelations { nodes { type issue { identifier url state { name type } labels { nodes { name } } } } }
@@ -416,9 +422,31 @@ def _resolve_label_ids(names, env, post):
 _STATES_Q = """
 query($teamId: ID!) {
   workflowStates(filter: { team: { id: { eq: $teamId } } }, first: 100) {
-    nodes { id name type }
+    nodes { id name type position }
   }
 }"""
+
+# Linear's board groups states by type in this order, then by position within
+# the group. `position` alone interleaves groups, so sort by both.
+_STATE_TYPE_ORDER = ("triage", "backlog", "unstarted", "started", "completed", "canceled", "duplicate")
+
+
+def cmd_states_list(args, env, post=graphql):
+    """The configured team's workflow states in board order, each with Linear's
+    type (triage, backlog, unstarted, started, completed, canceled). Read-only:
+    lets a caller check the board against a documented lifecycle without any
+    state name living in the engine."""
+    _require_env(env, "LINEAR_TEAM_ID")
+    data = post(_STATES_Q, {"teamId": env.get("LINEAR_TEAM_ID")}, env)
+
+    def _key(n):
+        stype = (n.get("type") or "").lower()
+        rank = _STATE_TYPE_ORDER.index(stype) if stype in _STATE_TYPE_ORDER else len(_STATE_TYPE_ORDER)
+        return (rank, n.get("position") or 0)
+
+    return [{"id": n["id"], "name": n["name"], "type": n.get("type"),
+             "position": n.get("position")}
+            for n in sorted(data["workflowStates"]["nodes"], key=_key)]
 
 
 def _resolve_state_id(name, env, post):
@@ -594,6 +622,11 @@ def cmd_issue_update(args, env, post=graphql):
         inp["title"] = args.title
     if getattr(args, "estimate", None) is not None:
         inp["estimate"] = int(args.estimate)
+    if getattr(args, "description_file", None):
+        # Replaces the whole description — Linear has no patch. Read, merge,
+        # then write, so the reporter's words survive.
+        with open(args.description_file, encoding="utf-8") as fh:
+            inp["description"] = fh.read()
     if getattr(args, "state", None):
         inp["stateId"] = _resolve_state_id(args.state, env, post)
     elif getattr(args, "state_type", None):
@@ -821,6 +854,7 @@ def _build_parser():
     u.add_argument("--state-type", dest="state_type")
     u.add_argument("--title"); u.add_argument("--estimate", type=int)
     u.add_argument("--cycle")
+    u.add_argument("--description-file", dest="description_file")
     u.add_argument("--add-label", action="append", dest="add_label")
     u.add_argument("--remove-label", action="append", dest="remove_label")
     bl = sub.add_parser("bulk-label")
@@ -841,6 +875,7 @@ def _build_parser():
     d.add_argument("--doc-id", dest="doc_id")
     dg = sub.add_parser("doc-get"); dg.add_argument("id")
     sub.add_parser("cycles-list")
+    sub.add_parser("states-list")
     ic = sub.add_parser("issue-create")
     ic.add_argument("--title", required=True)
     ic.add_argument("--body-file", required=True, dest="body_file")
@@ -857,7 +892,7 @@ _DISPATCH = {
     "issue-relate": cmd_issue_relate, "label-ensure": cmd_label_ensure,
     "labels-list": cmd_labels_list, "labels-init": cmd_labels_init,
     "doc-upsert": cmd_doc_upsert, "doc-get": cmd_doc_get,
-    "cycles-list": cmd_cycles_list,
+    "cycles-list": cmd_cycles_list, "states-list": cmd_states_list,
     "issue-create": cmd_issue_create,
 }
 
