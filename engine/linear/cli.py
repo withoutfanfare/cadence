@@ -291,7 +291,7 @@ query($id: String!) {
     %s
     branchName
     attachments { nodes { title url sourceType } }
-    comments { nodes { body user { name } createdAt } }
+    comments { nodes { id body user { name } createdAt } }
     relations { nodes { type relatedIssue { identifier url state { type } } } }
     inverseRelations { nodes { type issue { identifier url state { name type } labels { nodes { name } } } } }
     children { nodes { identifier title url } }
@@ -793,6 +793,38 @@ def cmd_issue_comment(args, env, post=graphql):
     return {"id": args.id, "success": res["success"]}
 
 
+_COMMENT_SCOPE_Q = "query($id: String!){ comment(id:$id){ id issue { id } } }"
+
+_COMMENT_UPDATE_M = """
+mutation($id: String!, $input: CommentUpdateInput!) {
+  commentUpdate(id: $id, input: $input) { success }
+}"""
+
+
+def cmd_comment_update(args, env, post=graphql):
+    """Rewrite a comment's body. Comment ids come from `issue-get` (comments[].id).
+    Scoped through the comment's issue, so a wrong note can be corrected but the
+    adapter still cannot edit a comment on an issue it may not write to."""
+    body = getattr(args, "body", None)
+    body_file = getattr(args, "body_file", None)
+    if (body is None) == (body_file is None):
+        raise LinearError("comment-update: give --body or --body-file, not both")
+    c = post(_COMMENT_SCOPE_Q, {"id": args.id}, env).get("comment")
+    if not c:
+        raise LinearError(f"comment {args.id} not found")
+    issue_id = (c.get("issue") or {}).get("id")
+    if not issue_id:
+        raise LinearError(f"comment {args.id} is not attached to an issue")
+    _assert_in_scope(issue_id, env, post)
+    if body_file:
+        body = _read_text(body_file)
+    if not body.strip():
+        raise LinearError("comment-update: the body is empty")
+    res = post(_COMMENT_UPDATE_M, {"id": args.id, "input": {"body": body}},
+               env)["commentUpdate"]
+    return {"id": args.id, "issue": issue_id, "success": res["success"]}
+
+
 _RELATE_M = """
 mutation($input: IssueRelationCreateInput!) {
   issueRelationCreate(input: $input) { success }
@@ -939,6 +971,8 @@ def _build_parser():
     c = sub.add_parser("issue-comment"); c.add_argument("id")
     c.add_argument("body", nargs="?")
     c.add_argument("--body-file", dest="body_file")
+    cu = sub.add_parser("comment-update"); cu.add_argument("id", help="comment id from issue-get")
+    cu.add_argument("--body"); cu.add_argument("--body-file", dest="body_file")
     r = sub.add_parser("issue-relate"); r.add_argument("a"); r.add_argument("b")
     r.add_argument("--type", choices=["duplicate", "related", "blocks"], default="related")
     le = sub.add_parser("label-ensure"); le.add_argument("name")
@@ -965,7 +999,7 @@ _DISPATCH = {
     "project-get": cmd_project_get,
     "issues-list": cmd_issues_list, "issue-get": cmd_issue_get,
     "issue-update": cmd_issue_update, "bulk-label": cmd_bulk_label,
-    "issue-comment": cmd_issue_comment,
+    "issue-comment": cmd_issue_comment, "comment-update": cmd_comment_update,
     "issue-relate": cmd_issue_relate, "label-ensure": cmd_label_ensure,
     "labels-list": cmd_labels_list, "labels-init": cmd_labels_init,
     "doc-upsert": cmd_doc_upsert, "doc-get": cmd_doc_get,

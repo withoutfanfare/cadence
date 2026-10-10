@@ -63,6 +63,7 @@ project's config to use. `cadence help` prints the built-in summary.
 | `cadence linear issues-list --open [--label L] [--assignee me]` | List issues that are not completed or cancelled (cannot be combined with `--state`) |
 | `cadence linear help [verb]` | Show the adapter's verbs, or one verb's flags (no profile needed) |
 | `cadence linear issue-get MOD-12 --field description` | Print one key of an issue (strings raw, else JSON); `issues-list --fields identifier,state,labels` trims each listed issue to those keys |
+| `cadence linear comment-update <comment-id> --body-file note.md` | Rewrite an existing comment (ids come from `issue-get` → `comments[].id`); `--body "text"` inline |
 | `cadence tasks <verb>` | Local file backend — `list get add update path validate` |
 
 ## Occasional / advanced

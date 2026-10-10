@@ -50,6 +50,63 @@ class TestHelpVerb(unittest.TestCase):
                 mock.patch("sys.stderr", io.StringIO()):
             with self.assertRaises(SystemExit):
                 cli.main(["help", "nope"])
+class TestCommentUpdate(unittest.TestCase):
+    def _post(self, calls, comment_issue="STU-1", team="team-1"):
+        def post(query, variables, env):
+            calls.append((query, variables))
+            if "comment(id" in query:
+                return {"comment": {"id": "c-9", "issue": {"id": comment_issue}}}
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": team},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            if "commentUpdate" in query:
+                return {"commentUpdate": {"success": True}}
+            raise AssertionError(query)
+        return post
+
+    def test_comment_update_rewrites_body_after_scope_check(self):
+        calls = []
+        args = types.SimpleNamespace(id="c-9", body="fixed", body_file=None)
+        out = cli.cmd_comment_update(args, ENV, post=self._post(calls))
+        self.assertEqual(out, {"id": "c-9", "issue": "STU-1", "success": True})
+        q, v = calls[-1]
+        self.assertIn("commentUpdate", q)
+        self.assertEqual(v, {"id": "c-9", "input": {"body": "fixed"}})
+        self.assertTrue(any("team { id } project" in q for q, _ in calls))
+
+    def test_comment_update_reads_body_file(self):
+        calls = []
+        with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as fh:
+            fh.write("# From file\n")
+        args = types.SimpleNamespace(id="c-9", body=None, body_file=fh.name)
+        cli.cmd_comment_update(args, ENV, post=self._post(calls))
+        self.assertEqual(calls[-1][1]["input"]["body"], "# From file\n")
+
+    def test_comment_update_refuses_out_of_scope_issue(self):
+        args = types.SimpleNamespace(id="c-9", body="x", body_file=None)
+        with self.assertRaisesRegex(cli.LinearError, "outside the configured team"):
+            cli.cmd_comment_update(args, ENV, post=self._post([], team="other"))
+
+    def test_comment_update_requires_exactly_one_body(self):
+        for body, body_file in ((None, None), ("x", "/tmp/x.md")):
+            args = types.SimpleNamespace(id="c-9", body=body, body_file=body_file)
+            with self.assertRaises(cli.LinearError):
+                cli.cmd_comment_update(args, ENV, post=self._post([]))
+
+    def test_comment_update_unknown_comment(self):
+        def post(query, variables, env):
+            return {"comment": None}
+        args = types.SimpleNamespace(id="c-9", body="x", body_file=None)
+        with self.assertRaisesRegex(cli.LinearError, "not found"):
+            cli.cmd_comment_update(args, ENV, post=post)
+
+    def test_issue_get_comments_carry_ids(self):
+        self.assertIn("comments { nodes { id body", cli._ISSUE_GET_Q)
+
+    def test_parser_accepts_comment_update(self):
+        args = cli._build_parser().parse_args(["comment-update", "c-9", "--body-file", "n.md"])
+        self.assertEqual((args.id, args.body_file), ("c-9", "n.md"))
 
 
 class TestReadVerbs(unittest.TestCase):

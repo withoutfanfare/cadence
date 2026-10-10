@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   issue, so a caller that wants one value no longer parses a multi-KB
   document. An unknown `--field` is an error listing the available keys;
   `--fields` skips keys an issue happens not to carry.
+- **`cadence linear comment-update <comment-id> --body <text> | --body-file
+  <path>`** rewrites an existing comment, so a wrong delivery note can be
+  corrected from the CLI instead of the Linear UI. `issue-get` now returns
+  each comment's `id` alongside its body. The edit is scoped through the
+  comment's issue: the same team/project/assignee boundary as every write.
 - **Linear adapter reads for delivery tooling.** `cadence linear states-list`
   returns the configured team's workflow states in board order (grouped by
   Linear's type — triage, backlog, unstarted, started, completed, canceled,
