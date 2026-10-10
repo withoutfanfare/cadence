@@ -60,6 +60,7 @@ project's config to use. `cadence help` prints the built-in summary.
 |---|---|
 | `cadence linear <verb>` | Linear adapter — `teams me projects project-get issues-list issue-get issue-update bulk-label issue-comment issue-relate cycles-list states-list issue-create labels-list` |
 | `cadence linear issue-update MOD-12 --append-description-file spec.md` | Add a block to an issue's description (also `--description`, `--description-file` to replace, `--append-description` inline); `issue-comment MOD-12 --body-file note.md` for a long comment |
+| `cadence linear comment-update <comment-id> --body-file note.md` | Rewrite an existing comment (ids come from `issue-get` → `comments[].id`); `--body "text"` inline |
 | `cadence tasks <verb>` | Local file backend — `list get add update path validate` |
 
 ## Occasional / advanced
