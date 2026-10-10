@@ -928,6 +928,9 @@ def _build_parser():
     ic.add_argument("--title", required=True)
     ic.add_argument("--body-file", required=True, dest="body_file")
     ic.add_argument("--label", action="append")
+    h = sub.add_parser("help", help="show usage, or the flags of one verb")
+    h.add_argument("verb", nargs="?", choices=sorted(sub.choices), metavar="verb")
+    h.set_defaults(verb_parsers=sub.choices)
     return p
 
 
@@ -946,7 +949,12 @@ _DISPATCH = {
 
 
 def main(argv=None):
-    args = _build_parser().parse_args(argv)
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    if args.cmd == "help":
+        # `cadence linear help [verb]` — no env needed, nothing is called.
+        (args.verb_parsers[args.verb] if args.verb else parser).print_help()
+        return 0
     env = load_env()
     try:
         result = _DISPATCH[args.cmd](args, env)

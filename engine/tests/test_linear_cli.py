@@ -29,6 +29,29 @@ def fake_post(captured):
         return captured["response"]
     return _post
 
+class TestHelpVerb(unittest.TestCase):
+    def test_help_prints_usage_and_exits_zero(self):
+        buf = io.StringIO()
+        with mock.patch("sys.stdout", buf):
+            rc = cli.main(["help"])
+        self.assertEqual(rc, 0)
+        self.assertIn("usage: cadence linear", buf.getvalue())
+        self.assertIn("issues-list", buf.getvalue())
+
+    def test_help_for_one_verb_shows_its_flags(self):
+        buf = io.StringIO()
+        with mock.patch("sys.stdout", buf):
+            rc = cli.main(["help", "issues-list"])
+        self.assertEqual(rc, 0)
+        self.assertIn("--label", buf.getvalue())
+
+    def test_help_for_unknown_verb_fails(self):
+        with mock.patch("sys.stdout", io.StringIO()), \
+                mock.patch("sys.stderr", io.StringIO()):
+            with self.assertRaises(SystemExit):
+                cli.main(["help", "nope"])
+
+
 class TestReadVerbs(unittest.TestCase):
     def test_teams_shapes_result(self):
         cap = {"response": {"teams": {"nodes": [
