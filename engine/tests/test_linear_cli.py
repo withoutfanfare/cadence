@@ -232,6 +232,71 @@ class TestReadVerbs(unittest.TestCase):
         self.assertEqual(sent["description"], "## Problem\nmerged text\n")
         self.assertNotIn("labelIds", sent)
 
+    def _update_post(self, sent, current_description="Reporter's words."):
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            if "issue(id:$id){ description }" in query:
+                sent["read_description"] = True
+                return {"issue": {"description": current_description}}
+            if "issueUpdate(" in query:
+                sent.update(variables["input"])
+                return {"issueUpdate": {"success": True, "issue": {"id": "i1"}}}
+            return {"issue": {"labels": {"nodes": []}}}
+        return post
+
+    def _update_args(self, **overrides):
+        base = dict(id="i1", priority=None, title=None, estimate=None, state=None,
+                    state_type=None, cycle=None, description=None, description_file=None,
+                    append_description=None, append_description_file=None,
+                    add_label=None, remove_label=None)
+        base.update(overrides)
+        return types.SimpleNamespace(**base)
+
+    def test_issue_update_inline_description_replaces_without_reading(self):
+        sent = {}
+        cli.cmd_issue_update(self._update_args(description="New text"), ENV,
+                             post=self._update_post(sent))
+        self.assertEqual(sent["description"], "New text")
+        self.assertNotIn("read_description", sent)
+
+    def test_issue_update_append_keeps_current_text(self):
+        sent = {}
+        cli.cmd_issue_update(self._update_args(append_description="## Spec\n- step\n"),
+                             ENV, post=self._update_post(sent, "Reporter's words.\n"))
+        self.assertTrue(sent["read_description"])
+        self.assertEqual(sent["description"], "Reporter's words.\n\n## Spec\n- step\n")
+
+    def test_issue_update_append_to_empty_description(self):
+        sent = {}
+        cli.cmd_issue_update(self._update_args(append_description="Only block"),
+                             ENV, post=self._update_post(sent, None))
+        self.assertEqual(sent["description"], "Only block\n")
+
+    def test_issue_update_append_file(self):
+        sent = {}
+        with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as fh:
+            fh.write("## From file\n")
+            path = fh.name
+        try:
+            cli.cmd_issue_update(self._update_args(append_description_file=path), ENV,
+                                 post=self._update_post(sent, "Old"))
+        finally:
+            os.unlink(path)
+        self.assertEqual(sent["description"], "Old\n\n## From file\n")
+
+    def test_issue_update_refuses_mixed_description_options(self):
+        with self.assertRaises(cli.LinearError):
+            cli.cmd_issue_update(self._update_args(description="a", append_description="b"),
+                                 ENV, post=self._update_post({}))
+
+    def test_issue_update_refuses_blank_append(self):
+        with self.assertRaises(cli.LinearError):
+            cli.cmd_issue_update(self._update_args(append_description="  \n"), ENV,
+                                 post=self._update_post({}))
+
     def test_issues_list_includes_canonical_stage(self):
         cap = {"response": {"issues": {"nodes": [{
             "id": "i1", "identifier": "ENG-1", "title": "T", "url": "u",
@@ -751,6 +816,34 @@ class TestWriteVerbs(unittest.TestCase):
         out = cli.cmd_issue_comment(args, ENV, post=post)
         self.assertTrue(out["success"])
         self.assertEqual(seen["body"], "hello")
+
+    def test_issue_comment_body_file(self):
+        seen = {}
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            seen["body"] = variables["input"]["body"]
+            return {"commentCreate": {"success": True, "comment": {"id": "c1"}}}
+        with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as fh:
+            fh.write("## Spec\n\nlong body\n")
+            path = fh.name
+        try:
+            out = cli.cmd_issue_comment(types.SimpleNamespace(id="i1", body=None, body_file=path),
+                                        ENV, post=post)
+        finally:
+            os.unlink(path)
+        self.assertTrue(out["success"])
+        self.assertEqual(seen["body"], "## Spec\n\nlong body\n")
+
+    def test_issue_comment_needs_exactly_one_body_source(self):
+        post = lambda q, v, e: {"issue": {"team": {"id": "team-1"}, "project": {"id": "proj-1"},
+                                          "assignee": {"id": "user-1"}}}
+        with self.assertRaises(cli.LinearError):
+            cli.cmd_issue_comment(types.SimpleNamespace(id="i1", body=None, body_file=None), ENV, post=post)
+        with self.assertRaises(cli.LinearError):
+            cli.cmd_issue_comment(types.SimpleNamespace(id="i1", body="x", body_file="/tmp/x"), ENV, post=post)
 
     def test_issue_relate_maps_type(self):
         def post(query, variables, env):
