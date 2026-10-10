@@ -100,6 +100,50 @@ class TestReadVerbs(unittest.TestCase):
         self.assertEqual(out["labels"], ["Bug"])
         self.assertEqual(out["cycle"], 5)
 
+    def test_issue_get_field_returns_only_that_value(self):
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            return {"issue": {"id": "i1", "identifier": "STU-1", "title": "T",
+                              "url": "u", "description": "# Spec\n\nbody",
+                              "labels": {"nodes": [{"name": "Bug"}]}}}
+        args = types.SimpleNamespace(id="STU-1", field="description")
+        self.assertEqual(cli.cmd_issue_get(args, ENV, post=post), "# Spec\n\nbody")
+        args = types.SimpleNamespace(id="STU-1", field="labels")
+        self.assertEqual(cli.cmd_issue_get(args, ENV, post=post), ["Bug"])
+
+    def test_issue_get_field_rejects_unknown_name(self):
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            return {"issue": {"id": "i1", "identifier": "STU-1", "title": "T", "url": "u"}}
+        args = types.SimpleNamespace(id="STU-1", field="nope")
+        with self.assertRaisesRegex(cli.LinearError, "unknown field 'nope'"):
+            cli.cmd_issue_get(args, ENV, post=post)
+
+    def test_issues_list_fields_projects_each_issue(self):
+        cap = {"response": {"issues": {"nodes": [
+            {"id": "i1", "identifier": "STU-1", "title": "T", "url": "u",
+             "description": "long", "state": {"name": "Todo", "type": "unstarted"},
+             "labels": {"nodes": [{"name": "Bug"}]}}]}}}
+        args = types.SimpleNamespace(label=None, state=None, assignee=None,
+                                     fields="identifier,state,labels,nope")
+        out = cli.cmd_issues_list(args, ENV, post=fake_post(cap))
+        self.assertEqual(out, [{"identifier": "STU-1", "state": "Todo", "labels": ["Bug"]}])
+
+    def test_main_prints_a_string_field_raw(self):
+        buf = io.StringIO()
+        with mock.patch.object(cli, "load_env", return_value=dict(ENV)), \
+                mock.patch.dict(cli._DISPATCH, {"issue-get": lambda a, e: "# Spec\n\nbody"}), \
+                mock.patch("sys.stdout", buf):
+            rc = cli.main(["issue-get", "STU-1", "--field", "description"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(buf.getvalue(), "# Spec\n\nbody\n")
+
     def test_issue_get_surfaces_linked_documents(self):
         def post(query, variables, env):
             if "team { id } project" in query:

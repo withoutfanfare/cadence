@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Field projection on Linear reads.** `cadence linear issue-get <id>
+  --field <key>` prints one key of the shaped issue (a string such as
+  `description` is printed raw, anything else as JSON) and
+  `issues-list --fields id,state,labels` keeps only the named keys per
+  issue, so a caller that wants one value no longer parses a multi-KB
+  document. An unknown `--field` is an error listing the available keys;
+  `--fields` skips keys an issue happens not to carry.
 - **Linear adapter reads for delivery tooling.** `cadence linear states-list`
   returns the configured team's workflow states in board order (grouped by
   Linear's type — triage, backlog, unstarted, started, completed, canceled,

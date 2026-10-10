@@ -267,7 +267,16 @@ def cmd_issues_list(args, env, post=graphql):
         uid = env.get("LINEAR_ASSIGNEE_ID") if args.assignee == "me" else args.assignee
         f["assignee"] = {"id": {"eq": uid}}
     nodes = _issue_nodes(f, env, post=post, limit=getattr(args, "limit", None))
-    return [_shape_issue(n, env) for n in nodes]
+    issues = [_shape_issue(n, env) for n in nodes]
+    fields = _field_names(getattr(args, "fields", None))
+    if fields:
+        # Keys an issue lacks (no assignee, no cycle) are skipped, not errors.
+        issues = [{k: i[k] for k in fields if k in i} for i in issues]
+    return issues
+
+
+def _field_names(spec):
+    return [k.strip() for k in (spec or "").split(",") if k.strip()]
 
 
 _ISSUE_GET_Q = """
@@ -290,7 +299,14 @@ def cmd_issue_get(args, env, post=graphql):
     data = post(_ISSUE_GET_Q, {"id": args.id}, env)
     n = data["issue"]
     n["description"] = n.get("description")  # force-keep description on detail read
-    return _shape_issue(n, env)
+    out = _shape_issue(n, env)
+    field = getattr(args, "field", None)
+    if field:
+        if field not in out:
+            raise LinearError(f"issue-get: unknown field {field!r}; one of: "
+                              + ", ".join(sorted(out)))
+        return out[field]
+    return out
 
 
 _CYCLES_Q = """
@@ -891,7 +907,9 @@ def _build_parser():
     il = sub.add_parser("issues-list"); il.add_argument("--label")
     il.add_argument("--state"); il.add_argument("--assignee")
     il.add_argument("--limit", type=int)
+    il.add_argument("--fields", help="comma-separated keys to keep per issue, e.g. identifier,state,labels")
     g = sub.add_parser("issue-get"); g.add_argument("id")
+    g.add_argument("--field", help="print one key only; a string value is printed raw")
     u = sub.add_parser("issue-update"); u.add_argument("id")
     u.add_argument("--priority", type=int); u.add_argument("--state")
     u.add_argument("--state-type", dest="state_type")
@@ -953,7 +971,10 @@ def main(argv=None):
     except LinearError as e:
         print(json.dumps({"error": str(e)}), file=sys.stderr)
         return 1
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    if isinstance(result, str):
+        print(result)  # `issue-get --field description` wants the Markdown, not a JSON string
+    else:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
 
