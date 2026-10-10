@@ -612,6 +612,43 @@ def _target_state_is_terminal(args, env, post):
     return False
 
 
+_ISSUE_DESCRIPTION_Q = "query($id: String!){ issue(id:$id){ description } }"
+
+
+def _read_text(path):
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
+def _description_change(args, env, post):
+    """The new description for issue-update, or None when none was asked for.
+
+    --description / --description-file replace the whole text: Linear has no
+    patch, so a caller that wants to keep the reporter's words reads, merges
+    and writes. --append-description / --append-description-file keep the
+    current text and add the new block after a blank line, which is the safe
+    default for delivery notes and specs. Replace and append cannot be mixed."""
+    replace = [v for v in (getattr(args, "description", None),
+                           _read_text(args.description_file) if getattr(args, "description_file", None) else None)
+               if v is not None]
+    append = [v for v in (getattr(args, "append_description", None),
+                          _read_text(args.append_description_file) if getattr(args, "append_description_file", None) else None)
+              if v is not None]
+    if len(replace) + len(append) > 1:
+        raise LinearError("issue-update: give one of --description, --description-file, "
+                          "--append-description or --append-description-file")
+    if replace:
+        return replace[0]
+    if append:
+        block = append[0].strip("\n")
+        if not block.strip():
+            raise LinearError("issue-update: nothing to append")
+        current = (post(_ISSUE_DESCRIPTION_Q, {"id": args.id}, env).get("issue") or {}).get("description") or ""
+        current = current.rstrip("\n")
+        return (current + "\n\n" + block + "\n") if current else (block + "\n")
+    return None
+
+
 def cmd_issue_update(args, env, post=graphql):
     _assert_in_scope(args.id, env, post)
     _guard_gate_removal(getattr(args, "remove_label", None) or [], env)
@@ -622,11 +659,9 @@ def cmd_issue_update(args, env, post=graphql):
         inp["title"] = args.title
     if getattr(args, "estimate", None) is not None:
         inp["estimate"] = int(args.estimate)
-    if getattr(args, "description_file", None):
-        # Replaces the whole description — Linear has no patch. Read, merge,
-        # then write, so the reporter's words survive.
-        with open(args.description_file, encoding="utf-8") as fh:
-            inp["description"] = fh.read()
+    description = _description_change(args, env, post)
+    if description is not None:
+        inp["description"] = description
     if getattr(args, "state", None):
         inp["stateId"] = _resolve_state_id(args.state, env, post)
     elif getattr(args, "state_type", None):
@@ -723,7 +758,15 @@ mutation($input: CommentCreateInput!) {
 
 def cmd_issue_comment(args, env, post=graphql):
     _assert_in_scope(args.id, env, post)
-    res = post(_COMMENT_M, {"input": {"issueId": args.id, "body": args.body}},
+    body = getattr(args, "body", None)
+    body_file = getattr(args, "body_file", None)
+    if (body is None) == (body_file is None):
+        raise LinearError("issue-comment: give the body as an argument or with --body-file, not both")
+    if body_file:
+        body = _read_text(body_file)
+    if not body.strip():
+        raise LinearError("issue-comment: the body is empty")
+    res = post(_COMMENT_M, {"input": {"issueId": args.id, "body": body}},
                env)["commentCreate"]
     return {"id": args.id, "success": res["success"]}
 
@@ -854,7 +897,10 @@ def _build_parser():
     u.add_argument("--state-type", dest="state_type")
     u.add_argument("--title"); u.add_argument("--estimate", type=int)
     u.add_argument("--cycle")
+    u.add_argument("--description")
     u.add_argument("--description-file", dest="description_file")
+    u.add_argument("--append-description", dest="append_description")
+    u.add_argument("--append-description-file", dest="append_description_file")
     u.add_argument("--add-label", action="append", dest="add_label")
     u.add_argument("--remove-label", action="append", dest="remove_label")
     bl = sub.add_parser("bulk-label")
@@ -864,7 +910,9 @@ def _build_parser():
     bl.add_argument("--remove", action="append", dest="remove_label")
     bl.add_argument("--dry-run", action="store_true", dest="dry_run")
     bl.add_argument("-y", "--yes", action="store_true")
-    c = sub.add_parser("issue-comment"); c.add_argument("id"); c.add_argument("body")
+    c = sub.add_parser("issue-comment"); c.add_argument("id")
+    c.add_argument("body", nargs="?")
+    c.add_argument("--body-file", dest="body_file")
     r = sub.add_parser("issue-relate"); r.add_argument("a"); r.add_argument("b")
     r.add_argument("--type", choices=["duplicate", "related", "blocks"], default="related")
     le = sub.add_parser("label-ensure"); le.add_argument("name")

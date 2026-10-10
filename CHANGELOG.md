@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `attachments` (title, url, sourceType — linked pull requests arrive here).
   `issue-update --description-file <path>` replaces an issue's description
   from a file; Linear has no patch, so callers read, merge and write.
+  `issue-update --description <text>` does the same inline, and
+  `--append-description <text>` / `--append-description-file <path>` keep the
+  current description and add the block after a blank line, so a delivery
+  note or spec can land on a ticket without retyping the reporter's words.
+  `issue-comment` accepts `--body-file <path>` for long Markdown comments.
 - **Global scheduler capacity settings.** A first-class settings file
   (`~/.cadence/scheduler.env`, overridable via `CADENCE_SCHEDULER_CONFIG`)
   now controls fleet-wide scheduler capacity, written with
