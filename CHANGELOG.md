@@ -30,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to an issue without a separate `issue-get` to find its id. An issue with
   no document is an error, and one with several lists their ids so the
   caller picks rather than the adapter guessing.
+- **`cadence linear issue-update <id> --assignee me`** claims an unassigned
+  issue. Until now an unassigned ticket was refused for every read and write
+  and could only be fixed in the Linear UI. The relaxation is deliberately
+  narrow: the issue must be in the configured team and project and have no
+  assignee (already mine is a no-op), the target can only be the configured
+  assignee, and no other field may change in the same call.
+
 - **Linear adapter reads for delivery tooling.** `cadence linear states-list`
   returns the configured team's workflow states in board order (grouped by
   Linear's type — triage, backlog, unstarted, started, completed, canceled,

@@ -65,6 +65,7 @@ project's config to use. `cadence help` prints the built-in summary.
 | `cadence linear issue-get MOD-12 --field description` | Print one key of an issue (strings raw, else JSON); `issues-list --fields identifier,state,labels` trims each listed issue to those keys |
 | `cadence linear comment-update <comment-id> --body-file note.md` | Rewrite an existing comment (ids come from `issue-get` → `comments[].id`); `--body "text"` inline |
 | `cadence linear doc-get --issue MOD-12` | Read the one document attached to an issue (several → error listing ids; `doc-get <doc-id>` still works) |
+| `cadence linear issue-update MOD-12 --assignee me` | Claim an unassigned issue in the configured team/project (the only write allowed before it is yours; nothing else may change in the same call) |
 | `cadence tasks <verb>` | Local file backend — `list get add update path validate` |
 
 ## Occasional / advanced

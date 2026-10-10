@@ -699,7 +699,47 @@ def _description_change(args, env, post):
     return None
 
 
+_CLAIM_EXCLUDES = ("priority", "state", "state_type", "title", "estimate", "cycle",
+                   "description", "description_file", "append_description",
+                   "append_description_file", "add_label", "remove_label")
+
+
+def _claim_issue(args, env, post):
+    """`issue-update --assignee me`: the one write permitted on an unassigned
+    issue. The scope check is deliberately narrower than _assert_in_scope —
+    team and project must match, and the issue must be unassigned (or already
+    mine) — and nothing else may change in the same call, so claiming never
+    smuggles another edit past the assignee boundary."""
+    _require_env(env, "LINEAR_TEAM_ID", "LINEAR_PROJECT_ID", "LINEAR_ASSIGNEE_ID")
+    me = env.get("LINEAR_ASSIGNEE_ID")
+    target = me if args.assignee == "me" else args.assignee
+    if target != me:
+        raise LinearError("issue-update --assignee: only the configured assignee "
+                          "(me) may be set")
+    if any(getattr(args, k, None) for k in _CLAIM_EXCLUDES):
+        raise LinearError("issue-update --assignee must be used on its own")
+    n = post(_ISSUE_SCOPE_Q, {"id": args.id}, env).get("issue")
+    if not n:
+        raise LinearError(f"issue {args.id} not found")
+    if (n.get("team") or {}).get("id") != env.get("LINEAR_TEAM_ID"):
+        raise LinearError(f"issue {args.id} is outside the configured team")
+    if (n.get("project") or {}).get("id") != env.get("LINEAR_PROJECT_ID"):
+        raise LinearError(f"issue {args.id} is outside the configured project")
+    current = (n.get("assignee") or {}).get("id")
+    if current == me:
+        return {"id": args.id, "success": True, "unchanged": True}
+    if current:
+        raise LinearError(f"issue {args.id} is already assigned to someone else")
+    res = post(_ISSUE_UPDATE_M, {"id": args.id, "input": {"assigneeId": me}},
+               env)["issueUpdate"]
+    if not res["success"]:
+        raise LinearError("issue-update: Linear returned success=false")
+    return {"id": args.id, "success": res["success"]}
+
+
 def cmd_issue_update(args, env, post=graphql):
+    if getattr(args, "assignee", None):
+        return _claim_issue(args, env, post)
     _assert_in_scope(args.id, env, post)
     _guard_gate_removal(getattr(args, "remove_label", None) or [], env)
     inp = {}
@@ -983,6 +1023,7 @@ def _build_parser():
     u.add_argument("--state-type", dest="state_type")
     u.add_argument("--title"); u.add_argument("--estimate", type=int)
     u.add_argument("--cycle")
+    u.add_argument("--assignee", help="claim an unassigned issue: 'me' or my own id; no other flag allowed")
     u.add_argument("--description")
     u.add_argument("--description-file", dest="description_file")
     u.add_argument("--append-description", dest="append_description")
