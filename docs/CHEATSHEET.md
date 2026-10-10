@@ -62,6 +62,7 @@ project's config to use. `cadence help` prints the built-in summary.
 | `cadence linear issue-update MOD-12 --append-description-file spec.md` | Add a block to an issue's description (also `--description`, `--description-file` to replace, `--append-description` inline); `issue-comment MOD-12 --body-file note.md` for a long comment |
 | `cadence linear issues-list --open [--label L] [--assignee me]` | List issues that are not completed or cancelled (cannot be combined with `--state`) |
 | `cadence linear help [verb]` | Show the adapter's verbs, or one verb's flags (no profile needed) |
+| `cadence linear issue-get MOD-12 --field description` | Print one key of an issue (strings raw, else JSON); `issues-list --fields identifier,state,labels` trims each listed issue to those keys |
 | `cadence tasks <verb>` | Local file backend — `list get add update path validate` |
 
 ## Occasional / advanced
