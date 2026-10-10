@@ -447,6 +447,75 @@ class TestIssueCreate(unittest.TestCase):
         self.assertTrue(out["success"])
 
 
+class TestIssueAssign(unittest.TestCase):
+    """`issue-update --assignee me` is the one write allowed on an unassigned
+    issue: it claims the ticket so the usual assignee boundary applies after."""
+
+    def _post(self, calls, assignee=None, team="team-1", project="proj-1"):
+        def post(query, variables, env):
+            calls.append((query, variables))
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": team}, "project": {"id": project},
+                                  "assignee": assignee}}
+            if "issueUpdate" in query:
+                return {"issueUpdate": {"success": True, "issue": {"id": "i1"}}}
+            raise AssertionError(query)
+        return post
+
+    def _args(self, **kw):
+        base = dict(id="STU-1", assignee="me", priority=None, state=None, state_type=None,
+                    title=None, estimate=None, cycle=None, description=None,
+                    description_file=None, append_description=None,
+                    append_description_file=None, add_label=None, remove_label=None)
+        base.update(kw)
+        return types.SimpleNamespace(**base)
+
+    def test_claims_unassigned_issue_for_me(self):
+        calls = []
+        out = cli.cmd_issue_update(self._args(), ENV, post=self._post(calls))
+        self.assertEqual(out, {"id": "STU-1", "success": True})
+        q, v = calls[-1]
+        self.assertIn("issueUpdate", q)
+        self.assertEqual(v["input"], {"assigneeId": "user-1"})
+
+    def test_accepts_my_literal_id(self):
+        calls = []
+        cli.cmd_issue_update(self._args(assignee="user-1"), ENV, post=self._post(calls))
+        self.assertEqual(calls[-1][1]["input"], {"assigneeId": "user-1"})
+
+    def test_refuses_assigning_to_someone_else(self):
+        with self.assertRaisesRegex(cli.LinearError, "only the configured assignee"):
+            cli.cmd_issue_update(self._args(assignee="user-2"), ENV, post=self._post([]))
+
+    def test_refuses_issue_assigned_to_someone_else(self):
+        with self.assertRaisesRegex(cli.LinearError, "already assigned"):
+            cli.cmd_issue_update(self._args(), ENV,
+                                 post=self._post([], assignee={"id": "user-2"}))
+
+    def test_is_a_no_op_when_already_mine(self):
+        calls = []
+        out = cli.cmd_issue_update(self._args(), ENV,
+                                   post=self._post(calls, assignee={"id": "user-1"}))
+        self.assertEqual(out, {"id": "STU-1", "success": True, "unchanged": True})
+        self.assertFalse(any("issueUpdate" in q for q, _ in calls))
+
+    def test_refuses_outside_team_or_project(self):
+        with self.assertRaisesRegex(cli.LinearError, "outside the configured team"):
+            cli.cmd_issue_update(self._args(), ENV, post=self._post([], team="other"))
+        with self.assertRaisesRegex(cli.LinearError, "outside the configured project"):
+            cli.cmd_issue_update(self._args(), ENV, post=self._post([], project="other"))
+
+    def test_refuses_other_changes_in_the_same_call(self):
+        for extra in ({"priority": 1}, {"add_label": ["agent:spec"]}, {"title": "T"},
+                      {"append_description": "x"}, {"state": "Todo"}):
+            with self.assertRaisesRegex(cli.LinearError, "on its own"):
+                cli.cmd_issue_update(self._args(**extra), ENV, post=self._post([]))
+
+    def test_parser_accepts_assignee(self):
+        args = cli._build_parser().parse_args(["issue-update", "STU-1", "--assignee", "me"])
+        self.assertEqual(args.assignee, "me")
+
+
 class TestWriteVerbs(unittest.TestCase):
     def test_label_ensure_returns_existing(self):
         cap = {"response": {"issueLabels": {"nodes": [
