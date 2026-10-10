@@ -259,8 +259,14 @@ def cmd_issues_list(args, env, post=graphql):
     f = _scoped_filter(env)
     if getattr(args, "label", None):
         f["labels"] = {"name": {"eq": args.label}}
+    if getattr(args, "state", None) and getattr(args, "open", False):
+        raise LinearError("issues-list: --open and --state cannot be combined")
     if getattr(args, "state", None):
         f["state"] = {"name": {"eq": args.state}}
+    elif getattr(args, "open", False):
+        # Open = not finished: everything but completed/cancelled, so callers
+        # stop re-implementing the state_type filter by hand.
+        f["state"] = {"type": {"nin": sorted(_TERMINAL_STATE_TYPES)}}
     if getattr(args, "assignee", None):
         if args.assignee == "me":
             _require_env(env, "LINEAR_ASSIGNEE_ID")
@@ -891,6 +897,8 @@ def _build_parser():
     il = sub.add_parser("issues-list"); il.add_argument("--label")
     il.add_argument("--state"); il.add_argument("--assignee")
     il.add_argument("--limit", type=int)
+    il.add_argument("--open", action="store_true",
+                    help="only issues not completed or cancelled")
     g = sub.add_parser("issue-get"); g.add_argument("id")
     u = sub.add_parser("issue-update"); u.add_argument("id")
     u.add_argument("--priority", type=int); u.add_argument("--state")

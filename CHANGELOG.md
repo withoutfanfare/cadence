@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`cadence linear issues-list --open`** excludes completed and cancelled
+  issues server-side, so callers no longer filter `state_type` by hand.
+  It cannot be combined with `--state`.
 - **Linear adapter reads for delivery tooling.** `cadence linear states-list`
   returns the configured team's workflow states in board order (grouped by
   Linear's type — triage, backlog, unstarted, started, completed, canceled,

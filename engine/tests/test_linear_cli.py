@@ -52,6 +52,23 @@ class TestReadVerbs(unittest.TestCase):
         self.assertEqual(
             cap["variables"]["filter"]["assignee"]["id"]["eq"], "user-1")
 
+    def test_issues_list_open_excludes_terminal_states(self):
+        cap = {"response": {"issues": {"nodes": []}}}
+        args = types.SimpleNamespace(label=None, state=None, assignee=None, open=True)
+        cli.cmd_issues_list(args, ENV, post=fake_post(cap))
+        f = cap["variables"]["filter"]
+        self.assertEqual(set(f["state"]["type"]["nin"]), {"completed", "canceled"})
+
+    def test_issues_list_open_refuses_explicit_state(self):
+        cap = {"response": {"issues": {"nodes": []}}}
+        args = types.SimpleNamespace(label=None, state="Done", assignee=None, open=True)
+        with self.assertRaises(cli.LinearError):
+            cli.cmd_issues_list(args, ENV, post=fake_post(cap))
+
+    def test_issues_list_parser_accepts_open(self):
+        args = cli._build_parser().parse_args(["issues-list", "--open"])
+        self.assertTrue(args.open)
+
     def test_issues_list_paginates_and_preserves_created_at(self):
         calls = []
         def post(query, variables, env):
