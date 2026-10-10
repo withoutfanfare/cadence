@@ -154,6 +154,49 @@ class TestReadVerbs(unittest.TestCase):
                                {"id": "proj-2", "name": "Beta"}])
         self.assertEqual(cap["variables"]["teamId"], "team-1")
 
+    def _doc_by_issue_post(self, docs):
+        def post(query, variables, env):
+            if "team { id } project" in query:
+                return {"issue": {"team": {"id": "team-1"},
+                                  "project": {"id": "proj-1"},
+                                  "assignee": {"id": "user-1"}}}
+            if "documents { nodes" in query:
+                return {"issue": {"documents": {"nodes": docs}}}
+            if "document(id" in query:
+                return {"document": {"id": variables["id"], "title": "Spec", "url": "u",
+                                     "content": "# body", "issue": {"team": {"id": "team-1"}}}}
+            raise AssertionError(query)
+        return post
+
+    def test_doc_get_by_issue_returns_its_only_document(self):
+        args = types.SimpleNamespace(id=None, issue="STU-1")
+        out = cli.cmd_doc_get(args, ENV, post=self._doc_by_issue_post(
+            [{"id": "doc-9", "title": "Spec", "url": "u"}]))
+        self.assertEqual(out["id"], "doc-9")
+        self.assertEqual(out["content"], "# body")
+
+    def test_doc_get_by_issue_fails_when_none(self):
+        args = types.SimpleNamespace(id=None, issue="STU-1")
+        with self.assertRaisesRegex(cli.LinearError, "no documents"):
+            cli.cmd_doc_get(args, ENV, post=self._doc_by_issue_post([]))
+
+    def test_doc_get_by_issue_lists_candidates_when_several(self):
+        args = types.SimpleNamespace(id=None, issue="STU-1")
+        with self.assertRaisesRegex(cli.LinearError, "doc-9.*doc-10"):
+            cli.cmd_doc_get(args, ENV, post=self._doc_by_issue_post(
+                [{"id": "doc-9", "title": "Spec", "url": "u"},
+                 {"id": "doc-10", "title": "Plan", "url": "u"}]))
+
+    def test_doc_get_needs_exactly_one_of_id_or_issue(self):
+        for i, iss in ((None, None), ("doc-9", "STU-1")):
+            with self.assertRaises(cli.LinearError):
+                cli.cmd_doc_get(types.SimpleNamespace(id=i, issue=iss), ENV,
+                                post=self._doc_by_issue_post([]))
+
+    def test_doc_get_parser_accepts_issue_flag(self):
+        args = cli._build_parser().parse_args(["doc-get", "--issue", "STU-1"])
+        self.assertEqual((args.id, args.issue), (None, "STU-1"))
+
     def test_projects_list_requires_team_id(self):
         env = dict(ENV); env["LINEAR_TEAM_ID"] = ""
         with self.assertRaises(cli.LinearError):
