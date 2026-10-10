@@ -329,17 +329,45 @@ query($id: String!) {
 }"""
 
 
+_ISSUE_DOCS_Q = """
+query($id: String!) {
+  issue(id: $id) { documents { nodes { id title url } } }
+}"""
+
+
+def _issue_document_id(issue_id, env, post):
+    """The one document attached to an in-scope issue. Several is an error that
+    lists them, so the caller can pick an id instead of the adapter guessing."""
+    _assert_in_scope(issue_id, env, post)
+    docs = ((post(_ISSUE_DOCS_Q, {"id": issue_id}, env).get("issue") or {})
+            .get("documents") or {}).get("nodes") or []
+    if not docs:
+        raise LinearError(f"issue {issue_id} has no documents")
+    if len(docs) > 1:
+        listing = ", ".join(f"{d.get('id')} ({d.get('title')})" for d in docs)
+        raise LinearError(f"issue {issue_id} has {len(docs)} documents; "
+                          f"pass one id: {listing}")
+    return docs[0]["id"]
+
+
 def cmd_doc_get(args, env, post=graphql):
-    """Fetch a spec document's body by id. Scoped: refuses a document whose issue
-    is outside the configured team, so the advance loop can read a spec to verify
-    acceptance criteria without reaching across the workspace."""
+    """Fetch a spec document's body by id, or by the issue it hangs off
+    (`--issue`). Scoped: refuses a document whose issue is outside the
+    configured team, so the advance loop can read a spec to verify acceptance
+    criteria without reaching across the workspace."""
     _require_env(env, "LINEAR_TEAM_ID")
-    doc = post(_DOC_GET_Q, {"id": args.id}, env).get("document")
+    doc_id = getattr(args, "id", None)
+    issue_id = getattr(args, "issue", None)
+    if (doc_id is None) == (issue_id is None):
+        raise LinearError("doc-get: give a document id or --issue <issue>, not both")
+    if issue_id:
+        doc_id = _issue_document_id(issue_id, env, post)
+    doc = post(_DOC_GET_Q, {"id": doc_id}, env).get("document")
     if not doc:
-        raise LinearError(f"document {args.id} not found")
+        raise LinearError(f"document {doc_id} not found")
     team = ((doc.get("issue") or {}).get("team") or {}).get("id")
     if team != env.get("LINEAR_TEAM_ID"):
-        raise LinearError(f"document {args.id} is outside the configured team")
+        raise LinearError(f"document {doc_id} is outside the configured team")
     return {"id": doc["id"], "title": doc.get("title"),
             "url": doc.get("url"), "content": doc.get("content")}
 
@@ -981,7 +1009,8 @@ def _build_parser():
     d = sub.add_parser("doc-upsert"); d.add_argument("--issue", required=True)
     d.add_argument("--title", required=True); d.add_argument("--body", required=True)
     d.add_argument("--doc-id", dest="doc_id")
-    dg = sub.add_parser("doc-get"); dg.add_argument("id")
+    dg = sub.add_parser("doc-get"); dg.add_argument("id", nargs="?")
+    dg.add_argument("--issue", help="fetch the single document attached to this issue")
     sub.add_parser("cycles-list")
     sub.add_parser("states-list")
     ic = sub.add_parser("issue-create")

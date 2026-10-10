@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   corrected from the CLI instead of the Linear UI. `issue-get` now returns
   each comment's `id` alongside its body. The edit is scoped through the
   comment's issue: the same team/project/assignee boundary as every write.
+- **`cadence linear doc-get --issue <issue>`** fetches the document attached
+  to an issue without a separate `issue-get` to find its id. An issue with
+  no document is an error, and one with several lists their ids so the
+  caller picks rather than the adapter guessing.
 - **Linear adapter reads for delivery tooling.** `cadence linear states-list`
   returns the configured team's workflow states in board order (grouped by
   Linear's type — triage, backlog, unstarted, started, completed, canceled,
