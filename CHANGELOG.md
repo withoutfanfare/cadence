@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`cadence linear issues-list --open`** excludes completed and cancelled
   issues server-side, so callers no longer filter `state_type` by hand.
   It cannot be combined with `--state`.
+- **`cadence linear help [verb]`** prints the adapter's usage, or one verb's
+  flags, without needing a profile; `help` was previously an invalid choice.
 - **Linear adapter reads for delivery tooling.** `cadence linear states-list`
   returns the configured team's workflow states in board order (grouped by
   Linear's type — triage, backlog, unstarted, started, completed, canceled,
