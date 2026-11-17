@@ -976,20 +976,29 @@ def _open_proposal_count(env, post):
 def cmd_issue_create(args, env, post=graphql):
     """File a roadmap proposal. Always carries agent:proposed, always scoped to
     the configured team/project/assignee, and refuses to exceed ROADMAP_MAX_OPEN
-    open proposals — the cap is engine-enforced, not prompt-promised."""
+    open proposals — the cap is engine-enforced, not prompt-promised.
+
+    --requested files an issue the user dictated: no agent:proposed label and
+    no cap. It refuses every agent: label, so a loop cannot use it to file
+    uncapped work that the gates would then pick up."""
     _require_env(env, "LINEAR_TEAM_ID", "LINEAR_PROJECT_ID", "LINEAR_ASSIGNEE_ID")
-    try:
-        max_open = int(env.get("ROADMAP_MAX_OPEN") or 5)
-    except ValueError:
-        max_open = 5
-    open_now = _open_proposal_count(env, post)
-    if open_now >= max_open:
-        raise LinearError(
-            f"roadmap cap reached: {open_now} open proposal(s) (ROADMAP_MAX_OPEN={max_open})")
+    names = list(args.label or [])
+    if getattr(args, "requested", False):
+        if any(x.startswith("agent:") for x in names):
+            raise LinearError("--requested takes no agent: label")
+    else:
+        try:
+            max_open = int(env.get("ROADMAP_MAX_OPEN") or 5)
+        except ValueError:
+            max_open = 5
+        open_now = _open_proposal_count(env, post)
+        if open_now >= max_open:
+            raise LinearError(
+                f"roadmap cap reached: {open_now} open proposal(s) (ROADMAP_MAX_OPEN={max_open})")
+        names = ["agent:proposed"] + [x for x in names if x != "agent:proposed"]
     with open(args.body_file, encoding="utf-8") as f:
         description = f.read().strip()
-    names = ["agent:proposed"] + [x for x in (args.label or []) if x != "agent:proposed"]
-    label_ids = _resolve_label_ids(names, env, post)
+    label_ids = _resolve_label_ids(names, env, post) if names else []
     res = post(_ISSUE_CREATE_M, {"input": {
         "teamId": env.get("LINEAR_TEAM_ID"),
         "projectId": env.get("LINEAR_PROJECT_ID"),
@@ -1058,6 +1067,8 @@ def _build_parser():
     ic.add_argument("--title", required=True)
     ic.add_argument("--body-file", required=True, dest="body_file")
     ic.add_argument("--label", action="append")
+    ic.add_argument("--requested", action="store_true",
+                    help="an issue the user asked for: no agent:proposed label, no roadmap cap")
     h = sub.add_parser("help", help="show usage, or the flags of one verb")
     h.add_argument("verb", nargs="?", choices=sorted(sub.choices), metavar="verb")
     h.set_defaults(verb_parsers=sub.choices)

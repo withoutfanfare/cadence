@@ -630,6 +630,28 @@ class TestIssueCreate(unittest.TestCase):
         out = cli.cmd_issue_create(args, self._env(ROADMAP_MAX_OPEN="3"), post=post)
         self.assertTrue(out["success"])
 
+    def test_requested_issue_skips_cap_and_proposed_label(self):
+        calls = []
+        post = routing_post([
+            ("issues(", self._issues_resp(9)),
+            ("issueLabels", self._labels_resp()),
+            ("issueCreate", {"issueCreate": {"success": True, "issue": {
+                "id": "new-3", "identifier": "STU-11", "url": "https://x"}}}),
+        ], calls)
+        args = types.SimpleNamespace(title="T", body_file=self._body("b"),
+                                     label=["Bug"], requested=True)
+        out = cli.cmd_issue_create(args, self._env(ROADMAP_MAX_OPEN="2"), post=post)
+        self.assertTrue(out["success"])
+        self.assertEqual(calls[-1][1]["input"]["labelIds"], ["lbl-bug"])
+
+    def test_requested_issue_refuses_agent_labels(self):
+        calls = []
+        args = types.SimpleNamespace(title="T", body_file=self._body("b"),
+                                     label=["agent:auto"], requested=True)
+        with self.assertRaises(cli.LinearError):
+            cli.cmd_issue_create(args, self._env(), post=routing_post([], calls))
+        self.assertEqual(calls, [])
+
 
 class TestIssueAssign(unittest.TestCase):
     """`issue-update --assignee me` is the one write allowed on an unassigned
